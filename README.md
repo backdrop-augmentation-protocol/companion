@@ -21,3 +21,17 @@ Steam Workshop internal files are intentionally not parsed by the service. The c
 Tray and GUI code is kept outside the protocol core behind `ITrayController` and `ICompanionGui`, so a future Windows desktop shell can be added without changing the service contracts.
 
 Run the server with `dotnet run --project src/Companion.Server`; it should be configured by the future tray host to listen only on `127.0.0.1`.
+
+## End-to-end smoke test
+
+Start the server on a loopback port, then run the repeatable HTTP and WebSocket
+acceptance check:
+
+```powershell
+dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 -BaseUrl http://127.0.0.1:4311
+```
+
+The check covers health, bearer session creation, authenticated component
+discovery, wallpaper configuration persistence, and the Host/Companion hello
+handshake with permission negotiation.
