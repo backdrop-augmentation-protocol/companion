@@ -14,7 +14,7 @@ public sealed class JsonConfigStore : IConfigStore
 {
     private readonly string path;
     private readonly SemaphoreSlim gate = new(1, 1);
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull, Converters = { new JsonStringEnumConverter() } };
 
     public JsonConfigStore(string path) => this.path = path;
 
@@ -25,7 +25,7 @@ public sealed class JsonConfigStore : IConfigStore
         {
             if (!File.Exists(path)) return new([], []);
             await using var stream = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<CompanionConfig>(stream, JsonOptions, cancellationToken) ?? new([], []);
+            return Normalize(await JsonSerializer.DeserializeAsync<CompanionConfig>(stream, JsonOptions, cancellationToken));
         }
         finally { gate.Release(); }
     }
@@ -48,7 +48,7 @@ public sealed class JsonConfigStore : IConfigStore
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var current = File.Exists(path) ? JsonSerializer.Deserialize<CompanionConfig>(await File.ReadAllTextAsync(path, cancellationToken), JsonOptions) ?? new([], []) : new([], []);
+            var current = File.Exists(path) ? Normalize(JsonSerializer.Deserialize<CompanionConfig>(await File.ReadAllTextAsync(path, cancellationToken), JsonOptions)) : Empty();
             var next = update(current);
             Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
             var temporary = path + ".tmp";
@@ -57,4 +57,10 @@ public sealed class JsonConfigStore : IConfigStore
         }
         finally { gate.Release(); }
     }
+
+    private static CompanionConfig Empty() => new([], [], [], []);
+
+    private static CompanionConfig Normalize(CompanionConfig? config) => config is null
+        ? Empty()
+        : config with { Global = config.Global ?? [], Wallpapers = config.Wallpapers ?? [], Series = config.Series ?? [], Instances = config.Instances ?? [] };
 }

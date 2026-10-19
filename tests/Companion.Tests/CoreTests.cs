@@ -8,10 +8,20 @@ public sealed class CoreTests
     [Fact]
     public void ManifestValidatorRejectsIncompleteManifest()
     {
-        var errors = ComponentManifestValidator.Validate(new ComponentManifest("Bad ID", "", "", "", []));
+        var errors = ComponentManifestValidator.Validate(new ComponentManifest(new("bap", "0.1.0", "core"), "Bad ID", "", "", "component", [], new Dictionary<string, string>(), []));
         Assert.Contains(errors, e => e.StartsWith("id "));
-        Assert.Contains(errors, e => e == "version is required");
+        Assert.Contains(errors, e => e == "version must be SemVer");
         Assert.Contains(errors, e => e == "modes must contain standalone or embedded");
+    }
+
+    [Fact]
+    public void ManifestValidatorAcceptsFormalDualModeManifest()
+    {
+        var manifest = new ComponentManifest(
+            new("bap", "0.1.0", "core"), "org.example.clock", "1.0.0", "Clock", "component",
+            ["config"], new Dictionary<string, string> { ["default"] = "index.html", ["standalone"] = "standalone.html", ["embedded"] = "embedded.html" },
+            ["standalone", "embedded"], ConfigScopes: ["global", "wallpaper"]);
+        Assert.Empty(ComponentManifestValidator.Validate(manifest));
     }
 
     [Fact]
