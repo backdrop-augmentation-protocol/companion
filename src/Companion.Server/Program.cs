@@ -1,5 +1,7 @@
 using System.Net.WebSockets;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Bap.Companion.Core;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,61 +11,125 @@ builder.Services.AddSingleton<IWorkshopComponentSource, EmptyWorkshopComponentSo
 builder.Services.AddSingleton<IConfigStore>(_ => new JsonConfigStore(Path.Combine(AppContext.BaseDirectory, "data", "config.json")));
 var app = builder.Build();
 app.UseWebSockets();
-var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
 
-app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
-app.MapPost("/v1/session", (SessionRequest request, ISessionStore sessions, CompanionOptions options) =>
+var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
+
+app.MapGet("/healthz", () => Results.Ok(new { status = "ok", protocol = new { name = "bap", version = "0.1.0", profile = "core" } }));
+
+app.MapPost("/v1/session", (SessionRequest? request, ISessionStore sessions, CompanionOptions options) =>
 {
-    if (string.IsNullOrWhiteSpace(request.ClientName) || string.IsNullOrWhiteSpace(request.ClientKind)) return Results.BadRequest(new { error = "clientName and clientKind are required" });
+    if (request is null || string.IsNullOrWhiteSpace(request.ClientName) || string.IsNullOrWhiteSpace(request.ClientKind))
+        return Error(StatusCodes.Status400BadRequest, "INVALID_MESSAGE", "clientName and clientKind are required");
+    if (request.Protocol is not null && !IsCompatible(request.Protocol, options.Protocol))
+        return Error(StatusCodes.Status400BadRequest, "UNSUPPORTED_VERSION", "requested protocol is not supported");
     var session = sessions.Create(request.ClientKind, options.SessionLifetime);
     return Results.Ok(new SessionResponse(session.Id, session.Token, session.ExpiresAt));
 });
 
 app.MapGet("/v1/components", async (HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
     await Authenticated(request, sessions, async () => Results.Ok((await source.DiscoverAsync(ct)).Where(IsValid).Select(x => x.Manifest))));
+
 app.MapGet("/v1/components/{id}/manifest", async (string id, HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
     await Authenticated(request, sessions, async () =>
     {
         var item = await source.GetAsync(id, ct);
-        return item is null ? Results.NotFound() : IsValid(item) ? Results.Ok(item.Manifest) : Results.Problem("component manifest is invalid", statusCode: 422);
+        if (item is null) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "component was not found");
+        return IsValid(item) ? Results.Ok(item.Manifest) : Error(StatusCodes.Status422UnprocessableEntity, "INVALID_MESSAGE", "component manifest is invalid");
     }));
 
-app.MapGet("/v1/config", async (HttpRequest request, IConfigStore store, ISessionStore sessions, CancellationToken ct) => await Authenticated(request, sessions, async () => Results.Ok(await store.ReadAsync(ct))));
-app.MapPut("/v1/config/global", async (HttpRequest request, Dictionary<string, object?> values, IConfigStore store, ISessionStore sessions, CancellationToken ct) => await Authenticated(request, sessions, async () => { await store.WriteGlobalAsync(values, ct); return Results.NoContent(); }));
-app.MapPut("/v1/config/wallpapers/{wallpaperId}", async (string wallpaperId, HttpRequest request, Dictionary<string, object?> values, IConfigStore store, ISessionStore sessions, CancellationToken ct) => await Authenticated(request, sessions, async () => { await store.WriteWallpaperAsync(wallpaperId, values, ct); return Results.NoContent(); }));
+app.MapGet("/v1/config", async (HttpRequest request, IConfigStore store, ISessionStore sessions, CancellationToken ct) =>
+    await Authenticated(request, sessions, async () => Results.Ok(await store.ReadAsync(ct))));
+
+app.MapPut("/v1/config/global", async (HttpRequest request, Dictionary<string, object?>? values, IConfigStore store, ISessionStore sessions, CancellationToken ct) =>
+    await Authenticated(request, sessions, async () =>
+    {
+        if (values is null) return Error(StatusCodes.Status400BadRequest, "INVALID_MESSAGE", "configuration object is required");
+        await store.WriteGlobalAsync(values, ct);
+        return Results.NoContent();
+    }));
+
+app.MapPut("/v1/config/wallpapers/{wallpaperId}", async (string wallpaperId, HttpRequest request, Dictionary<string, object?>? values, IConfigStore store, ISessionStore sessions, CancellationToken ct) =>
+    await Authenticated(request, sessions, async () =>
+    {
+        if (string.IsNullOrWhiteSpace(wallpaperId) || values is null) return Error(StatusCodes.Status400BadRequest, "INVALID_MESSAGE", "wallpaperId and configuration object are required");
+        await store.WriteWallpaperAsync(wallpaperId, values, ct);
+        return Results.NoContent();
+    }));
 
 app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionOptions options) =>
 {
-    var token = context.Request.Query["token"].FirstOrDefault();
+    var token = GetToken(context.Request);
     if (token is null || !sessions.TryGet(token, out var session)) { context.Response.StatusCode = 401; return; }
     if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
+    if (!IsAllowedOrigin(context.Request.Headers.Origin)) { context.Response.StatusCode = 403; return; }
     using var socket = await context.WebSockets.AcceptWebSocketAsync();
-    var buffer = new byte[16 * 1024];
-    var result = await socket.ReceiveAsync(buffer, context.RequestAborted);
-    if (result.MessageType != WebSocketMessageType.Text) { await socket.CloseAsync(WebSocketCloseStatus.InvalidMessageType, "text handshake required", context.RequestAborted); return; }
-    HostHello? hello;
-    try { hello = JsonSerializer.Deserialize<HostHello>(buffer.AsSpan(0, result.Count), json); } catch { hello = null; }
-    if (hello is null || string.IsNullOrWhiteSpace(hello.HostId) || hello.ProtocolVersion != options.ProtocolVersion)
+    try
     {
-        await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "invalid host handshake", context.RequestAborted); return;
+        var raw = await ReceiveTextAsync(socket, context.RequestAborted);
+        if (raw is null || !TryReadMessage(raw, json, out var hello) || hello is null || hello.Kind != "request" || hello.Method != "hello")
+        { await CloseProtocolError(socket, context.RequestAborted); return; }
+        var payload = hello.Payload?.Deserialize<HostHelloPayload>(json);
+        if (payload is null || payload.Role != "host" || !IsCompatible(hello.Protocol, options.Protocol) || !payload.SupportedVersions.Contains(options.Protocol.Version, StringComparer.Ordinal))
+        {
+            await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, "UNSUPPORTED_VERSION", "host hello is not compatible"), context.RequestAborted);
+            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "unsupported protocol", context.RequestAborted); return;
+        }
+        var capabilities = new[] { "component-discovery", "config" };
+        var permissions = payload.RequestedPermissions.Where(p => p is "component.discovery" or "config.read" or "config.write").ToArray();
+        var result = new CompanionHelloPayload(options.Protocol, new(options.CompanionId, options.CompanionName, options.CompanionVersion), session.Id, capabilities, permissions);
+        await SendAsync(socket, Response(options.Protocol, hello.Id, session.Id, result), context.RequestAborted);
+        while (socket.State == WebSocketState.Open && !context.RequestAborted.IsCancellationRequested)
+        {
+            var message = await ReceiveTextAsync(socket, context.RequestAborted);
+            if (message is null) break;
+            if (!TryReadMessage(message, json, out var request) || request is null || request.Kind != "request")
+            { await SendAsync(socket, ErrorResponse(options.Protocol, null, session.Id, "INVALID_MESSAGE", "expected a protocol request"), context.RequestAborted); continue; }
+            await SendAsync(socket, ErrorResponse(options.Protocol, request.Id, session.Id, "NOT_FOUND", $"method '{request.Method ?? ""}' is not supported"), context.RequestAborted);
+        }
     }
-    var reply = JsonSerializer.SerializeToUtf8Bytes(new ProtocolMessage("companion.hello", null, new CompanionHello(options.ProtocolVersion, options.CompanionVersion, session.Id, ["component.discovery", "config"])), json);
-    await socket.SendAsync(reply, WebSocketMessageType.Text, true, context.RequestAborted);
-    while (socket.State == WebSocketState.Open && !context.RequestAborted.IsCancellationRequested)
+    catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
+    catch (WebSocketException) { }
+    finally
     {
-        result = await socket.ReceiveAsync(buffer, context.RequestAborted);
-        if (result.MessageType == WebSocketMessageType.Close) break;
+        // Disconnects never restore lifecycle state or permissions; reconnects must handshake again.
+        if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived) await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "disconnected", CancellationToken.None);
     }
 });
 
 app.Run();
 
 static bool IsValid(ComponentDescriptor item) => ComponentManifestValidator.Validate(item.Manifest).Count == 0;
-static async Task<IResult> Authenticated(HttpRequest request, ISessionStore sessions, Func<Task<IResult>> action)
+static string? GetToken(HttpRequest request)
 {
     var header = request.Headers.Authorization.ToString();
-    var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header[7..].Trim() : null;
-    return token is not null && sessions.TryGet(token, out _) ? await action() : Results.Unauthorized();
+    if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return header[7..].Trim();
+    return request.Query["token"].FirstOrDefault();
 }
-
+static bool IsAllowedOrigin(string? origin) => string.IsNullOrWhiteSpace(origin) || Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.Host is "localhost" or "127.0.0.1" or "[::1]";
+static bool IsCompatible(ProtocolDescriptor requested, ProtocolDescriptor supported) => requested.Name == supported.Name && requested.Profile == supported.Profile && requested.Version == supported.Version;
+static async Task<IResult> Authenticated(HttpRequest request, ISessionStore sessions, Func<Task<IResult>> action)
+{
+    var token = GetToken(request);
+    return token is not null && sessions.TryGet(token, out _) ? await action() : Error(401, "UNAUTHORIZED", "a valid bearer session is required");
+}
+static IResult Error(int status, string code, string message, bool retryable = false) => Results.Json(new BapError(code, message, retryable), statusCode: status);
+static ProtocolMessage Response(ProtocolDescriptor protocol, string id, string sessionId, object result) => new(protocol, "response", $"response-{Guid.NewGuid():N}", DateTimeOffset.UtcNow, sessionId, id, Ok: true, Result: JsonSerializer.SerializeToElement(result));
+static ProtocolMessage ErrorResponse(ProtocolDescriptor protocol, string? correlationId, string sessionId, string code, string message) => new(protocol, "response", $"response-{Guid.NewGuid():N}", DateTimeOffset.UtcNow, sessionId, correlationId, Ok: false, Error: new BapError(code, message));
+static bool TryReadMessage(string raw, JsonSerializerOptions json, out ProtocolMessage? message)
+{
+    try { message = JsonSerializer.Deserialize<ProtocolMessage>(raw, json); return message is not null; }
+    catch (JsonException) { message = null; return false; }
+}
+static async Task SendAsync(WebSocket socket, ProtocolMessage message, CancellationToken cancellationToken)
+{
+    var bytes = JsonSerializer.SerializeToUtf8Bytes(message, new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
+    await socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken);
+}
+static async Task<string?> ReceiveTextAsync(WebSocket socket, CancellationToken cancellationToken)
+{
+    using var buffer = new MemoryStream(); var chunk = new byte[16 * 1024]; WebSocketReceiveResult result;
+    do { result = await socket.ReceiveAsync(chunk, cancellationToken); if (result.MessageType == WebSocketMessageType.Close) return null; if (result.MessageType != WebSocketMessageType.Text) throw new WebSocketException("text message required"); buffer.Write(chunk, 0, result.Count); } while (!result.EndOfMessage);
+    return Encoding.UTF8.GetString(buffer.ToArray());
+}
+static Task CloseProtocolError(WebSocket socket, CancellationToken cancellationToken) => socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "valid BAP hello request required", cancellationToken);
 public partial class Program;
