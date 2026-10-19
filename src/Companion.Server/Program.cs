@@ -9,8 +9,13 @@ builder.Services.AddSingleton(new CompanionOptions());
 builder.Services.AddSingleton<ISessionStore, InMemorySessionStore>();
 builder.Services.AddSingleton<IWorkshopComponentSource, EmptyWorkshopComponentSource>();
 builder.Services.AddSingleton<IConfigStore>(_ => new JsonConfigStore(Path.Combine(AppContext.BaseDirectory, "data", "config.json")));
+builder.Services.AddCors(options => options.AddPolicy("local-companion", policy => policy
+    .SetIsOriginAllowed(IsAllowedOrigin)
+    .AllowAnyHeader()
+    .AllowAnyMethod()));
 var app = builder.Build();
 app.UseWebSockets();
+app.UseCors("local-companion");
 
 var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 
@@ -105,7 +110,7 @@ static string? GetToken(HttpRequest request)
     if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return header[7..].Trim();
     return request.Query["token"].FirstOrDefault();
 }
-static bool IsAllowedOrigin(string? origin) => string.IsNullOrWhiteSpace(origin) || Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.Host is "localhost" or "127.0.0.1" or "[::1]";
+static bool IsAllowedOrigin(string? origin) => string.IsNullOrWhiteSpace(origin) || origin is "null" or "file://" || Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.Host is "localhost" or "127.0.0.1" or "[::1]";
 static bool IsCompatible(ProtocolDescriptor requested, ProtocolDescriptor supported) => requested.Name == supported.Name && requested.Profile == supported.Profile && requested.Version == supported.Version;
 static async Task<IResult> Authenticated(HttpRequest request, ISessionStore sessions, Func<Task<IResult>> action)
 {
