@@ -118,7 +118,7 @@ static async Task<IResult> Authenticated(HttpRequest request, ISessionStore sess
     return token is not null && sessions.TryGet(token, out _) ? await action() : Error(401, "UNAUTHORIZED", "a valid bearer session is required");
 }
 static IResult Error(int status, string code, string message, bool retryable = false) => Results.Json(new BapError(code, message, retryable), statusCode: status);
-static ProtocolMessage Response(ProtocolDescriptor protocol, string id, string sessionId, object result) => new(protocol, "response", $"response-{Guid.NewGuid():N}", DateTimeOffset.UtcNow, sessionId, id, Ok: true, Result: JsonSerializer.SerializeToElement(result));
+static ProtocolMessage Response(ProtocolDescriptor protocol, string id, string sessionId, object result) => new(protocol, "response", $"response-{Guid.NewGuid():N}", DateTimeOffset.UtcNow, sessionId, id, Ok: true, Result: JsonSerializer.SerializeToElement(result, new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }));
 static ProtocolMessage ErrorResponse(ProtocolDescriptor protocol, string? correlationId, string sessionId, string code, string message) => new(protocol, "response", $"response-{Guid.NewGuid():N}", DateTimeOffset.UtcNow, sessionId, correlationId, Ok: false, Error: new BapError(code, message));
 static bool TryReadMessage(string raw, JsonSerializerOptions json, out ProtocolMessage? message)
 {
