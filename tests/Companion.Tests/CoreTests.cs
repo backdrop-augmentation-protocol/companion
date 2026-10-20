@@ -49,4 +49,25 @@ public sealed class CoreTests
         }
         finally { var directory = Path.GetDirectoryName(path); if (directory is not null && Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
+
+    [Fact]
+    public async Task WorkshopDirectorySourceDiscoversOnlyValidComponents()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-workshop-{Guid.NewGuid():N}");
+        var componentDirectory = Path.Combine(root, "clock");
+        Directory.CreateDirectory(componentDirectory);
+        await File.WriteAllTextAsync(Path.Combine(componentDirectory, "manifest.json"), """
+            { "protocol": { "name": "bap", "version": "0.1.0", "profile": "core" }, "id": "org.example.clock", "name": "Clock", "version": "1.0.0", "role": "component", "capabilities": [], "entrypoints": { "default": "./index.html", "standalone": "./index.html", "embedded": "./index.html" }, "modes": ["standalone", "embedded"] }
+            """);
+        await File.WriteAllTextAsync(Path.Combine(root, "invalid.json"), "{ \"id\": \"invalid\" }");
+        try
+        {
+            var source = new WorkshopDirectorySource([root]);
+            var components = await source.DiscoverAsync();
+            Assert.Single(components);
+            Assert.Equal("org.example.clock", components[0].Manifest.Id);
+            Assert.Equal(componentDirectory, components[0].Location);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
 }

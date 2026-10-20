@@ -33,6 +33,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 
 
 检查覆盖健康状态、Bearer 会话、认证后的组件发现、壁纸配置持久化，以及带权限协商的 Host/Companion hello 握手。
 
+## Workshop 组件发现
+
+将 `BAP_WORKSHOP_ROOTS` 设置为一个或多个本地 Workshop 组件目录，多个目录使用当前平台的路径分隔符连接。Companion 会递归查找 `manifest.json` 或 `component.manifest.json`，只公开通过 BAP 校验器的 Manifest：
+
+```powershell
+$env:BAP_WORKSHOP_ROOTS = 'D:\path\to\workshop-components'
+dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
+```
+
 ## 便携式 Windows 软件包
 
 创建一个依赖目标机 .NET 运行时的 `win-x64` 软件包：

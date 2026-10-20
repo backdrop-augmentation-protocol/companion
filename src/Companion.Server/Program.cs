@@ -7,7 +7,7 @@ using Bap.Companion.Core;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton(new CompanionOptions());
 builder.Services.AddSingleton<ISessionStore, InMemorySessionStore>();
-builder.Services.AddSingleton<IWorkshopComponentSource, EmptyWorkshopComponentSource>();
+builder.Services.AddSingleton<IWorkshopComponentSource>(_ => new WorkshopDirectorySource(WorkshopRoots.FromEnvironment()));
 builder.Services.AddSingleton<IConfigStore>(_ => new JsonConfigStore(Path.Combine(AppContext.BaseDirectory, "data", "config.json")));
 builder.Services.AddCors(options => options.AddPolicy("local-companion", policy => policy
     .SetIsOriginAllowed(IsAllowedOrigin)

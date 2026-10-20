@@ -36,6 +36,18 @@ The check covers health, bearer session creation, authenticated component
 discovery, wallpaper configuration persistence, and the Host/Companion hello
 handshake with permission negotiation.
 
+## Workshop discovery
+
+Set `BAP_WORKSHOP_ROOTS` to one or more local Workshop component directories,
+separated by the platform path separator. The Companion recursively scans for
+`manifest.json` or `component.manifest.json` and exposes only manifests that
+pass the BAP validator:
+
+```powershell
+$env:BAP_WORKSHOP_ROOTS = 'D:\path\to\workshop-components'
+dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
+```
+
 ## Portable Windows package
 
 Create a framework-dependent `win-x64` package:
