@@ -70,4 +70,21 @@ public sealed class CoreTests
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
+
+    [Fact]
+    public void WorkshopResourceResolverRejectsTraversal()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-resource-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var resource = Path.Combine(root, "index.html");
+        File.WriteAllText(resource, "ok");
+        var component = new ComponentDescriptor(new ComponentManifest(new("bap", "0.1.0", "core"), "org.example.clock", "1.0.0", "Clock", "component", [], new Dictionary<string, string> { ["default"] = "index.html", ["standalone"] = "index.html", ["embedded"] = "index.html" }, ["standalone", "embedded"]), root);
+        try
+        {
+            Assert.True(WorkshopResourceResolver.TryResolve(component, "index.html", out var resolved));
+            Assert.Equal(resource, resolved);
+            Assert.False(WorkshopResourceResolver.TryResolve(component, "../index.html", out _));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
 }

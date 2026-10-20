@@ -48,6 +48,10 @@ $env:BAP_WORKSHOP_ROOTS = 'D:\path\to\workshop-components'
 dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
 ```
 
+After creating a session, authenticated clients can read a component resource
+at `GET /v1/components/{id}/resources/{path}`. Paths are confined to the
+component directory and traversal outside it is rejected.
+
 ## Portable Windows package
 
 Create a framework-dependent `win-x64` package:

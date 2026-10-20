@@ -42,6 +42,15 @@ app.MapGet("/v1/components/{id}/manifest", async (string id, HttpRequest request
         return IsValid(item) ? Results.Ok(item.Manifest) : Error(StatusCodes.Status422UnprocessableEntity, "INVALID_MESSAGE", "component manifest is invalid");
     }));
 
+app.MapGet("/v1/components/{id}/resources/{**resourcePath}", async (string id, string? resourcePath, HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
+    await Authenticated(request, sessions, async () =>
+    {
+        var component = await source.GetAsync(id, ct);
+        if (component is null) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "component was not found");
+        if (!WorkshopResourceResolver.TryResolve(component, resourcePath, out var path)) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "resource was not found");
+        return Results.File(path, ContentType(path), enableRangeProcessing: true);
+    }));
+
 app.MapGet("/v1/config", async (HttpRequest request, IConfigStore store, ISessionStore sessions, CancellationToken ct) =>
     await Authenticated(request, sessions, async () => Results.Ok(await store.ReadAsync(ct))));
 
@@ -104,6 +113,23 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
 app.Run();
 
 static bool IsValid(ComponentDescriptor item) => ComponentManifestValidator.Validate(item.Manifest).Count == 0;
+static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+{
+    ".html" => "text/html; charset=utf-8",
+    ".css" => "text/css; charset=utf-8",
+    ".js" => "text/javascript; charset=utf-8",
+    ".json" => "application/json; charset=utf-8",
+    ".svg" => "image/svg+xml",
+    ".png" => "image/png",
+    ".jpg" or ".jpeg" => "image/jpeg",
+    ".webp" => "image/webp",
+    ".gif" => "image/gif",
+    ".mp3" => "audio/mpeg",
+    ".wav" => "audio/wav",
+    ".mp4" => "video/mp4",
+    ".webm" => "video/webm",
+    _ => "application/octet-stream"
+};
 static string? GetToken(HttpRequest request)
 {
     var header = request.Headers.Authorization.ToString();

@@ -42,6 +42,8 @@ $env:BAP_WORKSHOP_ROOTS = 'D:\path\to\workshop-components'
 dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
 ```
 
+创建会话后，经过认证的客户端可以通过 `GET /v1/components/{id}/resources/{path}` 读取组件资源。资源路径被限制在组件目录内，越界访问会被拒绝。
+
 ## 便携式 Windows 软件包
 
 创建一个依赖目标机 .NET 运行时的 `win-x64` 软件包：

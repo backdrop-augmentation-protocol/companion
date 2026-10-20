@@ -87,6 +87,21 @@ public static class WorkshopRoots
         .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }
 
+public static class WorkshopResourceResolver
+{
+    public static bool TryResolve(ComponentDescriptor component, string? resourcePath, out string fullPath)
+    {
+        fullPath = string.Empty;
+        if (component is null || string.IsNullOrWhiteSpace(resourcePath) || Path.IsPathRooted(resourcePath)) return false;
+        var relativePath = resourcePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+        var root = Path.GetFullPath(component.Location).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var candidate = Path.GetFullPath(Path.Combine(root, relativePath));
+        if (!candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(candidate)) return false;
+        fullPath = candidate;
+        return true;
+    }
+}
+
 public static partial class ComponentManifestValidator
 {
     public static IReadOnlyList<string> Validate(ComponentManifest? manifest)
