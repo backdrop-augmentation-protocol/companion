@@ -4,3 +4,4 @@ obj/
 *.user
 data/
 mock-state.json
+artifacts/

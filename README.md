@@ -35,3 +35,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 
 The check covers health, bearer session creation, authenticated component
 discovery, wallpaper configuration persistence, and the Host/Companion hello
 handshake with permission negotiation.
+
+## Portable Windows package
+
+Create a framework-dependent `win-x64` package:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.ps1
+```
+
+Add `-SelfContained` for a package that includes the .NET runtime. The output
+contains `start-companion.cmd`; double-click it to start the service on
+`http://127.0.0.1:4311`. Pass another port as its first argument when needed.
