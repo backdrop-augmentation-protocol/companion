@@ -87,4 +87,20 @@ public sealed class CoreTests
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
+
+    [Fact]
+    public void SteamWorkshopLocatorReadsLibraryFolders()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-steam-{Guid.NewGuid():N}");
+        var library = Path.Combine(root, "library");
+        Directory.CreateDirectory(Path.Combine(root, "steamapps"));
+        Directory.CreateDirectory(Path.Combine(library, "steamapps", "workshop", "content", "431960"));
+        File.WriteAllText(Path.Combine(root, "steamapps", "libraryfolders.vdf"), $"\"libraryfolders\" {{ \"1\" {{ \"path\" \"{library.Replace("\\", "\\\\")}\" }} }}");
+        try
+        {
+            var roots = SteamWorkshopLocator.FindRoots(root);
+            Assert.Contains(Path.Combine(library, "steamapps", "workshop", "content", "431960"), roots);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
 }

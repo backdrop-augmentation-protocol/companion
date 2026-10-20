@@ -44,6 +44,8 @@ dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
 
 创建会话后，经过认证的客户端可以通过 `GET /v1/components/{id}/resources/{path}` 读取组件资源。资源路径被限制在组件目录内，越界访问会被拒绝。
 
+如需自动发现 Wallpaper Engine Workshop 目录，可设置 `BAP_DISCOVER_STEAM_WORKSHOP=1`。Companion 会读取 Steam 的 `libraryfolders.vdf`，并检查 AppID `431960` 对应的 Workshop 内容目录。如果 Steam 安装在非标准位置，可额外设置 `BAP_STEAM_ROOT`。
+
 ## 便携式 Windows 软件包
 
 创建一个依赖目标机 .NET 运行时的 `win-x64` 软件包：

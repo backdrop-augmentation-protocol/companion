@@ -82,9 +82,56 @@ public sealed class WorkshopDirectorySource : IWorkshopComponentSource
 
 public static class WorkshopRoots
 {
-    public static IReadOnlyList<string> FromEnvironment(string? value = null) =>
-        (value ?? Environment.GetEnvironmentVariable("BAP_WORKSHOP_ROOTS") ?? string.Empty)
-        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    public static IReadOnlyList<string> FromEnvironment(string? value = null)
+    {
+        var roots = (value ?? Environment.GetEnvironmentVariable("BAP_WORKSHOP_ROOTS") ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        if (string.Equals(Environment.GetEnvironmentVariable("BAP_DISCOVER_STEAM_WORKSHOP"), "1", StringComparison.OrdinalIgnoreCase))
+            roots.AddRange(SteamWorkshopLocator.FindRoots(Environment.GetEnvironmentVariable("BAP_STEAM_ROOT")));
+        return roots.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+}
+
+public static class SteamWorkshopLocator
+{
+    public static IReadOnlyList<string> FindRoots(string? steamRoot, string appId = "431960")
+    {
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in CandidateSteamRoots(steamRoot))
+        {
+            AddWorkshopRoot(candidates, root, appId);
+            var libraryFile = Path.Combine(root, "steamapps", "libraryfolders.vdf");
+            if (!File.Exists(libraryFile)) continue;
+            foreach (var library in ReadLibraryPaths(libraryFile)) AddWorkshopRoot(candidates, library, appId);
+        }
+        return candidates.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static IEnumerable<string> CandidateSteamRoots(string? configuredRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredRoot)) yield return configuredRoot;
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        if (!string.IsNullOrWhiteSpace(programFiles)) yield return Path.Combine(programFiles, "Steam");
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrWhiteSpace(localAppData)) yield return Path.Combine(localAppData, "Steam");
+    }
+
+    private static IEnumerable<string> ReadLibraryPaths(string path)
+    {
+        string text;
+        try { text = File.ReadAllText(path); }
+        catch (IOException) { yield break; }
+        catch (UnauthorizedAccessException) { yield break; }
+        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(text, "\\\"path\\\"\\s+\\\"([^\\\"]+)\\\"", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            yield return match.Groups[1].Value.Replace("\\\\", "\\");
+    }
+
+    private static void AddWorkshopRoot(HashSet<string> roots, string root, string appId)
+    {
+        var workshop = Path.GetFullPath(Path.Combine(root, "steamapps", "workshop", "content", appId));
+        if (Directory.Exists(workshop)) roots.Add(workshop);
+    }
 }
 
 public static class WorkshopResourceResolver

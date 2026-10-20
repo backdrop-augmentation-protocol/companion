@@ -52,6 +52,11 @@ After creating a session, authenticated clients can read a component resource
 at `GET /v1/components/{id}/resources/{path}`. Paths are confined to the
 component directory and traversal outside it is rejected.
 
+To opt into automatic Wallpaper Engine Workshop discovery, set
+`BAP_DISCOVER_STEAM_WORKSHOP=1`. The Companion then reads Steam's
+`libraryfolders.vdf` and checks Workshop content for AppID `431960`. Set
+`BAP_STEAM_ROOT` when Steam is installed outside the standard locations.
+
 ## Portable Windows package
 
 Create a framework-dependent `win-x64` package:
