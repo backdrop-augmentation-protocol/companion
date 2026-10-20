@@ -3,10 +3,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$server = Join-Path $PSScriptRoot 'Bap.Companion.Server.exe'
-if (-not (Test-Path -LiteralPath $server)) {
-    throw "Bap.Companion.Server.exe was not found next to this launcher. Run publish-companion.ps1 first."
+$desktop = Join-Path $PSScriptRoot 'Bap.Companion.Desktop.exe'
+if (Test-Path -LiteralPath $desktop) {
+    & $desktop --port $Port
+    exit $LASTEXITCODE
 }
 
+$server = Join-Path $PSScriptRoot 'Bap.Companion.Server.exe'
+if (-not (Test-Path -LiteralPath $server)) { throw "A Companion executable was not found. Run publish-companion.ps1 first." }
 & $server --urls "http://127.0.0.1:$Port"
 exit $LASTEXITCODE

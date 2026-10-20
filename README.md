@@ -45,5 +45,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.
 ```
 
 Add `-SelfContained` for a package that includes the .NET runtime. The output
-contains `start-companion.cmd`; double-click it to start the service on
-`http://127.0.0.1:4311`. Pass another port as its first argument when needed.
+contains `start-companion.cmd`; double-click it to start the tray host and
+service on `http://127.0.0.1:4311`. The tray menu provides a health check and
+clean exit. Pass another port as its first argument when needed.

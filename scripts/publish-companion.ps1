@@ -6,14 +6,21 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $repo 'src\Companion.Server\Companion.Server.csproj'
+$serverProject = Join-Path $repo 'src\Companion.Server\Companion.Server.csproj'
+$desktopProject = Join-Path $repo 'src\Companion.Desktop\Companion.Desktop.csproj'
 $destination = if ($Output) { [System.IO.Path]::GetFullPath($Output) } else { Join-Path $repo "artifacts\companion-$Runtime" }
 
 if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 
-$publishArgs = @('publish', $project, '--configuration', 'Release', '--runtime', $Runtime, '--output', $destination, '--self-contained', ($SelfContained.IsPresent.ToString().ToLowerInvariant()))
+$serverDestination = Join-Path $destination 'server'
+New-Item -ItemType Directory -Path $serverDestination -Force | Out-Null
+$publishArgs = @('publish', $serverProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $serverDestination, '--self-contained', ($SelfContained.IsPresent.ToString().ToLowerInvariant()))
 & dotnet @publishArgs
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$desktopArgs = @('publish', $desktopProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $destination, '--self-contained', ($SelfContained.IsPresent.ToString().ToLowerInvariant()))
+& dotnet @desktopArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'start-companion.ps1') -Destination $destination -Force

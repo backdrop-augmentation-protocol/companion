@@ -41,4 +41,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.ps1
 ```
 
-如需自包含软件包，添加 `-SelfContained` 参数。输出目录中包含 `start-companion.cmd`，双击即可在 `http://127.0.0.1:4311` 启动服务；如需更换端口，可将端口号作为它的第一个参数传入。
+如需自包含软件包，添加 `-SelfContained` 参数。输出目录中包含 `start-companion.cmd`，双击即可启动托盘宿主和服务，默认地址为 `http://127.0.0.1:4311`。托盘菜单提供健康检查和正常退出功能；如需更换端口，可将端口号作为它的第一个参数传入。

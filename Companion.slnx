@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Companion.Core/Companion.Core.csproj" />
     <Project Path="src/Companion.Server/Companion.Server.csproj" />
+    <Project Path="src/Companion.Desktop/Companion.Desktop.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Companion.Tests/Companion.Tests.csproj" />
