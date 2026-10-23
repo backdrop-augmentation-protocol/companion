@@ -43,14 +43,17 @@ app.MapGet("/v1/components/{id}/manifest", async (string id, HttpRequest request
         return IsValid(item) ? Results.Ok(item.Manifest) : Error(StatusCodes.Status422UnprocessableEntity, "INVALID_MESSAGE", "component manifest is invalid");
     }));
 
-app.MapGet("/v1/components/{id}/resources/{**resourcePath}", async (string id, string? resourcePath, HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
-    await Authenticated(request, sessions, async () =>
+app.MapGet("/v1/components/{id}/resources/{**resourcePath}", async (string id, string? resourcePath, HttpContext context, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return await Authenticated(context.Request, sessions, async () =>
     {
         var component = await source.GetAsync(id, ct);
         if (component is null) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "component was not found");
         if (!WorkshopResourceResolver.TryResolve(component, resourcePath, out var path)) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "resource was not found");
         return Results.File(path, ContentType(path), enableRangeProcessing: true);
-    }));
+    });
+});
 
 app.MapPost("/v1/components/{id}/launch", async (string id, HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, ResourceTickets tickets, CancellationToken ct) =>
     await Authenticated(request, sessions, async () =>
