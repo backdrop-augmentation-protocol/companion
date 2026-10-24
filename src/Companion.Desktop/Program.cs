@@ -10,9 +10,10 @@ internal static class Program
     private static void Main(string[] args)
     {
         using var singleInstance = new Mutex(true, @"Local\BAP.Companion.Desktop", out var firstInstance);
-        if (!firstInstance) return;
+        using var activation = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\BAP.Companion.Activate");
+        if (!firstInstance) { activation.Set(); return; }
         ApplicationConfiguration.Initialize();
-        using var context = new CompanionContext(ParsePort(args));
+        using var context = new CompanionContext(ParsePort(args), activation, args.Contains("--background"));
         Application.Run(context);
     }
 
@@ -28,27 +29,49 @@ internal sealed class CompanionContext : ApplicationContext
     private readonly NotifyIcon tray;
     private readonly int port;
     private readonly Process server;
+    private readonly CompanionLog log;
+    private readonly MainForm window;
+    private readonly System.Windows.Forms.Timer activationTimer;
 
-    public CompanionContext(int port)
+    public CompanionContext(int port, EventWaitHandle activation, bool background)
     {
         this.port = port;
+        log = new CompanionLog();
+        log.Write("desktop", "Starting Companion");
         server = StartServer(port);
+        window = new MainForm(log, port);
+        window.FormClosing += (_, eventArgs) => { if (eventArgs.CloseReason == CloseReason.UserClosing) { eventArgs.Cancel = true; window.Hide(); } };
         var menu = new ContextMenuStrip();
-        menu.Items.Add("BAP Companion", null, (_, _) => ShowStatus());
+        menu.Items.Add("Open BAP Companion", null, (_, _) => ShowWindow());
         menu.Items.Add("Open health check", null, (_, _) => Process.Start(new ProcessStartInfo($"http://127.0.0.1:{port}/healthz") { UseShellExecute = true }));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
         tray = new NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "BAP Companion", ContextMenuStrip = menu, Visible = true };
-        tray.DoubleClick += (_, _) => ShowStatus();
-        tray.ShowBalloonTip(3000, "BAP Companion", $"Running on 127.0.0.1:{port}", ToolTipIcon.Info);
+        tray.DoubleClick += (_, _) => ShowWindow();
+        activationTimer = new System.Windows.Forms.Timer { Interval = 300 };
+        activationTimer.Tick += (_, _) => { if (activation.WaitOne(0)) ShowWindow(); };
+        activationTimer.Start();
+        if (!background) ShowWindow();
+    }
+
+    private void ShowWindow()
+    {
+        if (!window.Visible) window.Show();
+        window.WindowState = FormWindowState.Normal;
+        window.Activate();
     }
 
     protected override void ExitThreadCore()
     {
+        activationTimer.Stop();
+        activationTimer.Dispose();
+        window.Dispose();
         tray.Visible = false;
         tray.Dispose();
         if (!server.HasExited) server.Kill(true);
         server.Dispose();
+        log.Write("desktop", "Companion stopped");
+        log.Dispose();
         base.ExitThreadCore();
     }
 
@@ -56,18 +79,12 @@ internal sealed class CompanionContext : ApplicationContext
     {
         var path = Path.Combine(AppContext.BaseDirectory, "server", "Bap.Companion.Server.exe");
         if (!File.Exists(path)) throw new FileNotFoundException("Companion Server was not found in the server subdirectory.", path);
-        return Process.Start(new ProcessStartInfo(path, $"--urls http://127.0.0.1:{port}") { WorkingDirectory = Path.GetDirectoryName(path), UseShellExecute = false, CreateNoWindow = true })
-            ?? throw new InvalidOperationException("Could not start Companion Server.");
-    }
-
-    private void ShowStatus()
-    {
-        using var client = new HttpClient();
-        try
-        {
-            var health = client.GetStringAsync($"http://127.0.0.1:{port}/healthz").GetAwaiter().GetResult();
-            MessageBox.Show(health, "BAP Companion", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-        catch (HttpRequestException error) { MessageBox.Show(error.Message, "BAP Companion", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        var start = new ProcessStartInfo(path) { WorkingDirectory = Path.GetDirectoryName(path), UseShellExecute = false,
+            CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.ArgumentList.Add("--urls");
+        start.ArgumentList.Add($"http://127.0.0.1:{port}");
+        var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion Server.");
+        log.Capture(process);
+        return process;
     }
 }
