@@ -1,25 +1,80 @@
+using System.Text.Json;
 using Microsoft.Win32;
 
 namespace Bap.Companion.Desktop;
 
-internal static class DesktopSettings
+internal sealed record DesktopPreferences(string Language = "en", bool AutoStart = true);
+
+internal sealed class DesktopSettings
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "BAP Companion";
+    private readonly string path;
+    private DesktopPreferences preferences;
 
-    public static bool AutoStartEnabled
+    public string Language => preferences.Language;
+    public bool AutoStartEnabled => preferences.AutoStart;
+    public string? StartupError { get; private set; }
+    public event EventHandler? LanguageChanged;
+
+    public DesktopSettings(string? path = null)
     {
-        get
+        this.path = path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "BAP Companion", "data", "desktop.json");
+        preferences = ReadPreferences(this.path);
+        try { ApplyAutoStart(preferences.AutoStart); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        { StartupError = error.Message; }
+        if (!File.Exists(this.path)) Save(preferences);
+    }
+
+    public void SetLanguage(string language)
+    {
+        if (language is not ("en" or "zh-CN")) throw new ArgumentException("Unsupported language", nameof(language));
+        if (preferences.Language == language) return;
+        var next = preferences with { Language = language };
+        Save(next);
+        preferences = next;
+        LanguageChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetAutoStart(bool enabled)
+    {
+        ApplyAutoStart(enabled);
+        var next = preferences with { AutoStart = enabled };
+        Save(next);
+        preferences = next;
+        StartupError = null;
+    }
+
+    internal static DesktopPreferences ReadPreferences(string path)
+    {
+        if (!File.Exists(path)) return new();
+        try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-            return key?.GetValue(AppName) is string command && command.Contains(Environment.ProcessPath ?? "\0", StringComparison.OrdinalIgnoreCase);
+            var value = JsonSerializer.Deserialize<DesktopPreferences>(File.ReadAllText(path));
+            return value is null ? new() : value with { Language = value.Language == "zh-CN" ? "zh-CN" : "en" };
         }
-        set
+        catch (JsonException) { return new(); }
+    }
+
+    private void Save(DesktopPreferences value)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporary = path + ".tmp";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }));
+        File.Move(temporary, path, true);
+    }
+
+    private static void ApplyAutoStart(bool enabled)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(RunKey, true)
+            ?? throw new InvalidOperationException("Cannot open current-user startup settings");
+        if (enabled)
         {
-            using var key = Registry.CurrentUser.CreateSubKey(RunKey, true)
-                ?? throw new InvalidOperationException("Cannot open the current user's startup settings");
-            if (value) key.SetValue(AppName, $"\"{Environment.ProcessPath}\" --background", RegistryValueKind.String);
-            else key.DeleteValue(AppName, false);
+            var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Cannot determine the Companion executable path");
+            key.SetValue(AppName, $"\"{executable}\" --background", RegistryValueKind.String);
         }
+        else key.DeleteValue(AppName, false);
     }
 }

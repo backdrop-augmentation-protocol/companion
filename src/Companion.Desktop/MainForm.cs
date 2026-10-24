@@ -9,6 +9,7 @@ internal sealed class MainForm : Form
     private readonly JsonPresetStore store = new(JsonPresetStore.DefaultPath);
     private readonly CompanionLog log;
     private readonly int port;
+    private readonly DesktopSettings settings;
     private PresetState state = new([], null, new Dictionary<string, string>());
     private IReadOnlyList<InstalledItem> items = [];
     private readonly DataGridView hosts = Grid();
@@ -20,11 +21,14 @@ internal sealed class MainForm : Form
     private readonly ComboBox monitor = new() { Width = 140, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Label presetStatus = new() { AutoSize = true };
     private readonly Label serviceStatus = new() { AutoSize = true };
+    private readonly CheckBox startup = new() { AutoSize = true };
+    private readonly ComboBox language = new() { Width = 210, DropDownStyle = ComboBoxStyle.DropDownList };
 
-    public MainForm(CompanionLog log, int port)
+    public MainForm(CompanionLog log, int port, DesktopSettings settings)
     {
         this.log = log;
         this.port = port;
+        this.settings = settings;
         Text = "BAP Companion";
         MinimumSize = new Size(900, 650);
         Size = new Size(1050, 760);
@@ -33,8 +37,30 @@ internal sealed class MainForm : Form
         tabs.TabPages.Add(BuildPresetsPage());
         tabs.TabPages.Add(BuildSettingsPage());
         Controls.Add(tabs);
+        settings.LanguageChanged += (_, _) => { ApplyLanguage(); _ = RunActionAsync(RefreshAsync); };
+        ApplyLanguage();
         Load += async (_, _) => await RefreshAsync();
     }
+
+    private string L(string key, params object[] args) => UiStrings.Get(key, settings.Language, args);
+
+    private void ApplyLanguage()
+    {
+        foreach (var control in Descendants(this))
+            if (control.Tag is string key) control.Text = L(key);
+        RenderPresets();
+    }
+
+    private static IEnumerable<Control> Descendants(Control parent)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            yield return child;
+            foreach (var descendant in Descendants(child)) yield return descendant;
+        }
+    }
+
+    private static T Labelled<T>(T control, string key) where T : Control { control.Tag = key; return control; }
 
     private static DataGridView Grid() => new()
     {
@@ -45,7 +71,7 @@ internal sealed class MainForm : Form
 
     private TabPage BuildCatalogPage()
     {
-        var page = new TabPage("Installed");
+        var page = Labelled(new TabPage(), "installed");
         hosts.Columns.Add("title", "Host / Web wallpaper"); hosts.Columns.Add("source", "Source");
         hosts.Columns.Add("id", "BAP ID"); hosts.Columns.Add("version", "Version");
         hosts.Columns.Add("status", "Status"); hosts.Columns.Add("workshop", "Workshop ID");
@@ -58,16 +84,16 @@ internal sealed class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 56));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
-        layout.Controls.Add(new Label { Text = "Installed hosts and Web wallpapers", Dock = DockStyle.Fill }, 0, 0);
+        layout.Controls.Add(Labelled(new Label { Dock = DockStyle.Fill }, "hosts"), 0, 0);
         layout.Controls.Add(hosts, 0, 1);
-        layout.Controls.Add(new Label { Text = "Installed components (local and subscribed copies remain separate)", Dock = DockStyle.Fill }, 0, 2);
+        layout.Controls.Add(Labelled(new Label { Dock = DockStyle.Fill }, "components"), 0, 2);
         layout.Controls.Add(components, 0, 3);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
-        actions.Controls.Add(Button("Refresh", async () => await RefreshAsync()));
+        actions.Controls.Add(Labelled(Button("", async () => await RefreshAsync()), "refresh"));
         for (var index = 0; index < Screen.AllScreens.Length; index++) monitor.Items.Add($"WE monitor {index}");
         monitor.SelectedIndex = 0;
         actions.Controls.Add(monitor);
-        actions.Controls.Add(Button("Switch to selected host", async () => await SwitchHostAsync()));
+        actions.Controls.Add(Labelled(Button("", async () => await SwitchHostAsync()), "switchHost"));
         layout.Controls.Add(actions, 0, 4);
         page.Controls.Add(layout);
         return page;
@@ -75,35 +101,35 @@ internal sealed class MainForm : Form
 
     private TabPage BuildPresetsPage()
     {
-        var page = new TabPage("Presets");
+        var page = Labelled(new TabPage(), "presets");
         var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), WrapContents = false, AutoScroll = true };
         var left = new FlowLayoutPanel { Width = 250, Height = 580, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        left.Controls.Add(new Label { Text = "Presets", AutoSize = true });
+        left.Controls.Add(Labelled(new Label { AutoSize = true }, "presets"));
         left.Controls.Add(presets);
-        left.Controls.Add(Button("New preset", async () => await CreatePresetAsync()));
-        left.Controls.Add(Button("Rename", async () => await RenamePresetAsync()));
-        left.Controls.Add(Button("Delete", async () => await DeletePresetAsync()));
+        left.Controls.Add(Labelled(Button("", async () => await CreatePresetAsync()), "newPreset"));
+        left.Controls.Add(Labelled(Button("", async () => await RenamePresetAsync()), "rename"));
+        left.Controls.Add(Labelled(Button("", async () => await DeletePresetAsync()), "delete"));
         presets.SelectedIndexChanged += (_, _) => RenderSelectedComponents();
         var middle = new FlowLayoutPanel { Width = 370, Height = 580, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        middle.Controls.Add(new Label { Text = "Components in selected preset (top to bottom = display order)", AutoSize = true });
+        middle.Controls.Add(Labelled(new Label { AutoSize = true }, "selectedComponents"));
         middle.Controls.Add(selectedComponents);
         middle.Controls.Add(availableComponents);
-        middle.Controls.Add(Button("Add selected installed component", async () => await AddComponentAsync()));
-        middle.Controls.Add(Button("Remove", async () => await RemoveComponentAsync()));
-        middle.Controls.Add(Button("Move up", async () => await MoveComponentAsync(-1)));
-        middle.Controls.Add(Button("Move down", async () => await MoveComponentAsync(1)));
+        middle.Controls.Add(Labelled(Button("", async () => await AddComponentAsync()), "addComponent"));
+        middle.Controls.Add(Labelled(Button("", async () => await RemoveComponentAsync()), "remove"));
+        middle.Controls.Add(Labelled(Button("", async () => await MoveComponentAsync(-1)), "moveUp"));
+        middle.Controls.Add(Labelled(Button("", async () => await MoveComponentAsync(1)), "moveDown"));
         var right = new FlowLayoutPanel { Width = 300, Height = 580, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        right.Controls.Add(new Label { Text = "Where to apply", AutoSize = true });
-        right.Controls.Add(Button("Set as global preset", async () => await SetBindingAsync(null)));
-        right.Controls.Add(new Label { Text = "Host override", AutoSize = true });
+        right.Controls.Add(Labelled(new Label { AutoSize = true }, "scope"));
+        right.Controls.Add(Labelled(Button("", async () => await SetBindingAsync(null)), "setGlobal"));
+        right.Controls.Add(Labelled(new Label { AutoSize = true }, "hostOverride"));
         right.Controls.Add(hostBinding);
-        right.Controls.Add(Button("Set for selected host", async () =>
+        right.Controls.Add(Labelled(Button("", async () =>
         {
             var hostId = (hostBinding.SelectedItem as CatalogChoice)?.Item.BapId;
-            if (hostId is null) { MessageBox.Show("Select a BAP host first."); return; }
+            if (hostId is null) { MessageBox.Show(L("selectHostFirst")); return; }
             await SetBindingAsync(hostId);
-        }));
-        right.Controls.Add(Button("Clear selected host override", async () => await ClearBindingAsync()));
+        }), "setHost"));
+        right.Controls.Add(Labelled(Button("", async () => await ClearBindingAsync()), "clearHost"));
         right.Controls.Add(presetStatus);
         layout.Controls.Add(left); layout.Controls.Add(middle); layout.Controls.Add(right);
         page.Controls.Add(layout);
@@ -112,20 +138,29 @@ internal sealed class MainForm : Form
 
     private TabPage BuildSettingsPage()
     {
-        var page = new TabPage("Settings");
+        var page = Labelled(new TabPage(), "settings");
         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(20), WrapContents = false };
-        var startup = new CheckBox { Text = "Start with Windows (minimized to tray)", AutoSize = true, Checked = DesktopSettings.AutoStartEnabled };
+        startup.Tag = "startup";
+        startup.Checked = settings.AutoStartEnabled;
         startup.CheckedChanged += (_, _) =>
         {
-            try { DesktopSettings.AutoStartEnabled = startup.Checked; }
-            catch (Exception error) { MessageBox.Show(error.Message, "Startup setting", MessageBoxButtons.OK, MessageBoxIcon.Error); startup.Checked = DesktopSettings.AutoStartEnabled; }
+            try { settings.SetAutoStart(startup.Checked); }
+            catch (Exception error) { MessageBox.Show(error.Message, L("settings"), MessageBoxButtons.OK, MessageBoxIcon.Error); startup.Checked = settings.AutoStartEnabled; }
         };
         panel.Controls.Add(startup);
-        panel.Controls.Add(Button("Open current log", () => Process.Start(new ProcessStartInfo(log.Path) { UseShellExecute = true })));
-        panel.Controls.Add(Button("Open log folder", () => Process.Start(new ProcessStartInfo(Path.GetDirectoryName(log.Path)!) { UseShellExecute = true })));
+        panel.Controls.Add(Labelled(new Label { AutoSize = true }, "language"));
+        language.Items.AddRange(["English", "简体中文"]);
+        language.SelectedIndex = settings.Language == "zh-CN" ? 1 : 0;
+        language.SelectedIndexChanged += (_, _) => settings.SetLanguage(language.SelectedIndex == 1 ? "zh-CN" : "en");
+        panel.Controls.Add(language);
+        panel.Controls.Add(Labelled(new Label { AutoSize = true }, "languageHint"));
+        panel.Controls.Add(Labelled(new Label { AutoSize = true }, "logs"));
+        panel.Controls.Add(Labelled(Button("", () => Process.Start(new ProcessStartInfo(log.Path) { UseShellExecute = true })), "openLog"));
+        panel.Controls.Add(Labelled(Button("", () => Process.Start(new ProcessStartInfo(Path.GetDirectoryName(log.Path)!) { UseShellExecute = true })), "openLogFolder"));
         panel.Controls.Add(new Label { Text = $"Service: http://127.0.0.1:{port}", AutoSize = true });
         panel.Controls.Add(serviceStatus);
-        panel.Controls.Add(Button("Check service", async () => await CheckServiceAsync()));
+        panel.Controls.Add(Labelled(Button("", async () => await CheckServiceAsync()), "checkService"));
+        if (settings.StartupError is not null) panel.Controls.Add(new Label { Text = L("startupError", settings.StartupError), AutoSize = true, ForeColor = Color.Firebrick });
         page.Controls.Add(panel);
         return page;
     }
@@ -158,8 +193,8 @@ internal sealed class MainForm : Form
             foreach (DataGridViewCell cell in row.Cells) cell.ToolTipText = item.ProjectDirectory;
         }
         availableComponents.Items.Clear(); hostBinding.Items.Clear();
-        foreach (var item in items.Where(item => item.Role == "component" && item.Status == "valid")) availableComponents.Items.Add(new CatalogChoice(item));
-        foreach (var item in items.Where(item => item.Role == "host" && item.BapId is not null && item.Status != "invalid")) hostBinding.Items.Add(new CatalogChoice(item));
+        foreach (var item in items.Where(item => item.Role == "component" && item.Status == "valid")) availableComponents.Items.Add(new CatalogChoice(item, L(item.SourceKind)));
+        foreach (var item in items.Where(item => item.Role == "host" && item.BapId is not null && item.Status != "invalid")) hostBinding.Items.Add(new CatalogChoice(item, L(item.SourceKind)));
         if (availableComponents.Items.Count > 0) availableComponents.SelectedIndex = 0;
         if (hostBinding.Items.Count > 0) hostBinding.SelectedIndex = 0;
         RenderPresets();
@@ -176,8 +211,8 @@ internal sealed class MainForm : Form
         var index = state.Presets.ToList().FindIndex(preset => preset.Id == selectId);
         if (index >= 0) presets.SelectedIndex = index;
         RenderSelectedComponents();
-        var global = state.Presets.FirstOrDefault(preset => preset.Id == state.GlobalPresetId)?.Name ?? "All installed (default)";
-        presetStatus.Text = $"Global: {global}\nHost overrides: {state.HostPresetIds.Count}";
+        var global = state.Presets.FirstOrDefault(preset => preset.Id == state.GlobalPresetId)?.Name ?? L("allInstalled");
+        presetStatus.Text = $"{L("global")}: {global}\n{L("overrides")}: {state.HostPresetIds.Count}";
     }
 
     private void RenderSelectedComponents()
@@ -186,7 +221,7 @@ internal sealed class MainForm : Form
         foreach (var component in SelectedPreset?.Components ?? [])
         {
             var item = items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId && (component.SourceKey is null || candidate.Key == component.SourceKey));
-            selectedComponents.Items.Add(new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{item?.SourceKind ?? "missing"}]"));
+            selectedComponents.Items.Add(new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}]"));
         }
     }
 
@@ -208,7 +243,7 @@ internal sealed class MainForm : Form
 
     private async Task CreatePresetAsync()
     {
-        var name = AskName("New preset");
+        var name = AskName(L("newPreset"));
         if (name is null) return;
         var preset = new ComponentPreset(Guid.NewGuid().ToString("N"), name, []);
         await SaveAsync(state with { Presets = [.. state.Presets, preset] }, preset.Id);
@@ -218,7 +253,7 @@ internal sealed class MainForm : Form
     {
         var preset = SelectedPreset;
         if (preset is null) return;
-        var name = AskName("Rename preset", preset.Name);
+        var name = AskName(L("rename"), preset.Name);
         if (name is null) return;
         await ReplacePresetAsync(preset with { Name = name });
     }
@@ -227,7 +262,7 @@ internal sealed class MainForm : Form
     {
         var preset = SelectedPreset;
         if (preset is null) return;
-        if (MessageBox.Show($"Delete preset '{preset.Name}'?", "BAP Companion", MessageBoxButtons.YesNo) != DialogResult.Yes) return;
+        if (MessageBox.Show(L("deletePreset", preset.Name), "BAP Companion", MessageBoxButtons.YesNo) != DialogResult.Yes) return;
         await SaveAsync(state with {
             Presets = state.Presets.Where(item => item.Id != preset.Id).ToArray(),
             GlobalPresetId = state.GlobalPresetId == preset.Id ? null : state.GlobalPresetId,
@@ -245,7 +280,7 @@ internal sealed class MainForm : Form
         if (preset is null || item?.BapId is null) return;
         if (preset.Components.Any(component => component.ComponentId == item.BapId))
         {
-            MessageBox.Show("Remove the existing entry before selecting another source for this component ID."); return;
+            MessageBox.Show(L("duplicateComponent")); return;
         }
         await ReplacePresetAsync(preset with { Components = [.. preset.Components, new(item.BapId, item.Key)] });
     }
@@ -293,8 +328,8 @@ internal sealed class MainForm : Form
         var host = hosts.SelectedRows.Count > 0 ? hosts.SelectedRows[0].Tag as InstalledItem : null;
         if (host is null) return;
         var confirmed = await WallpaperEngineControl.OpenAsync(host, monitor.SelectedIndex);
-        MessageBox.Show(confirmed ? $"Wallpaper Engine switched to {host.Title}."
-            : $"Switch command sent for {host.Title}, but Wallpaper Engine did not return a path to confirm it.", "BAP Companion");
+        MessageBox.Show(confirmed ? L("switchConfirmed", host.Title)
+            : L("switchUnconfirmed", host.Title), "BAP Companion");
     }
 
     private async Task CheckServiceAsync()
@@ -303,14 +338,14 @@ internal sealed class MainForm : Form
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
             var response = await client.GetAsync($"http://127.0.0.1:{port}/healthz");
-            serviceStatus.Text = response.IsSuccessStatusCode ? "Service: online" : $"Service: HTTP {(int)response.StatusCode}";
+            serviceStatus.Text = response.IsSuccessStatusCode ? L("serviceOnline") : $"{L("status")}: HTTP {(int)response.StatusCode}";
         }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException) { serviceStatus.Text = "Service: offline"; }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException) { serviceStatus.Text = L("serviceOffline"); }
     }
 
-    private sealed record CatalogChoice(InstalledItem Item)
+    private sealed record CatalogChoice(InstalledItem Item, string Source)
     {
-        public override string ToString() => $"{Item.Title} [{Item.SourceKind}: {Item.Key}]";
+        public override string ToString() => $"{Item.Title} [{Source}: {Item.Key}]";
     }
     private sealed record PresetChoice(ComponentPreset Preset) { public override string ToString() => Preset.Name; }
     private sealed record ComponentChoice(PresetComponent Component, string Label) { public override string ToString() => Label; }

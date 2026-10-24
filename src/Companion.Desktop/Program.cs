@@ -13,7 +13,8 @@ internal static class Program
         using var activation = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\BAP.Companion.Activate");
         if (!firstInstance) { activation.Set(); return; }
         ApplicationConfiguration.Initialize();
-        using var context = new CompanionContext(ParsePort(args), activation, args.Contains("--background"));
+        var settings = new DesktopSettings();
+        using var context = new CompanionContext(ParsePort(args), activation, args.Contains("--background"), settings);
         Application.Run(context);
     }
 
@@ -32,20 +33,27 @@ internal sealed class CompanionContext : ApplicationContext
     private readonly CompanionLog log;
     private readonly MainForm window;
     private readonly System.Windows.Forms.Timer activationTimer;
+    private readonly DesktopSettings settings;
+    private readonly ToolStripItem openItem;
+    private readonly ToolStripItem healthItem;
+    private readonly ToolStripItem exitItem;
 
-    public CompanionContext(int port, EventWaitHandle activation, bool background)
+    public CompanionContext(int port, EventWaitHandle activation, bool background, DesktopSettings settings)
     {
         this.port = port;
+        this.settings = settings;
         log = new CompanionLog();
         log.Write("desktop", "Starting Companion");
         server = StartServer(port);
-        window = new MainForm(log, port);
+        window = new MainForm(log, port, settings);
         window.FormClosing += (_, eventArgs) => { if (eventArgs.CloseReason == CloseReason.UserClosing) { eventArgs.Cancel = true; window.Hide(); } };
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Open BAP Companion", null, (_, _) => ShowWindow());
-        menu.Items.Add("Open health check", null, (_, _) => Process.Start(new ProcessStartInfo($"http://127.0.0.1:{port}/healthz") { UseShellExecute = true }));
+        openItem = menu.Items.Add("", null, (_, _) => ShowWindow());
+        healthItem = menu.Items.Add("", null, (_, _) => Process.Start(new ProcessStartInfo($"http://127.0.0.1:{port}/healthz") { UseShellExecute = true }));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => ExitThread());
+        exitItem = menu.Items.Add("", null, (_, _) => ExitThread());
+        UpdateTrayLanguage();
+        settings.LanguageChanged += (_, _) => UpdateTrayLanguage();
         tray = new NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "BAP Companion", ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += (_, _) => ShowWindow();
         activationTimer = new System.Windows.Forms.Timer { Interval = 300 };
@@ -59,6 +67,13 @@ internal sealed class CompanionContext : ApplicationContext
         if (!window.Visible) window.Show();
         window.WindowState = FormWindowState.Normal;
         window.Activate();
+    }
+
+    private void UpdateTrayLanguage()
+    {
+        openItem.Text = UiStrings.Get("openCompanion", settings.Language);
+        healthItem.Text = UiStrings.Get("openHealth", settings.Language);
+        exitItem.Text = UiStrings.Get("exit", settings.Language);
     }
 
     protected override void ExitThreadCore()
