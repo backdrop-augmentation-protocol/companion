@@ -6,7 +6,7 @@ Open-source official Windows Companion for discovering Workshop components, vali
 
 The Companion is optional and does not replace Wallpaper Engine as the rendering host.
 
-## MVP technical skeleton
+## Desktop app and local service
 
 The current implementation uses .NET 10 and ASP.NET Core Minimal API. The service binds to loopback when hosted by the desktop entry point and exposes:
 
@@ -14,13 +14,23 @@ The current implementation uses .NET 10 and ASP.NET Core Minimal API. The servic
 - authenticated component discovery and manifest validation endpoints;
 - authenticated global and wallpaper-scoped JSON configuration endpoints;
 - authenticated `/v1/ws` for a versioned Host hello/Companion hello handshake;
-- `IWorkshopComponentSource` as the explicit adapter boundary for future Steam Workshop discovery.
+- `GET /v1/hosts/{hostId}/components` for the effective ordered preset, and
+  source-keyed resources under `/v1/catalog/components/{key}/resources/{path}`.
 
-Steam Workshop internal files are intentionally not parsed by the service. The current default adapter returns no components.
+The desktop app lists installed Web wallpaper hosts and BAP components from
+both Workshop subscriptions and local WE projects. Presets hold ordered
+component selections with explicit source keys. A host-specific preset overrides
+the global selection; missing components remain in the preset. Without an active
+preset, discovered components are shown by default, preferring a subscribed
+copy when the same BAP ID also exists locally.
 
-Tray and GUI code is kept outside the protocol core behind `ITrayController` and `ICompanionGui`, so a future Windows desktop shell can be added without changing the service contracts.
+The WinForms window edits presets, displays installed items, and requests host
+switches through WE's official command-line controls. Manual launch opens the
+window; an optional current-user startup setting launches it into the tray.
+The service runs without a console window. The current and previous rolling
+logs are in `%LOCALAPPDATA%\BAP Companion\logs` and can be opened from Settings.
 
-Run the server with `dotnet run --project src/Companion.Server`; it should be configured by the future tray host to listen only on `127.0.0.1`.
+Run the service alone with `dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311`.
 
 ## End-to-end smoke test
 
@@ -36,7 +46,7 @@ The check covers health, bearer session creation, authenticated component
 discovery, wallpaper configuration persistence, and the Host/Companion hello
 handshake with permission negotiation.
 
-## Workshop discovery
+## Installed content discovery
 
 By default, the Companion finds Steam through the Windows registry (with
 standard installation paths as fallbacks), reads `libraryfolders.vdf`, and
@@ -44,6 +54,11 @@ discovers installed Wallpaper Engine Workshop components under AppID `431960`.
 It recursively scans for `manifest.json` or `component.manifest.json` and
 exposes only manifests that pass the BAP validator. No path setting is needed
 for a normal Steam installation.
+
+The catalog also reads local WE projects from each discovered Steam library's
+`wallpaper_engine/projects/myprojects` directory. `BAP_LOCAL_ROOTS` can add
+other development package roots. Local and subscribed items can be combined
+freely; an explicit source selection in a preset disambiguates matching BAP IDs.
 
 For local development, set `BAP_WORKSHOP_ROOTS` to one or more component
 directories separated by the platform path separator. Explicit roots replace
@@ -71,9 +86,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.
 ```
 
 Add `-SelfContained` for a package that includes the .NET runtime. The output
-contains `start-companion.cmd`; double-click it to start the tray host and
-service on `http://127.0.0.1:4311`. The tray menu provides a health check and
-clean exit. Pass another port as its first argument when needed.
+contains `start-companion.cmd`; double-click it to start the desktop app and
+service on `http://127.0.0.1:4311`. Closing the window leaves the tray app
+running; use the tray Exit command to stop it. Pass another port as the
+script's first argument when needed.
 
 ## Per-user installation
 
@@ -85,6 +101,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install-companion.ps1
 
 This installs to `%LOCALAPPDATA%\Programs\BAP Companion` and adds a
 `BAP Companion` shortcut to the current user's Start menu. It does not require
-administrator privileges or enable automatic startup. Before installing an
+administrator privileges or enable automatic startup by default; use the
+Settings checkbox to opt in. Before installing an
 update, exit the installed Companion from its tray menu; the installer preserves
 its configuration data.

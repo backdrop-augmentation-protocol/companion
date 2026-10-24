@@ -5,7 +5,7 @@ namespace Bap.Companion.Desktop;
 internal sealed class CompanionLog : IDisposable
 {
     private readonly object gate = new();
-    private readonly StreamWriter writer;
+    private StreamWriter writer;
     public string Path { get; }
 
     public CompanionLog()
@@ -15,14 +15,21 @@ internal sealed class CompanionLog : IDisposable
         Path = System.IO.Path.Combine(directory, "companion.log");
         if (File.Exists(Path) && new FileInfo(Path).Length > 5 * 1024 * 1024)
             File.Move(Path, System.IO.Path.Combine(directory, "companion.previous.log"), true);
-        writer = new StreamWriter(new FileStream(Path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)) { AutoFlush = true };
+        writer = OpenWriter();
     }
 
     public void Write(string source, string line)
     {
         // Session bearer tokens can appear in request URLs; never persist them.
         var sanitized = System.Text.RegularExpressions.Regex.Replace(line, @"(?i)(token=)[^&\s]+", "$1[redacted]");
-        lock (gate) writer.WriteLine($"{DateTimeOffset.Now:O} [{source}] {sanitized}");
+        lock (gate)
+        {
+            writer.WriteLine($"{DateTimeOffset.Now:O} [{source}] {sanitized}");
+            if (writer.BaseStream.Length <= 5 * 1024 * 1024) return;
+            writer.Dispose();
+            File.Move(Path, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!, "companion.previous.log"), true);
+            writer = OpenWriter();
+        }
     }
 
     public void Capture(Process process)
@@ -32,4 +39,6 @@ internal sealed class CompanionLog : IDisposable
     }
 
     public void Dispose() { lock (gate) writer.Dispose(); }
+
+    private StreamWriter OpenWriter() => new(new FileStream(Path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)) { AutoFlush = true };
 }

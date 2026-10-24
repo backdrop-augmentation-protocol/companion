@@ -95,7 +95,12 @@ internal sealed class MainForm : Form
         right.Controls.Add(Button("Set as global preset", async () => await SetBindingAsync(null)));
         right.Controls.Add(new Label { Text = "Host override", AutoSize = true });
         right.Controls.Add(hostBinding);
-        right.Controls.Add(Button("Set for selected host", async () => await SetBindingAsync((hostBinding.SelectedItem as CatalogChoice)?.Item.BapId)));
+        right.Controls.Add(Button("Set for selected host", async () =>
+        {
+            var hostId = (hostBinding.SelectedItem as CatalogChoice)?.Item.BapId;
+            if (hostId is null) { MessageBox.Show("Select a BAP host first."); return; }
+            await SetBindingAsync(hostId);
+        }));
         right.Controls.Add(Button("Clear selected host override", async () => await ClearBindingAsync()));
         right.Controls.Add(presetStatus);
         layout.Controls.Add(left); layout.Controls.Add(middle); layout.Controls.Add(right);
@@ -284,8 +289,9 @@ internal sealed class MainForm : Form
     {
         var host = hosts.SelectedRows.Count > 0 ? hosts.SelectedRows[0].Tag as InstalledItem : null;
         if (host is null) return;
-        await WallpaperEngineControl.OpenAsync(host, monitor.SelectedIndex);
-        MessageBox.Show($"Wallpaper Engine switched to {host.Title}.", "BAP Companion");
+        var confirmed = await WallpaperEngineControl.OpenAsync(host, monitor.SelectedIndex);
+        MessageBox.Show(confirmed ? $"Wallpaper Engine switched to {host.Title}."
+            : $"Switch command sent for {host.Title}, but Wallpaper Engine did not return a path to confirm it.", "BAP Companion");
     }
 
     private async Task CheckServiceAsync()

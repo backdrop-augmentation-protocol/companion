@@ -6,7 +6,7 @@ BAP 官方开源 Windows Companion，用于发现 Workshop 组件、校验 Manif
 
 Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 
-## MVP 技术骨架
+## 桌面应用与本地服务
 
 当前实现使用 .NET 10 和 ASP.NET Core Minimal API。桌面入口托管服务时，服务绑定回环地址，并提供：
 
@@ -14,13 +14,18 @@ Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 - 需要认证的组件发现和 Manifest 校验端点；
 - 需要认证的全局配置和壁纸配置 JSON 读写端点；
 - 需要认证的 `/v1/ws`：执行版本化 Host hello/Companion hello 握手；
-- `IWorkshopComponentSource`：为未来 Steam Workshop 发现功能保留的明确适配边界。
+- `GET /v1/hosts/{hostId}/components`：返回按顺序解析后的有效预设；
+- `/v1/catalog/components/{key}/resources/{path}`：按明确来源读取组件资源。
 
-服务不会解析 Steam Workshop 内部文件，当前默认适配器不返回组件。
+桌面应用同时列出 WE 订阅目录和本地项目目录中的 Web 宿主、BAP 组件。预设保存
+组件顺序与明确的来源；指定宿主的专用预设覆盖全局预设。暂时缺失的组件仍保留在预设中。
+未激活任何预设时默认展示已发现组件；同 ID 同时有本地与订阅版时优先订阅版。
 
-托盘和 GUI 代码通过 `ITrayController` 与 `ICompanionGui` 保持在协议核心之外，未来可以在不改变服务契约的情况下增加 Windows 桌面外壳。
+WinForms 主窗口可编辑预设、查看安装内容，并通过 WE 官方命令行切换宿主。手动启动
+打开主窗口；可选择当前用户级开机自启并自动进入托盘。服务不弹控制台窗口，滚动日志位于
+`%LOCALAPPDATA%\BAP Companion\logs`，可从设置页打开。
 
-使用 `dotnet run --project src/Companion.Server` 启动服务。未来的托盘宿主应将其配置为只监听 `127.0.0.1`。
+单独启动服务时使用 `dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311`。
 
 ## 端到端冒烟测试
 
@@ -33,9 +38,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 
 
 检查覆盖健康状态、Bearer 会话、认证后的组件发现、壁纸配置持久化，以及带权限协商的 Host/Companion hello 握手。
 
-## Workshop 组件发现
+## 已安装内容发现
 
 默认情况下，Companion 会通过 Windows 注册表定位 Steam（并回退检查常见安装目录），读取 `libraryfolders.vdf`，自动发现 AppID `431960` 下已安装的 Wallpaper Engine Workshop 组件。它会递归查找 `manifest.json` 或 `component.manifest.json`，只公开通过 BAP 校验器的 Manifest。正常安装 Steam 时无需配置路径。
+
+目录清单还扫描各 Steam 库中的 `wallpaper_engine/projects/myprojects` 本地 WE 项目。
+`BAP_LOCAL_ROOTS` 可添加其他开发包目录。本地宿主与订阅组件、订阅宿主与本地组件
+都可混用；预设里的明确来源选择用于区分同 ID 的副本。
 
 本地开发时，可用 `BAP_WORKSHOP_ROOTS` 指定一个或多个组件目录，多个目录使用当前平台的路径分隔符连接。显式目录会取代自动发现，除非同时设置 `BAP_DISCOVER_STEAM_WORKSHOP=1`：
 
@@ -56,7 +65,7 @@ dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.ps1
 ```
 
-如需自包含软件包，添加 `-SelfContained` 参数。输出目录中包含 `start-companion.cmd`，双击即可启动托盘宿主和服务，默认地址为 `http://127.0.0.1:4311`。托盘菜单提供健康检查和正常退出功能；如需更换端口，可将端口号作为它的第一个参数传入。
+如需自包含软件包，添加 `-SelfContained` 参数。输出目录中包含 `start-companion.cmd`，双击即可启动桌面应用和服务，默认地址为 `http://127.0.0.1:4311`。关闭窗口会保留托盘进程；通过托盘菜单“Exit”才会退出。如需更换端口，可将端口号作为脚本的第一个参数传入。
 
 ## 当前用户安装
 
@@ -66,4 +75,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install-companion.ps1
 ```
 
-安装位置为 `%LOCALAPPDATA%\Programs\BAP Companion`，并在当前用户的“开始”菜单添加 `BAP Companion` 快捷方式。无需管理员权限，也不会启用开机自启动。更新前请通过托盘菜单退出已安装的 Companion；安装程序会保留其配置数据。
+安装位置为 `%LOCALAPPDATA%\Programs\BAP Companion`，并在当前用户的“开始”菜单添加 `BAP Companion` 快捷方式。无需管理员权限；默认不启用开机自启，可在设置页勾选。更新前请通过托盘菜单退出已安装的 Companion；安装程序会保留其配置数据。

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Bap.Companion.Core;
 
 namespace Bap.Companion.Desktop;
@@ -30,17 +31,22 @@ internal static class WallpaperEngineControl
         return output.Trim().Trim('"');
     }
 
-    public static async Task OpenAsync(InstalledItem host, int monitor)
+    public static async Task<bool> OpenAsync(InstalledItem host, int monitor)
     {
         var project = Path.Combine(host.ProjectDirectory, "project.json");
         if (host.Role != "host" || !File.Exists(project)) throw new InvalidOperationException("Select an installed Web wallpaper project");
         var exe = FindExecutable() ?? throw new FileNotFoundException("Wallpaper Engine executable was not found");
         await RunAsync(exe, ["-control", "openWallpaper", "-file", project, "-monitor", monitor.ToString()], captureOutput: false);
+        using var metadata = JsonDocument.Parse(await File.ReadAllTextAsync(project));
+        var entry = metadata.RootElement.TryGetProperty("file", out var file) && file.ValueKind == JsonValueKind.String
+            ? Path.GetFullPath(Path.Combine(host.ProjectDirectory, file.GetString()!)) : null;
         for (var attempt = 0; attempt < 5; attempt++)
         {
             await Task.Delay(400);
             var current = await GetCurrentAsync(monitor);
-            if (string.Equals(Path.GetFullPath(current), Path.GetFullPath(project), StringComparison.OrdinalIgnoreCase)) return;
+            if (string.IsNullOrWhiteSpace(current)) return false;
+            if (string.Equals(Path.GetFullPath(current), Path.GetFullPath(project), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(Path.GetFullPath(current), entry, StringComparison.OrdinalIgnoreCase)) return true;
         }
         throw new InvalidOperationException("Wallpaper Engine did not confirm the selected wallpaper on this monitor");
     }
