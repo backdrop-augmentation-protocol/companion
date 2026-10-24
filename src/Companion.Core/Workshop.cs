@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Runtime.Versioning;
+using Microsoft.Win32;
 
 namespace Bap.Companion.Core;
 
@@ -82,13 +84,14 @@ public sealed class WorkshopDirectorySource : IWorkshopComponentSource
 
 public static class WorkshopRoots
 {
-    public static IReadOnlyList<string> FromEnvironment(string? value = null)
+    public static IReadOnlyList<string> FromEnvironment(string? value = null, string? discoveryMode = null, string? steamRoot = null)
     {
         var roots = (value ?? Environment.GetEnvironmentVariable("BAP_WORKSHOP_ROOTS") ?? string.Empty)
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
-        if (string.Equals(Environment.GetEnvironmentVariable("BAP_DISCOVER_STEAM_WORKSHOP"), "1", StringComparison.OrdinalIgnoreCase))
-            roots.AddRange(SteamWorkshopLocator.FindRoots(Environment.GetEnvironmentVariable("BAP_STEAM_ROOT")));
+        var mode = discoveryMode ?? Environment.GetEnvironmentVariable("BAP_DISCOVER_STEAM_WORKSHOP");
+        if (mode == "1" || (mode != "0" && roots.Count == 0))
+            roots.AddRange(SteamWorkshopLocator.FindRoots(steamRoot ?? Environment.GetEnvironmentVariable("BAP_STEAM_ROOT")));
         return roots.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 }
@@ -110,11 +113,45 @@ public static class SteamWorkshopLocator
 
     private static IEnumerable<string> CandidateSteamRoots(string? configuredRoot)
     {
-        if (!string.IsNullOrWhiteSpace(configuredRoot)) yield return configuredRoot;
+        if (!string.IsNullOrWhiteSpace(configuredRoot))
+        {
+            yield return configuredRoot;
+            yield break;
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (var root in WindowsRegistrySteamRoots()) yield return root;
+        }
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         if (!string.IsNullOrWhiteSpace(programFiles)) yield return Path.Combine(programFiles, "Steam");
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (!string.IsNullOrWhiteSpace(localAppData)) yield return Path.Combine(localAppData, "Steam");
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static IReadOnlyList<string> WindowsRegistrySteamRoots()
+    {
+        var roots = new List<string>();
+        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        {
+            foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+            {
+                try
+                {
+                    using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    using var steamKey = baseKey.OpenSubKey(@"Software\Valve\Steam");
+                    foreach (var name in new[] { "SteamPath", "InstallPath" })
+                    {
+                        if (steamKey?.GetValue(name) is string path && !string.IsNullOrWhiteSpace(path))
+                            roots.Add(path);
+                    }
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+                catch (System.Security.SecurityException) { }
+            }
+        }
+        return roots;
     }
 
     private static IEnumerable<string> ReadLibraryPaths(string path)

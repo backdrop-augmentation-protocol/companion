@@ -105,6 +105,35 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void WorkshopRootsDiscoversSteamByDefaultWithoutConfiguredPaths()
+    {
+        var steam = Path.Combine(Path.GetTempPath(), $"bap-steam-{Guid.NewGuid():N}");
+        var workshop = Path.Combine(steam, "steamapps", "workshop", "content", "431960");
+        Directory.CreateDirectory(workshop);
+        try
+        {
+            Assert.Contains(workshop, WorkshopRoots.FromEnvironment("", "", steam));
+            Assert.DoesNotContain(workshop, WorkshopRoots.FromEnvironment("", "0", steam));
+        }
+        finally { Directory.Delete(steam, true); }
+    }
+
+    [Fact]
+    public void WorkshopRootsExplicitPathOverridesAutomaticDiscovery()
+    {
+        var configured = Path.Combine(Path.GetTempPath(), $"bap-explicit-{Guid.NewGuid():N}");
+        var steam = Path.Combine(Path.GetTempPath(), $"bap-steam-{Guid.NewGuid():N}");
+        var workshop = Path.Combine(steam, "steamapps", "workshop", "content", "431960");
+        Directory.CreateDirectory(workshop);
+        try
+        {
+            Assert.Equal([configured], WorkshopRoots.FromEnvironment(configured, "", steam));
+            Assert.Contains(workshop, WorkshopRoots.FromEnvironment(configured, "1", steam));
+        }
+        finally { Directory.Delete(steam, true); }
+    }
+
+    [Fact]
     public void ResourceTicketIsScopedToComponent()
     {
         var tickets = new ResourceTickets();
