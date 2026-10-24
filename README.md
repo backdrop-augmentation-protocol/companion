@@ -24,7 +24,7 @@ the global selection; missing components remain in the preset. Without an active
 preset, discovered components are shown by default, preferring a subscribed
 copy when the same BAP ID also exists locally.
 
-The desktop window edits presets and displays installed hosts and components as
+The WPF desktop window edits presets and displays installed hosts and components as
 preview cards. Select a card to see its source, BAP ID, version, status, and
 project location; host details can request a switch through WE's official
 command-line controls. Manual launch opens the window. The Settings page offers
@@ -89,7 +89,9 @@ Create a framework-dependent `win-x64` package:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.ps1
 ```
 
-Add `-SelfContained` for a package that includes the .NET runtime. The output
+The package uses the Fluent WPF front end. Add `-LegacyUi` to package the
+previous WinForms front end instead, or `-SelfContained` for a package that
+includes the .NET runtime. The output
 contains `start-companion.cmd`; double-click it to start the desktop app and
 service on `http://127.0.0.1:4311`. Closing the window leaves the tray app
 running; use the tray Exit command to stop it. Pass another port as the

@@ -65,6 +65,8 @@ dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.ps1
 ```
 
+默认打包采用 Fluent 风格的 WPF 前台；如需打包原有 WinForms 前台，可添加 `-LegacyUi`。
+
 如需自包含软件包，添加 `-SelfContained` 参数。输出目录中包含 `start-companion.cmd`，双击即可启动桌面应用和服务，默认地址为 `http://127.0.0.1:4311`。关闭窗口会保留托盘进程；通过托盘菜单“Exit”才会退出。如需更换端口，可将端口号作为脚本的第一个参数传入。
 
 ## 当前用户安装

@@ -1,13 +1,18 @@
 param(
     [string]$Runtime = 'win-x64',
     [switch]$SelfContained,
+    [switch]$LegacyUi,
     [string]$Output = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $serverProject = Join-Path $repo 'src\Companion.Server\Companion.Server.csproj'
-$desktopProject = Join-Path $repo 'src\Companion.Desktop\Companion.Desktop.csproj'
+$desktopProject = if ($LegacyUi) {
+    Join-Path $repo 'src\Companion.Desktop\Companion.Desktop.csproj'
+} else {
+    Join-Path $repo 'src\Companion.Desktop.Wpf\Companion.Desktop.Wpf.csproj'
+}
 $destination = if ($Output) { [System.IO.Path]::GetFullPath($Output) } else { Join-Path $repo "artifacts\companion-$Runtime" }
 
 if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
