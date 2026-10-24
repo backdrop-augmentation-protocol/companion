@@ -35,7 +35,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 
 
 ## Workshop 组件发现
 
-将 `BAP_WORKSHOP_ROOTS` 设置为一个或多个本地 Workshop 组件目录，多个目录使用当前平台的路径分隔符连接。Companion 会递归查找 `manifest.json` 或 `component.manifest.json`，只公开通过 BAP 校验器的 Manifest：
+默认情况下，Companion 会通过 Windows 注册表定位 Steam（并回退检查常见安装目录），读取 `libraryfolders.vdf`，自动发现 AppID `431960` 下已安装的 Wallpaper Engine Workshop 组件。它会递归查找 `manifest.json` 或 `component.manifest.json`，只公开通过 BAP 校验器的 Manifest。正常安装 Steam 时无需配置路径。
+
+本地开发时，可用 `BAP_WORKSHOP_ROOTS` 指定一个或多个组件目录，多个目录使用当前平台的路径分隔符连接。显式目录会取代自动发现，除非同时设置 `BAP_DISCOVER_STEAM_WORKSHOP=1`：
 
 ```powershell
 $env:BAP_WORKSHOP_ROOTS = 'D:\path\to\workshop-components'
@@ -44,7 +46,7 @@ dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
 
 创建会话后，经过认证的客户端可以通过 `GET /v1/components/{id}/resources/{path}` 读取组件资源。资源路径被限制在组件目录内，越界访问会被拒绝。
 
-如需自动发现 Wallpaper Engine Workshop 目录，可设置 `BAP_DISCOVER_STEAM_WORKSHOP=1`。Companion 会读取 Steam 的 `libraryfolders.vdf`，并检查 AppID `431960` 对应的 Workshop 内容目录。如果 Steam 安装在非标准位置，可额外设置 `BAP_STEAM_ROOT`。
+设置 `BAP_DISCOVER_STEAM_WORKSHOP=0` 可关闭自动发现；设置为 `1` 可将自动发现与显式目录合并。若无法自动找到 Steam，可用 `BAP_STEAM_ROOT` 指定其安装目录。
 
 ## 便携式 Windows 软件包
 

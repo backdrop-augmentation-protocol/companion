@@ -38,10 +38,16 @@ handshake with permission negotiation.
 
 ## Workshop discovery
 
-Set `BAP_WORKSHOP_ROOTS` to one or more local Workshop component directories,
-separated by the platform path separator. The Companion recursively scans for
-`manifest.json` or `component.manifest.json` and exposes only manifests that
-pass the BAP validator:
+By default, the Companion finds Steam through the Windows registry (with
+standard installation paths as fallbacks), reads `libraryfolders.vdf`, and
+discovers installed Wallpaper Engine Workshop components under AppID `431960`.
+It recursively scans for `manifest.json` or `component.manifest.json` and
+exposes only manifests that pass the BAP validator. No path setting is needed
+for a normal Steam installation.
+
+For local development, set `BAP_WORKSHOP_ROOTS` to one or more component
+directories separated by the platform path separator. Explicit roots replace
+automatic discovery unless `BAP_DISCOVER_STEAM_WORKSHOP=1` is also set:
 
 ```powershell
 $env:BAP_WORKSHOP_ROOTS = 'D:\path\to\workshop-components'
@@ -52,10 +58,9 @@ After creating a session, authenticated clients can read a component resource
 at `GET /v1/components/{id}/resources/{path}`. Paths are confined to the
 component directory and traversal outside it is rejected.
 
-To opt into automatic Wallpaper Engine Workshop discovery, set
-`BAP_DISCOVER_STEAM_WORKSHOP=1`. The Companion then reads Steam's
-`libraryfolders.vdf` and checks Workshop content for AppID `431960`. Set
-`BAP_STEAM_ROOT` when Steam is installed outside the standard locations.
+Set `BAP_DISCOVER_STEAM_WORKSHOP=0` to disable automatic discovery, or `1` to
+combine it with explicit roots. If Steam cannot be found, `BAP_STEAM_ROOT`
+can point to its installation directory.
 
 ## Portable Windows package
 
