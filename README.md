@@ -24,9 +24,13 @@ the global selection; missing components remain in the preset. Without an active
 preset, discovered components are shown by default, preferring a subscribed
 copy when the same BAP ID also exists locally.
 
-The WinForms window edits presets, displays installed items, and requests host
-switches through WE's official command-line controls. Manual launch opens the
-window; an optional current-user startup setting launches it into the tray.
+The desktop window edits presets and displays installed hosts and components as
+preview cards. Select a card to see its source, BAP ID, version, status, and
+project location; host details can request a switch through WE's official
+command-line controls. Manual launch opens the window. The Settings page offers
+English and Simplified Chinese (English by default), and current-user automatic
+startup is enabled by default on first launch; it can be disabled there. An
+automatic launch starts minimized to the tray.
 The service runs without a console window. The current and previous rolling
 logs are in `%LOCALAPPDATA%\BAP Companion\logs` and can be opened from Settings.
 
@@ -101,7 +105,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install-companion.ps1
 
 This installs to `%LOCALAPPDATA%\Programs\BAP Companion` and adds a
 `BAP Companion` shortcut to the current user's Start menu. It does not require
-administrator privileges or enable automatic startup by default; use the
-Settings checkbox to opt in. Before installing an
+administrator privileges. On first launch, the app enables current-user
+automatic startup; uncheck it in Settings to opt out. Before installing an
 update, exit the installed Companion from its tray menu; the installer preserves
 its configuration data.

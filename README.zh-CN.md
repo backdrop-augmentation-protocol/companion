@@ -21,8 +21,8 @@ Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 组件顺序与明确的来源；指定宿主的专用预设覆盖全局预设。暂时缺失的组件仍保留在预设中。
 未激活任何预设时默认展示已发现组件；同 ID 同时有本地与订阅版时优先订阅版。
 
-WinForms 主窗口可编辑预设、查看安装内容，并通过 WE 官方命令行切换宿主。手动启动
-打开主窗口；可选择当前用户级开机自启并自动进入托盘。服务不弹控制台窗口，滚动日志位于
+桌面窗口可编辑预设，以预览卡片展示已安装的宿主与组件；点击卡片可查看来源、BAP ID、版本、状态和项目位置，并可从宿主详情通过 WE 官方命令行发起切换。手动启动会打开主窗口。
+设置页提供英文与简体中文，默认英文；首次运行默认启用当前用户级开机自启，可随时取消勾选。自动启动时进入托盘。服务不弹控制台窗口，滚动日志位于
 `%LOCALAPPDATA%\BAP Companion\logs`，可从设置页打开。
 
 单独启动服务时使用 `dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311`。
@@ -75,4 +75,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install-companion.ps1
 ```
 
-安装位置为 `%LOCALAPPDATA%\Programs\BAP Companion`，并在当前用户的“开始”菜单添加 `BAP Companion` 快捷方式。无需管理员权限；默认不启用开机自启，可在设置页勾选。更新前请通过托盘菜单退出已安装的 Companion；安装程序会保留其配置数据。
+安装位置为 `%LOCALAPPDATA%\Programs\BAP Companion`，并在当前用户的“开始”菜单添加 `BAP Companion` 快捷方式。无需管理员权限；首次运行默认启用开机自启，可在设置页取消。更新前请通过托盘菜单退出已安装的 Companion；安装程序会保留其配置数据。
