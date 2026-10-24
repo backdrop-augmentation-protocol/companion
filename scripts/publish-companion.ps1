@@ -25,6 +25,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'start-companion.ps1') -Destination $destination -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'start-companion.cmd') -Destination $destination -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-companion.ps1') -Destination $destination -Force
 Copy-Item -LiteralPath (Join-Path $repo 'README.md') -Destination (Join-Path $destination 'README.md') -Force
 Copy-Item -LiteralPath (Join-Path $repo 'README.zh-CN.md') -Destination (Join-Path $destination 'README.zh-CN.md') -Force
 Write-Output "Published Companion package: $destination"
