@@ -3,9 +3,11 @@
     <Project Path="src/Companion.Core/Companion.Core.csproj" />
     <Project Path="src/Companion.Server/Companion.Server.csproj" />
     <Project Path="src/Companion.Desktop/Companion.Desktop.csproj" />
+    <Project Path="src/Companion.Desktop.Wpf/Companion.Desktop.Wpf.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Companion.Tests/Companion.Tests.csproj" />
     <Project Path="tests/Companion.Desktop.Tests/Companion.Desktop.Tests.csproj" />
+    <Project Path="tests/Companion.Desktop.Wpf.Tests/Companion.Desktop.Wpf.Tests.csproj" />
   </Folder>
 </Solution>
