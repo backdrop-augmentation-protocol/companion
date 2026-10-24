@@ -55,6 +55,24 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void EffectivePresetKeepsOrderAndExplicitLocalSource()
+    {
+        var manifest = new ComponentManifest(new("bap", "0.1.0", "core"), "org.example.clock", "1.0.0", "Clock", "component", [],
+            new Dictionary<string, string> { ["default"] = "index.html", ["standalone"] = "index.html", ["embedded"] = "embedded.html" }, ["standalone", "embedded"]);
+        var items = new[] {
+            new InstalledItem("workshop:123", "workshop", "component", "Clock subscribed", "subscribed", "123", manifest.Id, manifest.Version, null, manifest),
+            new InstalledItem("local:abc", "local", "component", "Clock local", "local", null, manifest.Id, manifest.Version, null, manifest)
+        };
+        var state = new PresetState([new("chosen", "Local", [new("org.example.missing"), new(manifest.Id, "local:abc")])], "chosen", new Dictionary<string, string>());
+        var effective = EffectiveComponents.Resolve(state, "host", items);
+        Assert.Equal(["org.example.missing", manifest.Id], effective.Select(item => item.ComponentId).ToArray());
+        Assert.Equal("missing", effective[0].Status);
+        Assert.Equal("local:abc", effective[1].SourceKey);
+        Assert.Equal("embedded.html", effective[1].EmbeddedPath);
+        Assert.Equal("workshop:123", EffectiveComponents.Resolve(new([], null, new Dictionary<string, string>()), "host", items)[0].SourceKey);
+    }
+
+    [Fact]
     public void ManifestValidatorRejectsIncompleteManifest()
     {
         var errors = ComponentManifestValidator.Validate(new ComponentManifest(new("bap", "0.1.0", "core"), "Bad ID", "", "", "component", [], new Dictionary<string, string>(), []));
