@@ -119,6 +119,25 @@ public static class SteamWorkshopLocator
         return candidates.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
+    public static IReadOnlyList<string> FindLocalProjectRoots(string? steamRoot)
+    {
+        var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var steam in CandidateSteamRoots(steamRoot))
+        {
+            AddLocalProjectRoot(roots, steam);
+            var libraryFile = Path.Combine(steam, "steamapps", "libraryfolders.vdf");
+            if (!File.Exists(libraryFile)) continue;
+            foreach (var library in ReadLibraryPaths(libraryFile)) AddLocalProjectRoot(roots, library);
+        }
+        return roots.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static void AddLocalProjectRoot(HashSet<string> roots, string library)
+    {
+        var path = Path.GetFullPath(Path.Combine(library, "steamapps", "common", "wallpaper_engine", "projects", "myprojects"));
+        if (Directory.Exists(path)) roots.Add(path);
+    }
+
     private static IEnumerable<string> CandidateSteamRoots(string? configuredRoot)
     {
         if (!string.IsNullOrWhiteSpace(configuredRoot))

@@ -27,6 +27,34 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task InstalledCatalogPreservesLocalAndWorkshopCopiesOfSameComponent()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-catalog-{Guid.NewGuid():N}");
+        var workshop = Path.Combine(root, "workshop");
+        var local = Path.Combine(root, "local");
+        try
+        {
+            foreach (var directory in new[] { Path.Combine(workshop, "12345"), Path.Combine(local, "clock") })
+            {
+                Directory.CreateDirectory(directory);
+                await File.WriteAllTextAsync(Path.Combine(directory, "project.json"), """
+                    { "type": "web", "file": "index.html", "title": "Clock", "preview": "preview.jpg" }
+                    """);
+                await File.WriteAllTextAsync(Path.Combine(directory, "manifest.json"), """
+                    { "protocol": { "name": "bap", "version": "0.1.0", "profile": "core" }, "id": "org.example.clock", "name": "Clock", "version": "1.0.0", "role": "component", "capabilities": [], "entrypoints": { "default": "index.html", "standalone": "index.html", "embedded": "embedded.html" }, "modes": ["standalone", "embedded"] }
+                    """);
+            }
+            var catalog = new InstalledCatalog([workshop], [local]);
+            var items = await catalog.DiscoverAsync();
+            Assert.Equal(2, items.Count);
+            Assert.All(items, item => Assert.Equal("org.example.clock", item.BapId));
+            Assert.Contains(items, item => item.Key == "workshop:12345");
+            Assert.Contains(items, item => item.Key.StartsWith("local:"));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void ManifestValidatorRejectsIncompleteManifest()
     {
         var errors = ComponentManifestValidator.Validate(new ComponentManifest(new("bap", "0.1.0", "core"), "Bad ID", "", "", "component", [], new Dictionary<string, string>(), []));
