@@ -134,6 +134,24 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task WorkshopDirectorySourceFindsComponentSubscribedAfterStartup()
+    {
+        var steam = Path.Combine(Path.GetTempPath(), $"bap-steam-{Guid.NewGuid():N}");
+        var component = Path.Combine(steam, "steamapps", "workshop", "content", "431960", "test-item");
+        var source = new WorkshopDirectorySource(() => WorkshopRoots.FromEnvironment("", "", steam));
+        try
+        {
+            Assert.Empty(await source.DiscoverAsync());
+            Directory.CreateDirectory(component);
+            await File.WriteAllTextAsync(Path.Combine(component, "manifest.json"), """
+                { "protocol": { "name": "bap", "version": "0.1.0", "profile": "core" }, "id": "org.example.new-component", "name": "New Component", "version": "1.0.0", "role": "component", "capabilities": [], "entrypoints": { "default": "./index.html", "embedded": "./index.html" }, "modes": ["embedded"] }
+                """);
+            Assert.Equal("org.example.new-component", Assert.Single(await source.DiscoverAsync()).Manifest.Id);
+        }
+        finally { if (Directory.Exists(steam)) Directory.Delete(steam, true); }
+    }
+
+    [Fact]
     public void ResourceTicketIsScopedToComponent()
     {
         var tickets = new ResourceTickets();

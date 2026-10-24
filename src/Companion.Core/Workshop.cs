@@ -30,9 +30,17 @@ public sealed class WorkshopDirectorySource : IWorkshopComponentSource
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = true
     };
-    private readonly IReadOnlyList<string> roots;
+    private readonly Func<IReadOnlyList<string>> rootsProvider;
 
-    public WorkshopDirectorySource(IEnumerable<string> roots) => this.roots = roots
+    public WorkshopDirectorySource(IEnumerable<string> roots)
+    {
+        var fixedRoots = NormalizeRoots(roots);
+        rootsProvider = () => fixedRoots;
+    }
+
+    public WorkshopDirectorySource(Func<IReadOnlyList<string>> rootsProvider) => this.rootsProvider = rootsProvider;
+
+    private static IReadOnlyList<string> NormalizeRoots(IEnumerable<string> roots) => roots
         .Where(path => !string.IsNullOrWhiteSpace(path))
         .Select(Path.GetFullPath)
         .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -41,7 +49,7 @@ public sealed class WorkshopDirectorySource : IWorkshopComponentSource
     public async Task<IReadOnlyList<ComponentDescriptor>> DiscoverAsync(CancellationToken cancellationToken = default)
     {
         var components = new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase);
-        foreach (var root in roots.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        foreach (var root in NormalizeRoots(rootsProvider()).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             if (!Directory.Exists(root)) continue;
             foreach (var file in EnumerateManifestFiles(root))
