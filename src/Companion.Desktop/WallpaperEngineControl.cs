@@ -4,6 +4,8 @@ using Bap.Companion.Core;
 
 namespace Bap.Companion.Desktop;
 
+internal enum WallpaperSwitchResult { Confirmed, CommandAccepted }
+
 internal static class WallpaperEngineControl
 {
     public static string? FindExecutable()
@@ -31,7 +33,7 @@ internal static class WallpaperEngineControl
         return output.Trim().Trim('"');
     }
 
-    public static async Task<bool> OpenAsync(InstalledItem host, int monitor)
+    public static async Task<WallpaperSwitchResult> OpenAsync(InstalledItem host, int monitor)
     {
         var project = Path.Combine(host.ProjectDirectory, "project.json");
         if (host.Role != "host" || !File.Exists(project)) throw new InvalidOperationException("Select an installed Web wallpaper project");
@@ -43,12 +45,17 @@ internal static class WallpaperEngineControl
         for (var attempt = 0; attempt < 5; attempt++)
         {
             await Task.Delay(400);
-            var current = await GetCurrentAsync(monitor);
-            if (string.IsNullOrWhiteSpace(current)) return false;
-            if (string.Equals(Path.GetFullPath(current), Path.GetFullPath(project), StringComparison.OrdinalIgnoreCase)
-                || string.Equals(Path.GetFullPath(current), entry, StringComparison.OrdinalIgnoreCase)) return true;
+            string current;
+            try { current = await GetCurrentAsync(monitor); }
+            catch (Exception error) when (error is InvalidOperationException or TimeoutException) { return WallpaperSwitchResult.CommandAccepted; }
+            if (string.IsNullOrWhiteSpace(current)) return WallpaperSwitchResult.CommandAccepted;
+            string currentPath;
+            try { currentPath = Path.GetFullPath(current); }
+            catch (Exception error) when (error is ArgumentException or NotSupportedException) { return WallpaperSwitchResult.CommandAccepted; }
+            if (string.Equals(currentPath, Path.GetFullPath(project), StringComparison.OrdinalIgnoreCase)
+                || entry is not null && string.Equals(currentPath, entry, StringComparison.OrdinalIgnoreCase)) return WallpaperSwitchResult.Confirmed;
         }
-        throw new InvalidOperationException("Wallpaper Engine did not confirm the selected wallpaper on this monitor");
+        return WallpaperSwitchResult.CommandAccepted;
     }
 
     private static async Task<string> RunAsync(string exe, IReadOnlyList<string> arguments, bool captureOutput)

@@ -5,7 +5,7 @@ namespace Bap.Companion.Desktop;
 internal sealed class CatalogView : UserControl
 {
     private readonly Func<string, string> translate;
-    private readonly Func<InstalledItem, int, Task> switchHost;
+    private readonly Func<InstalledItem, int, Task<WallpaperSwitchResult>> switchHost;
     private readonly FlowLayoutPanel cards = new()
     {
         Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
@@ -17,7 +17,7 @@ internal sealed class CatalogView : UserControl
     private IReadOnlyList<InstalledItem> items = [];
     private InstalledItem? selected;
 
-    public CatalogView(Func<string, string> translate, Func<InstalledItem, int, Task> switchHost)
+    public CatalogView(Func<string, string> translate, Func<InstalledItem, int, Task<WallpaperSwitchResult>> switchHost)
     {
         this.translate = translate;
         this.switchHost = switchHost;
@@ -196,8 +196,20 @@ internal sealed class CatalogView : UserControl
         if (monitor.Items.Count > 0) monitor.SelectedIndex = 0;
         stack.Controls.Add(monitor);
         var button = UiTheme.Button(translate("switchHost"), primary: true);
-        button.Click += async (_, _) => await switchHost(item, monitor.SelectedIndex);
+        var switchStatus = UiTheme.Caption();
+        button.Click += async (_, _) =>
+        {
+            button.Enabled = false;
+            try
+            {
+                var result = await switchHost(item, monitor.SelectedIndex);
+                switchStatus.Text = translate(result == WallpaperSwitchResult.Confirmed ? "switchVerified" : "switchSent");
+            }
+            catch (Exception error) { MessageBox.Show(error.Message, "BAP Companion", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            finally { button.Enabled = true; }
+        };
         stack.Controls.Add(button);
+        stack.Controls.Add(switchStatus);
     }
 
     private void AddDetail(FlowLayoutPanel stack, string key, string value)

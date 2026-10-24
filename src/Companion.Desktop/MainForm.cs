@@ -27,7 +27,7 @@ internal sealed class MainForm : Form
         this.log = log;
         this.port = port;
         this.settings = settings;
-        catalogView = new CatalogView(key => L(key), async (item, display) => await RunActionAsync(() => SwitchHostAsync(item, display)));
+        catalogView = new CatalogView(key => L(key), WallpaperEngineControl.OpenAsync);
         Text = "BAP Companion";
         Font = new Font("Segoe UI", 10);
         BackColor = UiTheme.Background;
@@ -326,13 +326,6 @@ internal sealed class MainForm : Form
         var bindings = new Dictionary<string, string>(state.HostPresetIds);
         bindings.Remove(hostId);
         await SaveAsync(state with { HostPresetIds = bindings });
-    }
-
-    private async Task SwitchHostAsync(InstalledItem host, int display)
-    {
-        var confirmed = await WallpaperEngineControl.OpenAsync(host, display);
-        MessageBox.Show(confirmed ? L("switchConfirmed", host.Title)
-            : L("switchUnconfirmed", host.Title), "BAP Companion");
     }
 
     private async Task CheckServiceAsync()

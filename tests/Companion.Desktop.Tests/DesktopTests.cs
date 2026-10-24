@@ -40,7 +40,7 @@ public sealed class DesktopTests
         {
             try
             {
-                using var view = new CatalogView(key => UiStrings.Get(key, "en"), (_, _) => Task.CompletedTask);
+                using var view = new CatalogView(key => UiStrings.Get(key, "en"), (_, _) => Task.FromResult(WallpaperSwitchResult.CommandAccepted));
                 view.SetItems([
                     new InstalledItem("local:host", "local", "host", "Demo host", "host", null, "org.example.host", "1.0.0", null, null),
                     new InstalledItem("workshop:123", "workshop", "component", "Clock", "component", "123", "org.example.clock", "1.0.0", null, null)
