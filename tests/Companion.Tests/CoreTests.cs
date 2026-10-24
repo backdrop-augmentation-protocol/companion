@@ -6,6 +6,27 @@ namespace Bap.Companion.Tests;
 public sealed class CoreTests
 {
     [Fact]
+    public async Task PresetsResolveHostOverrideAndSurviveStorage()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"bap-presets-{Guid.NewGuid():N}");
+        var store = new JsonPresetStore(Path.Combine(directory, "presets.json"));
+        try
+        {
+            var state = new PresetState(
+                [new("global", "Everywhere", [new("org.example.clock")]),
+                 new("host", "For Host", [new("org.example.calendar", "local:abc")])],
+                "global", new Dictionary<string, string> { ["org.example.host"] = "host" });
+            await store.WriteAsync(state);
+            var loaded = await store.ReadAsync();
+            Assert.Equal("global", PresetSelection.Resolve(loaded, "org.example.other")?.Id);
+            Assert.Equal("host", PresetSelection.Resolve(loaded, "org.example.host")?.Id);
+            Assert.Equal("local:abc", PresetSelection.Resolve(loaded, "org.example.host")?.Components[0].SourceKey);
+            Assert.Throws<ArgumentException>(() => store.WriteAsync(state with { GlobalPresetId = "missing" }).GetAwaiter().GetResult());
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void ManifestValidatorRejectsIncompleteManifest()
     {
         var errors = ComponentManifestValidator.Validate(new ComponentManifest(new("bap", "0.1.0", "core"), "Bad ID", "", "", "component", [], new Dictionary<string, string>(), []));
