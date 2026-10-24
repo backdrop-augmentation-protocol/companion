@@ -9,6 +9,8 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        using var singleInstance = new Mutex(true, @"Local\BAP.Companion.Desktop", out var firstInstance);
+        if (!firstInstance) return;
         ApplicationConfiguration.Initialize();
         using var context = new CompanionContext(ParsePort(args));
         Application.Run(context);
@@ -54,7 +56,7 @@ internal sealed class CompanionContext : ApplicationContext
     {
         var path = Path.Combine(AppContext.BaseDirectory, "server", "Bap.Companion.Server.exe");
         if (!File.Exists(path)) throw new FileNotFoundException("Companion Server was not found in the server subdirectory.", path);
-        return Process.Start(new ProcessStartInfo(path, $"--urls http://127.0.0.1:{port}") { WorkingDirectory = Path.GetDirectoryName(path), UseShellExecute = false })
+        return Process.Start(new ProcessStartInfo(path, $"--urls http://127.0.0.1:{port}") { WorkingDirectory = Path.GetDirectoryName(path), UseShellExecute = false, CreateNoWindow = true })
             ?? throw new InvalidOperationException("Could not start Companion Server.");
     }
 
