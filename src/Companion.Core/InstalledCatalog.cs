@@ -18,7 +18,7 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
     private DateTimeOffset lastScan;
 
     public static InstalledCatalog FromEnvironment() => new(
-        WorkshopRoots.FromEnvironment(discoveryMode: "1"),
+        WorkshopRoots.FromEnvironment(discoveryMode: Environment.GetEnvironmentVariable("BAP_DISCOVER_STEAM_WORKSHOP") ?? "1"),
         (Environment.GetEnvironmentVariable("BAP_LOCAL_ROOTS") ?? "")
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Concat(SteamWorkshopLocator.FindLocalProjectRoots(Environment.GetEnvironmentVariable("BAP_STEAM_ROOT"))));
