@@ -7,7 +7,7 @@ namespace Bap.Companion.Core;
 public sealed record InstalledItem(
     string Key, string SourceKind, string Role, string Title, string ProjectDirectory,
     string? WorkshopId, string? BapId, string? Version, string? PreviewPath,
-    ComponentManifest? ComponentManifest);
+    ComponentManifest? ComponentManifest, string Status = "valid");
 
 public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumerable<string> localRoots)
 {
@@ -71,35 +71,45 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
             ComponentManifest? manifest = null;
             string? bapId = null;
             string? version = null;
+            var roleName = "host";
+            var status = "unverified";
             if (File.Exists(manifestFile))
             {
                 using var document = JsonDocument.Parse(await File.ReadAllTextAsync(manifestFile, ct));
                 var role = document.RootElement.TryGetProperty("role", out var roleValue) ? roleValue.GetString() : null;
                 if (role == "component")
                 {
-                    manifest = JsonSerializer.Deserialize<ComponentManifest>(document.RootElement.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
-                    if (ComponentManifestValidator.Validate(manifest).Count != 0) return null;
-                    bapId = manifest!.Id;
-                    version = manifest.Version;
+                    roleName = "component";
+                    bapId = document.RootElement.TryGetProperty("id", out var idValue) ? idValue.GetString() : null;
+                    version = document.RootElement.TryGetProperty("version", out var versionValue) ? versionValue.GetString() : null;
+                    try
+                    {
+                        manifest = JsonSerializer.Deserialize<ComponentManifest>(document.RootElement.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                        status = ComponentManifestValidator.Validate(manifest).Count == 0 ? "valid" : "invalid";
+                        if (status == "invalid") manifest = null;
+                    }
+                    catch (JsonException) { status = "invalid"; }
                 }
                 else if (role == "host")
                 {
                     bapId = document.RootElement.TryGetProperty("id", out var idValue) ? idValue.GetString() : null;
                     version = document.RootElement.TryGetProperty("version", out var versionValue) ? versionValue.GetString() : null;
+                    status = string.IsNullOrWhiteSpace(bapId) ? "invalid" : "valid";
                 }
+                else status = "invalid";
             }
-            if (project is null && manifest is null) return null;
+            if (project is null && !File.Exists(manifestFile)) return null;
             var title = project is not null && project.Value.TryGetProperty("title", out var titleValue)
                 ? titleValue.GetString() : manifest?.Name;
             var preview = project is not null && project.Value.TryGetProperty("preview", out var previewValue)
                 ? previewValue.GetString() : null;
-            var roleName = manifest is not null ? "component" : "host";
             // Existing published demo hosts predate packaged Host Manifests.
-            if (roleName == "host" && bapId is null && title == "BAP Host Wallpaper Demo") bapId = "org.bap.examples.host-wallpaper";
+            if (roleName == "host" && bapId is null && title == "BAP Host Wallpaper Demo")
+            { bapId = "org.bap.examples.host-wallpaper"; status = "legacy"; }
             var workshopId = kind == "workshop" ? Path.GetFileName(directory) : null;
             var key = kind == "workshop" ? $"workshop:{workshopId}" : $"local:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())))[..16].ToLowerInvariant()}";
             return new(key, kind, roleName, title ?? Path.GetFileName(directory), Path.GetFullPath(directory), workshopId, bapId, version,
-                preview is null ? null : Path.Combine(directory, preview), manifest);
+                preview is null ? null : Path.Combine(directory, preview), manifest, status);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return null; }
     }

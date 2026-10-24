@@ -68,6 +68,24 @@ public sealed class CoreTests
             var item = Assert.Single(await new InstalledCatalog([], [root]).DiscoverAsync());
             Assert.Equal("host", item.Role);
             Assert.Equal("org.bap.examples.host-wallpaper", item.BapId);
+            Assert.Equal("legacy", item.Status);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task InstalledCatalogShowsInvalidComponentWithoutServingIt()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-invalid-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(root);
+            await File.WriteAllTextAsync(Path.Combine(root, "manifest.json"), """
+                { "protocol": { "name": "bap", "version": "0.1.0", "profile": "core" }, "id": "org.example.invalid", "name": "Invalid", "version": "not-semver", "role": "component", "capabilities": [], "entrypoints": { "default": "index.html" }, "modes": ["standalone"] }
+                """);
+            var item = Assert.Single(await new InstalledCatalog([], [root]).DiscoverAsync());
+            Assert.Equal("invalid", item.Status);
+            Assert.Null(item.ComponentManifest);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

@@ -48,8 +48,10 @@ internal sealed class MainForm : Form
         var page = new TabPage("Installed");
         hosts.Columns.Add("title", "Host / Web wallpaper"); hosts.Columns.Add("source", "Source");
         hosts.Columns.Add("id", "BAP ID"); hosts.Columns.Add("version", "Version");
+        hosts.Columns.Add("status", "Status"); hosts.Columns.Add("workshop", "Workshop ID");
         components.Columns.Add("title", "Component"); components.Columns.Add("source", "Source");
         components.Columns.Add("id", "BAP ID"); components.Columns.Add("version", "Version");
+        components.Columns.Add("status", "Status"); components.Columns.Add("workshop", "Workshop ID");
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 5, ColumnCount = 1, Padding = new Padding(12) };
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 44));
@@ -151,12 +153,13 @@ internal sealed class MainForm : Form
         foreach (var item in items)
         {
             var grid = item.Role == "component" ? components : hosts;
-            var row = grid.Rows[grid.Rows.Add(item.Title, item.SourceKind, item.BapId ?? "Unverified Web", item.Version ?? "—")];
+            var row = grid.Rows[grid.Rows.Add(item.Title, item.SourceKind, item.BapId ?? "—", item.Version ?? "—", item.Status, item.WorkshopId ?? "—")];
             row.Tag = item;
+            foreach (DataGridViewCell cell in row.Cells) cell.ToolTipText = item.ProjectDirectory;
         }
         availableComponents.Items.Clear(); hostBinding.Items.Clear();
-        foreach (var item in items.Where(item => item.Role == "component")) availableComponents.Items.Add(new CatalogChoice(item));
-        foreach (var item in items.Where(item => item.Role == "host" && item.BapId is not null)) hostBinding.Items.Add(new CatalogChoice(item));
+        foreach (var item in items.Where(item => item.Role == "component" && item.Status == "valid")) availableComponents.Items.Add(new CatalogChoice(item));
+        foreach (var item in items.Where(item => item.Role == "host" && item.BapId is not null && item.Status != "invalid")) hostBinding.Items.Add(new CatalogChoice(item));
         if (availableComponents.Items.Count > 0) availableComponents.SelectedIndex = 0;
         if (hostBinding.Items.Count > 0) hostBinding.SelectedIndex = 0;
         RenderPresets();

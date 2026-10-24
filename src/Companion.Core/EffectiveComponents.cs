@@ -15,7 +15,9 @@ public static class EffectiveComponents
             var matches = items.Where(item => item.Role == "component" && item.BapId == selection.ComponentId).ToArray();
             var item = selection.SourceKey is not null
                 ? matches.FirstOrDefault(candidate => candidate.Key == selection.SourceKey)
-                : matches.OrderBy(candidate => candidate.SourceKind == "workshop" ? 0 : 1).ThenBy(candidate => candidate.Key, StringComparer.Ordinal).FirstOrDefault();
+                : matches.OrderBy(candidate => candidate.Status == "valid" ? 0 : 1)
+                    .ThenBy(candidate => candidate.SourceKind == "workshop" ? 0 : 1)
+                    .ThenBy(candidate => candidate.Key, StringComparer.Ordinal).FirstOrDefault();
             if (item is null) return new EffectiveComponent(selection.ComponentId, selection.SourceKey, selection.ComponentId, "missing", null);
             var embedded = item.ComponentManifest?.Entrypoints.GetValueOrDefault("embedded");
             return new EffectiveComponent(selection.ComponentId, item.Key, item.Title,
