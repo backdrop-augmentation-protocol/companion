@@ -55,6 +55,24 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task InstalledCatalogRecognizesLegacyPublishedDemoHost()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-host-{Guid.NewGuid():N}");
+        var directory = Path.Combine(root, "host");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "project.json"), """
+                { "type": "Web", "file": "index.html", "title": "BAP Host Wallpaper Demo", "preview": "preview.jpg" }
+                """);
+            var item = Assert.Single(await new InstalledCatalog([], [root]).DiscoverAsync());
+            Assert.Equal("host", item.Role);
+            Assert.Equal("org.bap.examples.host-wallpaper", item.BapId);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void EffectivePresetKeepsOrderAndExplicitLocalSource()
     {
         var manifest = new ComponentManifest(new("bap", "0.1.0", "core"), "org.example.clock", "1.0.0", "Clock", "component", [],

@@ -13,6 +13,9 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
 {
     private readonly string[] workshopRoots = workshopRoots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     private readonly string[] localRoots = localRoots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    private readonly SemaphoreSlim scanGate = new(1, 1);
+    private IReadOnlyList<InstalledItem>? cachedItems;
+    private DateTimeOffset lastScan;
 
     public static InstalledCatalog FromEnvironment() => new(
         WorkshopRoots.FromEnvironment(discoveryMode: "1"),
@@ -20,8 +23,13 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Concat(SteamWorkshopLocator.FindLocalProjectRoots(Environment.GetEnvironmentVariable("BAP_STEAM_ROOT"))));
 
-    public async Task<IReadOnlyList<InstalledItem>> DiscoverAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<InstalledItem>> DiscoverAsync(CancellationToken cancellationToken = default, bool force = false)
     {
+        if (!force && cachedItems is not null && DateTimeOffset.UtcNow - lastScan < TimeSpan.FromSeconds(10)) return cachedItems;
+        await scanGate.WaitAsync(cancellationToken);
+        try
+        {
+        if (!force && cachedItems is not null && DateTimeOffset.UtcNow - lastScan < TimeSpan.FromSeconds(10)) return cachedItems;
         var items = new List<InstalledItem>();
         foreach (var (kind, roots) in new[] { ("workshop", workshopRoots), ("local", localRoots) })
             foreach (var root in roots)
@@ -36,7 +44,11 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
                     if (item is not null) items.Add(item);
                 }
             }
-        return items.DistinctBy(item => item.Key).OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase).ToArray();
+        cachedItems = items.DistinctBy(item => item.Key).OrderBy(item => item.Title, StringComparer.OrdinalIgnoreCase).ToArray();
+        lastScan = DateTimeOffset.UtcNow;
+        return cachedItems;
+        }
+        finally { scanGate.Release(); }
     }
 
     public async Task<InstalledItem?> GetAsync(string key, CancellationToken cancellationToken = default) =>
@@ -82,6 +94,8 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
             var preview = project is not null && project.Value.TryGetProperty("preview", out var previewValue)
                 ? previewValue.GetString() : null;
             var roleName = manifest is not null ? "component" : "host";
+            // Existing published demo hosts predate packaged Host Manifests.
+            if (roleName == "host" && bapId is null && title == "BAP Host Wallpaper Demo") bapId = "org.bap.examples.host-wallpaper";
             var workshopId = kind == "workshop" ? Path.GetFileName(directory) : null;
             var key = kind == "workshop" ? $"workshop:{workshopId}" : $"local:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())))[..16].ToLowerInvariant()}";
             return new(key, kind, roleName, title ?? Path.GetFileName(directory), Path.GetFullPath(directory), workshopId, bapId, version,

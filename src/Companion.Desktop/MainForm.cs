@@ -140,7 +140,7 @@ internal sealed class MainForm : Form
 
     private async Task RefreshAsync()
     {
-        items = await catalog.DiscoverAsync();
+        items = await catalog.DiscoverAsync(force: true);
         state = await store.ReadAsync();
         hosts.Rows.Clear(); components.Rows.Clear();
         foreach (var item in items)
