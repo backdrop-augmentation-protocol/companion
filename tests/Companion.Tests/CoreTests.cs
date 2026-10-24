@@ -87,6 +87,7 @@ public sealed class CoreTests
             Assert.Null(InstalledCatalog.ResolvePreviewPath(root, image));
             Assert.Null(InstalledCatalog.ResolvePreviewPath(root, "missing.png"));
             Assert.Null(InstalledCatalog.ResolvePreviewPath(root, "index.html"));
+            Assert.Null(InstalledCatalog.ResolvePreviewPath(root, "bad\0name.jpg"));
         }
         finally { Directory.Delete(root, true); }
     }

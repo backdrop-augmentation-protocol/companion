@@ -12,13 +12,11 @@ internal sealed class MainForm : Form
     private readonly DesktopSettings settings;
     private PresetState state = new([], null, new Dictionary<string, string>());
     private IReadOnlyList<InstalledItem> items = [];
-    private readonly DataGridView hosts = Grid();
-    private readonly DataGridView components = Grid();
+    private readonly CatalogView catalogView;
     private readonly ListBox presets = new() { Width = 230, Height = 300 };
     private readonly ListBox selectedComponents = new() { Width = 340, Height = 300 };
     private readonly ComboBox availableComponents = new() { Width = 340, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly ComboBox hostBinding = new() { Width = 260, DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly ComboBox monitor = new() { Width = 140, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Label presetStatus = new() { AutoSize = true };
     private readonly Label serviceStatus = new() { AutoSize = true };
     private readonly CheckBox startup = new() { AutoSize = true };
@@ -29,10 +27,31 @@ internal sealed class MainForm : Form
         this.log = log;
         this.port = port;
         this.settings = settings;
+        catalogView = new CatalogView(key => L(key), async (item, display) => await RunActionAsync(() => SwitchHostAsync(item, display)));
         Text = "BAP Companion";
-        MinimumSize = new Size(900, 650);
-        Size = new Size(1050, 760);
-        var tabs = new TabControl { Dock = DockStyle.Fill };
+        Font = new Font("Segoe UI", 10);
+        BackColor = UiTheme.Background;
+        MinimumSize = new Size(1100, 700);
+        Size = new Size(1280, 800);
+        var tabs = new TabControl
+        {
+            Dock = DockStyle.Fill, DrawMode = TabDrawMode.OwnerDrawFixed,
+            SizeMode = TabSizeMode.Fixed, ItemSize = new Size(160, 42),
+            Padding = new Point(16, 6), BackColor = UiTheme.Background
+        };
+        tabs.DrawItem += (_, e) =>
+        {
+            var selected = e.Index == tabs.SelectedIndex;
+            using var background = new SolidBrush(selected ? UiTheme.Surface : UiTheme.Background);
+            e.Graphics.FillRectangle(background, e.Bounds);
+            TextRenderer.DrawText(e.Graphics, tabs.TabPages[e.Index].Text, Font, e.Bounds,
+                selected ? UiTheme.Accent : UiTheme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            if (selected)
+            {
+                using var accent = new SolidBrush(UiTheme.Accent);
+                e.Graphics.FillRectangle(accent, e.Bounds.Left + 12, e.Bounds.Bottom - 3, e.Bounds.Width - 24, 3);
+            }
+        };
         tabs.TabPages.Add(BuildCatalogPage());
         tabs.TabPages.Add(BuildPresetsPage());
         tabs.TabPages.Add(BuildSettingsPage());
@@ -49,6 +68,7 @@ internal sealed class MainForm : Form
         foreach (var control in Descendants(this))
             if (control.Tag is string key) control.Text = L(key);
         RenderPresets();
+        catalogView.RefreshLanguage();
     }
 
     private static IEnumerable<Control> Descendants(Control parent)
@@ -62,66 +82,46 @@ internal sealed class MainForm : Form
 
     private static T Labelled<T>(T control, string key) where T : Control { control.Tag = key; return control; }
 
-    private static DataGridView Grid() => new()
-    {
-        Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, RowHeadersVisible = false
-    };
-
     private TabPage BuildCatalogPage()
     {
         var page = Labelled(new TabPage(), "installed");
-        hosts.Columns.Add("title", "Host / Web wallpaper"); hosts.Columns.Add("source", "Source");
-        hosts.Columns.Add("id", "BAP ID"); hosts.Columns.Add("version", "Version");
-        hosts.Columns.Add("status", "Status"); hosts.Columns.Add("workshop", "Workshop ID");
-        components.Columns.Add("title", "Component"); components.Columns.Add("source", "Source");
-        components.Columns.Add("id", "BAP ID"); components.Columns.Add("version", "Version");
-        components.Columns.Add("status", "Status"); components.Columns.Add("workshop", "Workshop ID");
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 5, ColumnCount = 1, Padding = new Padding(12) };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 44));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 56));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
-        layout.Controls.Add(Labelled(new Label { Dock = DockStyle.Fill }, "hosts"), 0, 0);
-        layout.Controls.Add(hosts, 0, 1);
-        layout.Controls.Add(Labelled(new Label { Dock = DockStyle.Fill }, "components"), 0, 2);
-        layout.Controls.Add(components, 0, 3);
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = new Padding(16), BackColor = UiTheme.Background };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.Controls.Add(Labelled(UiTheme.Heading(), "installed"), 0, 0);
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, BackColor = UiTheme.Background };
+        actions.Controls.Add(Labelled(UiTheme.Caption(), "catalogHint"));
         actions.Controls.Add(Labelled(Button("", async () => await RefreshAsync()), "refresh"));
-        for (var index = 0; index < Screen.AllScreens.Length; index++) monitor.Items.Add($"WE monitor {index}");
-        monitor.SelectedIndex = 0;
-        actions.Controls.Add(monitor);
-        actions.Controls.Add(Labelled(Button("", async () => await SwitchHostAsync()), "switchHost"));
-        layout.Controls.Add(actions, 0, 4);
+        layout.Controls.Add(actions, 0, 1);
+        layout.Controls.Add(catalogView, 0, 2);
         page.Controls.Add(layout);
         return page;
     }
 
     private TabPage BuildPresetsPage()
     {
-        var page = Labelled(new TabPage(), "presets");
-        var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), WrapContents = false, AutoScroll = true };
-        var left = new FlowLayoutPanel { Width = 250, Height = 580, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        left.Controls.Add(Labelled(new Label { AutoSize = true }, "presets"));
+        var page = Labelled(new TabPage { BackColor = UiTheme.Background }, "presets");
+        var layout = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), WrapContents = false, AutoScroll = true, BackColor = UiTheme.Background };
+        var left = new FlowLayoutPanel { Width = 250, Height = 600, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = UiTheme.Surface, Padding = new Padding(12), Margin = new Padding(6) };
+        left.Controls.Add(Labelled(UiTheme.Heading(), "presets"));
         left.Controls.Add(presets);
         left.Controls.Add(Labelled(Button("", async () => await CreatePresetAsync()), "newPreset"));
         left.Controls.Add(Labelled(Button("", async () => await RenamePresetAsync()), "rename"));
         left.Controls.Add(Labelled(Button("", async () => await DeletePresetAsync()), "delete"));
         presets.SelectedIndexChanged += (_, _) => RenderSelectedComponents();
-        var middle = new FlowLayoutPanel { Width = 370, Height = 580, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        middle.Controls.Add(Labelled(new Label { AutoSize = true }, "selectedComponents"));
+        var middle = new FlowLayoutPanel { Width = 370, Height = 600, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = UiTheme.Surface, Padding = new Padding(12), Margin = new Padding(6) };
+        middle.Controls.Add(Labelled(UiTheme.Caption(), "selectedComponents"));
         middle.Controls.Add(selectedComponents);
         middle.Controls.Add(availableComponents);
         middle.Controls.Add(Labelled(Button("", async () => await AddComponentAsync()), "addComponent"));
         middle.Controls.Add(Labelled(Button("", async () => await RemoveComponentAsync()), "remove"));
         middle.Controls.Add(Labelled(Button("", async () => await MoveComponentAsync(-1)), "moveUp"));
         middle.Controls.Add(Labelled(Button("", async () => await MoveComponentAsync(1)), "moveDown"));
-        var right = new FlowLayoutPanel { Width = 300, Height = 580, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        right.Controls.Add(Labelled(new Label { AutoSize = true }, "scope"));
+        var right = new FlowLayoutPanel { Width = 300, Height = 600, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = UiTheme.Surface, Padding = new Padding(12), Margin = new Padding(6) };
+        right.Controls.Add(Labelled(UiTheme.Heading(), "scope"));
         right.Controls.Add(Labelled(Button("", async () => await SetBindingAsync(null)), "setGlobal"));
-        right.Controls.Add(Labelled(new Label { AutoSize = true }, "hostOverride"));
+        right.Controls.Add(Labelled(UiTheme.Caption(), "hostOverride"));
         right.Controls.Add(hostBinding);
         right.Controls.Add(Labelled(Button("", async () =>
         {
@@ -138,8 +138,8 @@ internal sealed class MainForm : Form
 
     private TabPage BuildSettingsPage()
     {
-        var page = Labelled(new TabPage(), "settings");
-        var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(20), WrapContents = false };
+        var page = Labelled(new TabPage { BackColor = UiTheme.Background }, "settings");
+        var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(28), WrapContents = false, BackColor = UiTheme.Surface };
         startup.Tag = "startup";
         startup.Checked = settings.AutoStartEnabled;
         startup.CheckedChanged += (_, _) =>
@@ -148,13 +148,13 @@ internal sealed class MainForm : Form
             catch (Exception error) { MessageBox.Show(error.Message, L("settings"), MessageBoxButtons.OK, MessageBoxIcon.Error); startup.Checked = settings.AutoStartEnabled; }
         };
         panel.Controls.Add(startup);
-        panel.Controls.Add(Labelled(new Label { AutoSize = true }, "language"));
+        panel.Controls.Add(Labelled(UiTheme.Heading(), "language"));
         language.Items.AddRange(["English", "简体中文"]);
         language.SelectedIndex = settings.Language == "zh-CN" ? 1 : 0;
         language.SelectedIndexChanged += (_, _) => settings.SetLanguage(language.SelectedIndex == 1 ? "zh-CN" : "en");
         panel.Controls.Add(language);
-        panel.Controls.Add(Labelled(new Label { AutoSize = true }, "languageHint"));
-        panel.Controls.Add(Labelled(new Label { AutoSize = true }, "logs"));
+        panel.Controls.Add(Labelled(UiTheme.Caption(), "languageHint"));
+        panel.Controls.Add(Labelled(UiTheme.Heading(), "logs"));
         panel.Controls.Add(Labelled(Button("", () => Process.Start(new ProcessStartInfo(log.Path) { UseShellExecute = true })), "openLog"));
         panel.Controls.Add(Labelled(Button("", () => Process.Start(new ProcessStartInfo(Path.GetDirectoryName(log.Path)!) { UseShellExecute = true })), "openLogFolder"));
         panel.Controls.Add(new Label { Text = $"Service: http://127.0.0.1:{port}", AutoSize = true });
@@ -167,7 +167,7 @@ internal sealed class MainForm : Form
 
     private static Button Button(string title, Action action)
     {
-        var button = new Button { Text = title, AutoSize = true, MinimumSize = new Size(120, 30) };
+        var button = UiTheme.Button(title);
         button.Click += (_, _) => action();
         return button;
     }
@@ -184,14 +184,7 @@ internal sealed class MainForm : Form
     {
         items = await catalog.DiscoverAsync(force: true);
         state = await store.ReadAsync();
-        hosts.Rows.Clear(); components.Rows.Clear();
-        foreach (var item in items)
-        {
-            var grid = item.Role == "component" ? components : hosts;
-            var row = grid.Rows[grid.Rows.Add(item.Title, item.SourceKind, item.BapId ?? "—", item.Version ?? "—", item.Status, item.WorkshopId ?? "—")];
-            row.Tag = item;
-            foreach (DataGridViewCell cell in row.Cells) cell.ToolTipText = item.ProjectDirectory;
-        }
+        catalogView.SetItems(items);
         availableComponents.Items.Clear(); hostBinding.Items.Clear();
         foreach (var item in items.Where(item => item.Role == "component" && item.Status == "valid")) availableComponents.Items.Add(new CatalogChoice(item, L(item.SourceKind)));
         foreach (var item in items.Where(item => item.Role == "host" && item.BapId is not null && item.Status != "invalid")) hostBinding.Items.Add(new CatalogChoice(item, L(item.SourceKind)));
@@ -323,11 +316,9 @@ internal sealed class MainForm : Form
         await SaveAsync(state with { HostPresetIds = bindings });
     }
 
-    private async Task SwitchHostAsync()
+    private async Task SwitchHostAsync(InstalledItem host, int display)
     {
-        var host = hosts.SelectedRows.Count > 0 ? hosts.SelectedRows[0].Tag as InstalledItem : null;
-        if (host is null) return;
-        var confirmed = await WallpaperEngineControl.OpenAsync(host, monitor.SelectedIndex);
+        var confirmed = await WallpaperEngineControl.OpenAsync(host, display);
         MessageBox.Show(confirmed ? L("switchConfirmed", host.Title)
             : L("switchUnconfirmed", host.Title), "BAP Companion");
     }

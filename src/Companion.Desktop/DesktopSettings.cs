@@ -17,14 +17,17 @@ internal sealed class DesktopSettings
     public string? StartupError { get; private set; }
     public event EventHandler? LanguageChanged;
 
-    public DesktopSettings(string? path = null)
+    public DesktopSettings(string? path = null, bool synchronizeStartup = true)
     {
         this.path = path ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "BAP Companion", "data", "desktop.json");
         preferences = ReadPreferences(this.path);
-        try { ApplyAutoStart(preferences.AutoStart); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-        { StartupError = error.Message; }
+        if (synchronizeStartup)
+        {
+            try { ApplyAutoStart(preferences.AutoStart); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            { StartupError = error.Message; }
+        }
         if (!File.Exists(this.path)) Save(preferences);
     }
 

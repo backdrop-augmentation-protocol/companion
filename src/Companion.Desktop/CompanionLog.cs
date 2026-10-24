@@ -8,11 +8,13 @@ internal sealed class CompanionLog : IDisposable
     private StreamWriter writer;
     public string Path { get; }
 
-    public CompanionLog()
+    public CompanionLog(string? path = null)
     {
-        var directory = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BAP Companion", "logs");
+        var directory = path is null
+            ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BAP Companion", "logs")
+            : System.IO.Path.GetDirectoryName(path)!;
         Directory.CreateDirectory(directory);
-        Path = System.IO.Path.Combine(directory, "companion.log");
+        Path = path ?? System.IO.Path.Combine(directory, "companion.log");
         if (File.Exists(Path) && new FileInfo(Path).Length > 5 * 1024 * 1024)
             File.Move(Path, System.IO.Path.Combine(directory, "companion.previous.log"), true);
         writer = OpenWriter();
