@@ -74,3 +74,17 @@ Add `-SelfContained` for a package that includes the .NET runtime. The output
 contains `start-companion.cmd`; double-click it to start the tray host and
 service on `http://127.0.0.1:4311`. The tray menu provides a health check and
 clean exit. Pass another port as its first argument when needed.
+
+## Per-user installation
+
+From the published package, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-companion.ps1
+```
+
+This installs to `%LOCALAPPDATA%\Programs\BAP Companion` and adds a
+`BAP Companion` shortcut to the current user's Start menu. It does not require
+administrator privileges or enable automatic startup. Before installing an
+update, exit the installed Companion from its tray menu; the installer preserves
+its configuration data.

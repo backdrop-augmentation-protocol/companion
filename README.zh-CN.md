@@ -57,3 +57,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.
 ```
 
 如需自包含软件包，添加 `-SelfContained` 参数。输出目录中包含 `start-companion.cmd`，双击即可启动托盘宿主和服务，默认地址为 `http://127.0.0.1:4311`。托盘菜单提供健康检查和正常退出功能；如需更换端口，可将端口号作为它的第一个参数传入。
+
+## 当前用户安装
+
+在已发布的软件包目录中运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-companion.ps1
+```
+
+安装位置为 `%LOCALAPPDATA%\Programs\BAP Companion`，并在当前用户的“开始”菜单添加 `BAP Companion` 快捷方式。无需管理员权限，也不会启用开机自启动。更新前请通过托盘菜单退出已安装的 Companion；安装程序会保留其配置数据。
