@@ -56,7 +56,7 @@ internal sealed class MainForm : Form
         tabs.TabPages.Add(BuildPresetsPage());
         tabs.TabPages.Add(BuildSettingsPage());
         Controls.Add(tabs);
-        settings.LanguageChanged += (_, _) => { ApplyLanguage(); _ = RunActionAsync(RefreshAsync); };
+        settings.LanguageChanged += (_, _) => ApplyLanguage();
         ApplyLanguage();
         Load += async (_, _) => await RefreshAsync();
     }
@@ -66,7 +66,8 @@ internal sealed class MainForm : Form
     private void ApplyLanguage()
     {
         foreach (var control in Descendants(this))
-            if (control.Tag is string key) control.Text = L(key);
+            if (control.Tag is LocalizedKey marker) control.Text = L(marker.Value);
+        RenderChoices();
         RenderPresets();
         catalogView.RefreshLanguage();
     }
@@ -80,7 +81,9 @@ internal sealed class MainForm : Form
         }
     }
 
-    private static T Labelled<T>(T control, string key) where T : Control { control.Tag = key; return control; }
+    private sealed record LocalizedKey(string Value);
+
+    private static T Labelled<T>(T control, string key) where T : Control { control.Tag = new LocalizedKey(key); return control; }
 
     private TabPage BuildCatalogPage()
     {
@@ -140,7 +143,7 @@ internal sealed class MainForm : Form
     {
         var page = Labelled(new TabPage { BackColor = UiTheme.Background }, "settings");
         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(28), WrapContents = false, BackColor = UiTheme.Surface };
-        startup.Tag = "startup";
+        startup.Tag = new LocalizedKey("startup");
         startup.Checked = settings.AutoStartEnabled;
         startup.CheckedChanged += (_, _) =>
         {
@@ -185,13 +188,22 @@ internal sealed class MainForm : Form
         items = await catalog.DiscoverAsync(force: true);
         state = await store.ReadAsync();
         catalogView.SetItems(items);
+        RenderChoices();
+        RenderPresets();
+        await CheckServiceAsync();
+    }
+
+    private void RenderChoices()
+    {
+        var selectedComponentKey = (availableComponents.SelectedItem as CatalogChoice)?.Item.Key;
+        var selectedHostKey = (hostBinding.SelectedItem as CatalogChoice)?.Item.Key;
         availableComponents.Items.Clear(); hostBinding.Items.Clear();
         foreach (var item in items.Where(item => item.Role == "component" && item.Status == "valid")) availableComponents.Items.Add(new CatalogChoice(item, L(item.SourceKind)));
         foreach (var item in items.Where(item => item.Role == "host" && item.BapId is not null && item.Status != "invalid")) hostBinding.Items.Add(new CatalogChoice(item, L(item.SourceKind)));
-        if (availableComponents.Items.Count > 0) availableComponents.SelectedIndex = 0;
-        if (hostBinding.Items.Count > 0) hostBinding.SelectedIndex = 0;
-        RenderPresets();
-        await CheckServiceAsync();
+        if (availableComponents.Items.Count > 0)
+            availableComponents.SelectedIndex = Math.Max(0, availableComponents.Items.Cast<CatalogChoice>().ToList().FindIndex(choice => choice.Item.Key == selectedComponentKey));
+        if (hostBinding.Items.Count > 0)
+            hostBinding.SelectedIndex = Math.Max(0, hostBinding.Items.Cast<CatalogChoice>().ToList().FindIndex(choice => choice.Item.Key == selectedHostKey));
     }
 
     private ComponentPreset? SelectedPreset => (presets.SelectedItem as PresetChoice)?.Preset;

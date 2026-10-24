@@ -68,6 +68,15 @@ public sealed class DesktopTests
                 using var log = new CompanionLog(Path.Combine(directory, "companion.log"));
                 using var form = new MainForm(log, 4312, settings);
                 Assert.Equal("BAP Companion", form.Text);
+                var catalog = Assert.Single(Descendants(form).OfType<CatalogView>());
+                catalog.SetItems([
+                    new InstalledItem("workshop:3825045374", "workshop", "component", "Clock", "component", "3825045374", "org.example.clock", "1.0.0", null, null)
+                ]);
+                settings.SetLanguage("zh-CN");
+                var tabs = Assert.Single(form.Controls.OfType<TabControl>());
+                Assert.Equal("设置", tabs.TabPages[2].Text);
+                settings.SetLanguage("en");
+                Assert.Equal("Settings", tabs.TabPages[2].Text);
             }
             catch (Exception error) { failure = error; }
         });
@@ -77,4 +86,7 @@ public sealed class DesktopTests
         try { Assert.Null(failure); }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
+
+    private static IEnumerable<Control> Descendants(Control parent) =>
+        parent.Controls.Cast<Control>().SelectMany(child => new[] { child }.Concat(Descendants(child)));
 }
