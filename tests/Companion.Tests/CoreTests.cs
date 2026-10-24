@@ -74,6 +74,24 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void CatalogPreviewIsConfinedToProjectAndMustBeDisplayable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-preview-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var image = Path.Combine(root, "preview.jpg");
+            File.WriteAllBytes(image, [0xFF, 0xD8]);
+            Assert.Equal(image, InstalledCatalog.ResolvePreviewPath(root, "preview.jpg"));
+            Assert.Null(InstalledCatalog.ResolvePreviewPath(root, "../outside.jpg"));
+            Assert.Null(InstalledCatalog.ResolvePreviewPath(root, image));
+            Assert.Null(InstalledCatalog.ResolvePreviewPath(root, "missing.png"));
+            Assert.Null(InstalledCatalog.ResolvePreviewPath(root, "index.html"));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task InstalledCatalogShowsInvalidComponentWithoutServingIt()
     {
         var root = Path.Combine(Path.GetTempPath(), $"bap-invalid-{Guid.NewGuid():N}");

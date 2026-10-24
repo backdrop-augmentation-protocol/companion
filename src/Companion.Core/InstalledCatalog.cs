@@ -109,8 +109,18 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
             var workshopId = kind == "workshop" ? Path.GetFileName(directory) : null;
             var key = kind == "workshop" ? $"workshop:{workshopId}" : $"local:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())))[..16].ToLowerInvariant()}";
             return new(key, kind, roleName, title ?? Path.GetFileName(directory), Path.GetFullPath(directory), workshopId, bapId, version,
-                preview is null ? null : Path.Combine(directory, preview), manifest, status);
+                ResolvePreviewPath(directory, preview), manifest, status);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return null; }
+    }
+
+    public static string? ResolvePreviewPath(string directory, string? preview)
+    {
+        if (string.IsNullOrWhiteSpace(preview) || Path.IsPathRooted(preview)) return null;
+        var root = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var path = Path.GetFullPath(Path.Combine(root, preview));
+        if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return null;
+        if (!new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)) return null;
+        return File.Exists(path) ? path : null;
     }
 }
