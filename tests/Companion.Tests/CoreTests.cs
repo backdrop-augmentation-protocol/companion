@@ -72,6 +72,36 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task WorkshopDirectorySourceKeepsTwoSubscribedComponentsAndResourcesSeparate()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-multi-{Guid.NewGuid():N}");
+        try
+        {
+            foreach (var (folder, id) in new[] { ("111", "org.example.clock"), ("222", "org.example.calendar") })
+            {
+                var package = Path.Combine(root, folder);
+                Directory.CreateDirectory(package);
+                await File.WriteAllTextAsync(Path.Combine(package, "manifest.json"), $$"""
+                    { "protocol": { "name": "bap", "version": "0.1.0", "profile": "core" }, "id": "{{id}}", "name": "{{folder}}", "version": "1.0.0", "role": "component", "capabilities": [], "entrypoints": { "default": "index.html", "standalone": "index.html", "embedded": "embedded.html" }, "modes": ["standalone", "embedded"] }
+                    """);
+                await File.WriteAllTextAsync(Path.Combine(package, "embedded.html"), folder);
+            }
+            var source = new WorkshopDirectorySource([root]);
+            var components = await source.DiscoverAsync();
+            Assert.Equal(["org.example.calendar", "org.example.clock"], components.Select(c => c.Manifest.Id).ToArray());
+            var clock = await source.GetAsync("org.example.clock");
+            var calendar = await source.GetAsync("org.example.calendar");
+            Assert.NotNull(clock);
+            Assert.NotNull(calendar);
+            Assert.True(WorkshopResourceResolver.TryResolve(clock, "embedded.html", out var clockResource));
+            Assert.True(WorkshopResourceResolver.TryResolve(calendar, "embedded.html", out var calendarResource));
+            Assert.Equal("111", await File.ReadAllTextAsync(clockResource));
+            Assert.Equal("222", await File.ReadAllTextAsync(calendarResource));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void WorkshopResourceResolverRejectsTraversal()
     {
         var root = Path.Combine(Path.GetTempPath(), $"bap-resource-{Guid.NewGuid():N}");
