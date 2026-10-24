@@ -137,7 +137,7 @@ internal sealed class MainForm : Form
         return button;
     }
 
-    private static Button Button(string title, Func<Task> action) => Button(title, () => _ = RunActionAsync(action));
+    private static Button Button(string title, Func<Task> action) => Button(title, (Action)(() => { _ = RunActionAsync(action); }));
 
     private static async Task RunActionAsync(Func<Task> action)
     {
