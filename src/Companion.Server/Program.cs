@@ -8,6 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton(new CompanionOptions());
 builder.Services.AddSingleton<ISessionStore, InMemorySessionStore>();
 builder.Services.AddSingleton<ResourceTickets>();
+builder.Services.AddSingleton(_ => new JsonPresetStore(JsonPresetStore.DefaultPath));
+builder.Services.AddSingleton(_ => InstalledCatalog.FromEnvironment());
 builder.Services.AddSingleton<IWorkshopComponentSource>(_ => new WorkshopDirectorySource(() => WorkshopRoots.FromEnvironment()));
 builder.Services.AddSingleton<IConfigStore>(_ => new JsonConfigStore(Path.Combine(AppContext.BaseDirectory, "data", "config.json")));
 builder.Services.AddCors(options => options.AddPolicy("local-companion", policy => policy
@@ -34,6 +36,25 @@ app.MapPost("/v1/session", (SessionRequest? request, ISessionStore sessions, Com
 
 app.MapGet("/v1/components", async (HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
     await Authenticated(request, sessions, async () => Results.Ok((await source.DiscoverAsync(ct)).Where(IsValid).Select(x => x.Manifest))));
+
+app.MapGet("/v1/hosts/{hostId}/components", async (string hostId, HttpRequest request, ISessionStore sessions,
+    JsonPresetStore presets, InstalledCatalog catalog, CancellationToken ct) =>
+    await Authenticated(request, sessions, async () => Results.Ok(EffectiveComponents.Resolve(
+        await presets.ReadAsync(ct), hostId, await catalog.DiscoverAsync(ct)))));
+
+app.MapGet("/v1/catalog/components/{key}/resources/{**resourcePath}", async (string key, string? resourcePath,
+    HttpContext context, ISessionStore sessions, InstalledCatalog catalog, CancellationToken ct) =>
+{
+    context.Response.Headers.CacheControl = "no-store";
+    return await Authenticated(context.Request, sessions, async () =>
+    {
+        var item = await catalog.GetAsync(key, ct);
+        if (item?.ComponentManifest is null) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "component was not found");
+        if (!WorkshopResourceResolver.TryResolve(new(item.ComponentManifest, item.ProjectDirectory), resourcePath, out var path))
+            return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "resource was not found");
+        return Results.File(path, ContentType(path), enableRangeProcessing: true);
+    });
+});
 
 app.MapGet("/v1/components/{id}/manifest", async (string id, HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
     await Authenticated(request, sessions, async () =>
