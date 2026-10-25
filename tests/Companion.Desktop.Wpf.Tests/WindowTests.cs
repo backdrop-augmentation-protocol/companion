@@ -33,6 +33,10 @@ public sealed class WindowTests
                 Assert.Equal("已安装", window.InstalledNav.Content);
                 settings.SetLanguage("en");
                 Assert.Equal("Settings", window.SettingsNav.Content);
+                Assert.Equal(0, window.EffectiveDisplayIndex);
+                settings.SetDisplayIndex(99);
+                Assert.Equal(Math.Max(0, System.Windows.Forms.Screen.AllScreens.Length - 1), window.EffectiveDisplayIndex);
+                settings.SetDisplayIndex(0);
                 window.RenderSnapshot(
                 [
                     new InstalledItem("local:host", "local", "host", "Demo host wallpaper", "host", null, "org.example.host", "1.0.0", null, null),

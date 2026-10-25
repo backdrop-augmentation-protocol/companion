@@ -3,7 +3,7 @@ using Microsoft.Win32;
 
 namespace Bap.Companion.Desktop;
 
-internal sealed record DesktopPreferences(string Language = "en", bool AutoStart = true);
+internal sealed record DesktopPreferences(string Language = "en", bool AutoStart = true, int DisplayIndex = 0);
 
 internal sealed class DesktopSettings
 {
@@ -14,6 +14,7 @@ internal sealed class DesktopSettings
 
     public string Language => preferences.Language;
     public bool AutoStartEnabled => preferences.AutoStart;
+    public int DisplayIndex => preferences.DisplayIndex;
     public string? StartupError { get; private set; }
     public event EventHandler? LanguageChanged;
 
@@ -50,13 +51,26 @@ internal sealed class DesktopSettings
         StartupError = null;
     }
 
+    public void SetDisplayIndex(int displayIndex)
+    {
+        if (displayIndex < 0) throw new ArgumentOutOfRangeException(nameof(displayIndex));
+        if (preferences.DisplayIndex == displayIndex) return;
+        var next = preferences with { DisplayIndex = displayIndex };
+        Save(next);
+        preferences = next;
+    }
+
     internal static DesktopPreferences ReadPreferences(string path)
     {
         if (!File.Exists(path)) return new();
         try
         {
             var value = JsonSerializer.Deserialize<DesktopPreferences>(File.ReadAllText(path));
-            return value is null ? new() : value with { Language = value.Language == "zh-CN" ? "zh-CN" : "en" };
+            return value is null ? new() : value with
+            {
+                Language = value.Language == "zh-CN" ? "zh-CN" : "en",
+                DisplayIndex = Math.Max(0, value.DisplayIndex)
+            };
         }
         catch (JsonException) { return new(); }
     }

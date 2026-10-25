@@ -26,6 +26,23 @@ public sealed class DesktopTests
     }
 
     [Fact]
+    public void DisplayPreferencePersistsWithoutChangingExistingPreferences()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"bap-display-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "desktop.json");
+        try
+        {
+            var settings = new DesktopSettings(path, synchronizeStartup: false);
+            settings.SetDisplayIndex(2);
+            settings.SetLanguage("zh-CN");
+            Assert.Equal(2, settings.DisplayIndex);
+            Assert.Equal(new DesktopPreferences("zh-CN", true, 2), DesktopSettings.ReadPreferences(path));
+            Assert.Throws<ArgumentOutOfRangeException>(() => settings.SetDisplayIndex(-1));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void LocalizedStringsUseRequestedLanguage()
     {
         Assert.Equal("Settings", UiStrings.Get("settings", "en"));

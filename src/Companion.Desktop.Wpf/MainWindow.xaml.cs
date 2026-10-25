@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private InstalledItem? selectedItem;
     private bool uiReady;
     private bool changingCatalogSelection;
+    private bool changingDisplayChoice;
 
     internal MainWindow(CompanionLog log, int port, DesktopSettings settings)
     {
@@ -35,8 +36,6 @@ public partial class MainWindow : Window
         this.port = port;
         this.settings = settings;
         InitializeComponent();
-        for (var index = 0; index < Forms.Screen.AllScreens.Length; index++) MonitorChoice.Items.Add($"{L("monitor")} {index + 1}");
-        if (MonitorChoice.Items.Count > 0) MonitorChoice.SelectedIndex = 0;
         LanguageChoice.SelectedIndex = settings.Language == "zh-CN" ? 1 : 0;
         StartupCheck.IsChecked = settings.AutoStartEnabled;
         ServiceAddress.Text = $"Service: http://127.0.0.1:{port}";
@@ -59,7 +58,8 @@ public partial class MainWindow : Window
         HostsHeading.Text = L("hosts"); ComponentsHeading.Text = L("components");
         NoHosts.Text = L("noHosts"); NoComponents.Text = L("noComponents");
         DetailsHeading.Text = L("details"); DetailEmpty.Text = L("selectItem");
-        LocationLabel.Text = L("location"); MonitorLabel.Text = L("monitor"); SwitchHostButton.Content = L("switchHost");
+        LocationLabel.Text = L("location"); MonitorLabel.Text = L("switchDisplay"); MonitorHint.Text = L("switchDisplayHint");
+        SwitchHostButton.Content = L("switchHost");
         PresetsTitle.Text = L("presets"); PresetIntro.Text = L("presetIntro");
         NewPresetButton.Content = L("newPreset"); RenameButton.Content = L("rename"); DeleteButton.Content = L("delete");
         SelectedComponentsHeading.Text = L("selectedComponents");
@@ -72,10 +72,14 @@ public partial class MainWindow : Window
         OpenLogButton.Content = L("openLog"); OpenLogFolderButton.Content = L("openLogFolder");
         CheckServiceButton.Content = L("checkService");
         if (settings.StartupError is not null) StartupError.Text = L("startupError", settings.StartupError);
-        var monitor = MonitorChoice.SelectedIndex;
-        MonitorChoice.Items.Clear();
-        for (var index = 0; index < Forms.Screen.AllScreens.Length; index++) MonitorChoice.Items.Add($"{L("monitor")} {index + 1}");
-        if (MonitorChoice.Items.Count > 0) MonitorChoice.SelectedIndex = Math.Clamp(monitor, 0, MonitorChoice.Items.Count - 1);
+        changingDisplayChoice = true;
+        try
+        {
+            MonitorChoice.Items.Clear();
+            for (var index = 0; index < Forms.Screen.AllScreens.Length; index++) MonitorChoice.Items.Add($"{L("monitor")} {index + 1}");
+            if (MonitorChoice.Items.Count > 0) MonitorChoice.SelectedIndex = Math.Clamp(settings.DisplayIndex, 0, MonitorChoice.Items.Count - 1);
+        }
+        finally { changingDisplayChoice = false; }
         RenderCatalog();
         RenderChoices();
         RenderPresets();
@@ -205,11 +209,13 @@ public partial class MainWindow : Window
         SwitchHostButton.IsEnabled = false;
         try
         {
-            var result = await WallpaperEngineControl.OpenAsync(selectedItem, Math.Max(0, MonitorChoice.SelectedIndex));
+            var result = await WallpaperEngineControl.OpenAsync(selectedItem, EffectiveDisplayIndex);
             SwitchStatus.Text = L(result == WallpaperSwitchResult.Confirmed ? "switchVerified" : "switchSent");
         }
         finally { SwitchHostButton.IsEnabled = true; }
     });
+
+    internal int EffectiveDisplayIndex => Math.Clamp(settings.DisplayIndex, 0, Math.Max(0, Forms.Screen.AllScreens.Length - 1));
 
     private void RenderChoices()
     {
@@ -375,6 +381,19 @@ public partial class MainWindow : Window
     private void LanguageChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (uiReady) settings.SetLanguage(LanguageChoice.SelectedIndex == 1 ? "zh-CN" : "en");
+    }
+
+    private void MonitorChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!uiReady || changingDisplayChoice || MonitorChoice.SelectedIndex < 0) return;
+        try { settings.SetDisplayIndex(MonitorChoice.SelectedIndex); }
+        catch (Exception error)
+        {
+            System.Windows.MessageBox.Show(this, error.Message, L("settings"), MessageBoxButton.OK, MessageBoxImage.Error);
+            changingDisplayChoice = true;
+            try { MonitorChoice.SelectedIndex = Math.Clamp(settings.DisplayIndex, 0, MonitorChoice.Items.Count - 1); }
+            finally { changingDisplayChoice = false; }
+        }
     }
 
     private void StartupCheck_Changed(object sender, RoutedEventArgs e)

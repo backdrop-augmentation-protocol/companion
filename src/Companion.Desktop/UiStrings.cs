@@ -23,6 +23,8 @@ internal static class UiStrings
         ["workshopId"] = ("Workshop ID", "创意工坊 ID"),
         ["location"] = ("Project folder", "项目目录"),
         ["monitor"] = ("Display", "显示器"),
+        ["switchDisplay"] = ("Display for wallpaper switching", "切换壁纸使用的显示器"),
+        ["switchDisplayHint"] = ("Host wallpapers opened from Companion will appear on this display.", "从伴侣软件切换的宿主壁纸将显示在此显示器上。"),
         ["switchHost"] = ("Use this host wallpaper", "切换到此宿主壁纸"),
         ["noPreview"] = ("No preview", "暂无预览"),
         ["noHosts"] = ("No host wallpapers found", "未发现宿主壁纸"),

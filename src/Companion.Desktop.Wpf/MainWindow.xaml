@@ -156,8 +156,6 @@
                 <TextBlock x:Name="LocationLabel" Style="{StaticResource Hint}" Margin="0,16,0,5"/>
                 <TextBlock x:Name="DetailPath" FontSize="12" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
                 <StackPanel x:Name="HostActions" Margin="0,20,0,0">
-                  <TextBlock x:Name="MonitorLabel" Style="{StaticResource Hint}" Margin="0,0,0,6"/>
-                  <ComboBox x:Name="MonitorChoice" Margin="0,0,0,12"/>
                   <Button x:Name="SwitchHostButton" Style="{StaticResource PrimaryButton}" Click="SwitchHostButton_Click"/>
                   <TextBlock x:Name="SwitchStatus" Style="{StaticResource Hint}" Margin="0,10,0,0"/>
                 </StackPanel>
@@ -221,6 +219,11 @@
               <ComboBoxItem Content="English"/><ComboBoxItem Content="简体中文"/>
             </ComboBox>
             <TextBlock x:Name="LanguageHint" Style="{StaticResource Hint}" Margin="0,9,0,0"/>
+          </StackPanel></Border>
+          <Border Style="{StaticResource Panel}" Padding="22" Margin="0,0,0,14"><StackPanel>
+            <TextBlock x:Name="MonitorLabel" Style="{StaticResource SectionHeading}" Margin="0,0,0,9"/>
+            <ComboBox x:Name="MonitorChoice" Width="220" HorizontalAlignment="Left" SelectionChanged="MonitorChoice_SelectionChanged"/>
+            <TextBlock x:Name="MonitorHint" Style="{StaticResource Hint}" Margin="0,9,0,0"/>
           </StackPanel></Border>
           <Border Style="{StaticResource Panel}" Padding="22" Margin="0,0,0,14"><StackPanel>
             <CheckBox x:Name="StartupCheck" Checked="StartupCheck_Changed" Unchecked="StartupCheck_Changed"/>
