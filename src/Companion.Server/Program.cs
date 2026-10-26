@@ -130,7 +130,7 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
     try
     {
         var raw = await ReceiveTextAsync(socket, context.RequestAborted);
-        if (raw is null || !TryReadMessage(raw, json, out var hello) || hello is null || hello.Kind != "request" || hello.Method != "hello")
+        if (raw is null || !TryReadMessage(raw, json, out var hello) || hello is null || hello.Kind != "request" || hello.Method != "hello" || string.IsNullOrWhiteSpace(hello.Id))
         { await CloseProtocolError(socket, context.RequestAborted); return; }
         var payload = hello.Payload?.Deserialize<HostHelloPayload>(json);
         if (payload is null || payload.Role != "host" || !IsCompatible(hello.Protocol, options.Protocol) || payload.ProtocolVersions is null || !payload.ProtocolVersions.Contains(options.Protocol.Version, StringComparer.Ordinal))
@@ -146,8 +146,10 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
         {
             var message = await ReceiveTextAsync(socket, context.RequestAborted);
             if (message is null) break;
-            if (!TryReadMessage(message, json, out var request) || request is null || request.Kind != "request")
-            { await SendAsync(socket, ErrorResponse(options.Protocol, null, session.Id, "INVALID_MESSAGE", "expected a protocol request"), context.RequestAborted); continue; }
+            if (!TryReadMessage(message, json, out var request) || request is null || request.Kind != "request" || string.IsNullOrWhiteSpace(request.Id))
+            { await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "valid BAP request required", context.RequestAborted); return; }
+            if (request.SessionId != session.Id)
+            { await SendAsync(socket, ErrorResponse(options.Protocol, request.Id, session.Id, "UNAUTHORIZED", "session identifier does not match"), context.RequestAborted); continue; }
             await SendAsync(socket, ErrorResponse(options.Protocol, request.Id, session.Id, "NOT_FOUND", $"method '{request.Method ?? ""}' is not supported"), context.RequestAborted);
         }
     }
@@ -195,7 +197,7 @@ static async Task<IResult> Authenticated(HttpRequest request, ISessionStore sess
 }
 static IResult Error(int status, string code, string message, bool retryable = false) => Results.Json(new BapError(code, message, retryable), statusCode: status);
 static ProtocolMessage Response(ProtocolDescriptor protocol, string id, string sessionId, object result) => new(protocol, "response", $"response-{Guid.NewGuid():N}", DateTimeOffset.UtcNow, sessionId, id, Ok: true, Result: JsonSerializer.SerializeToElement(result, new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }));
-static ProtocolMessage ErrorResponse(ProtocolDescriptor protocol, string? correlationId, string sessionId, string code, string message) => new(protocol, "response", $"response-{Guid.NewGuid():N}", DateTimeOffset.UtcNow, sessionId, correlationId, Ok: false, Error: new BapError(code, message));
+static ProtocolMessage ErrorResponse(ProtocolDescriptor protocol, string correlationId, string sessionId, string code, string message) => new(protocol, "response", $"response-{Guid.NewGuid():N}", DateTimeOffset.UtcNow, sessionId, correlationId, Ok: false, Error: new BapError(code, message));
 static bool TryReadMessage(string raw, JsonSerializerOptions json, out ProtocolMessage? message)
 {
     try { message = JsonSerializer.Deserialize<ProtocolMessage>(raw, json); return message is not null; }
