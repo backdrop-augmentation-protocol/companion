@@ -133,14 +133,14 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
         if (raw is null || !TryReadMessage(raw, json, out var hello) || hello is null || hello.Kind != "request" || hello.Method != "hello")
         { await CloseProtocolError(socket, context.RequestAborted); return; }
         var payload = hello.Payload?.Deserialize<HostHelloPayload>(json);
-        if (payload is null || payload.Role != "host" || !IsCompatible(hello.Protocol, options.Protocol) || !payload.SupportedVersions.Contains(options.Protocol.Version, StringComparer.Ordinal))
+        if (payload is null || payload.Role != "host" || !IsCompatible(hello.Protocol, options.Protocol) || payload.ProtocolVersions is null || !payload.ProtocolVersions.Contains(options.Protocol.Version, StringComparer.Ordinal))
         {
             await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, "UNSUPPORTED_VERSION", "host hello is not compatible"), context.RequestAborted);
             await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "unsupported protocol", context.RequestAborted); return;
         }
-        var capabilities = new[] { "component-discovery", "config" };
-        var permissions = payload.RequestedPermissions.Where(p => p is "component.discovery" or "config.read" or "config.write").ToArray();
-        var result = new CompanionHelloPayload(options.Protocol, new(options.CompanionId, options.CompanionName, options.CompanionVersion), session.Id, capabilities, permissions);
+        var capabilities = (payload.Capabilities ?? []).Where(c => c is "component-discovery" or "config").Distinct().ToArray();
+        var permissions = (payload.RequestedPermissions ?? []).Where(p => p is "component.discovery" or "config.read" or "config.write").Distinct().ToArray();
+        var result = new CompanionHelloPayload(options.Protocol, "companion", new(options.CompanionId, options.CompanionName, options.CompanionVersion), capabilities, permissions);
         await SendAsync(socket, Response(options.Protocol, hello.Id, session.Id, result), context.RequestAborted);
         while (socket.State == WebSocketState.Open && !context.RequestAborted.IsCancellationRequested)
         {

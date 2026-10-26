@@ -13,9 +13,9 @@ public sealed record ProtocolDescriptor(string Name, string Version, string Prof
 
 public sealed record Identity(string Id, string Name, string Version);
 
-public sealed record HostHelloPayload(string Role, Identity Identity, IReadOnlyCollection<string> SupportedVersions, IReadOnlyCollection<string> Capabilities, IReadOnlyCollection<string> RequestedPermissions);
+public sealed record HostHelloPayload(string Role, Identity Identity, IReadOnlyCollection<string> ProtocolVersions, IReadOnlyCollection<string> Capabilities, IReadOnlyCollection<string> RequestedPermissions);
 
-public sealed record CompanionHelloPayload(ProtocolDescriptor Protocol, Identity Identity, string SessionId, IReadOnlyCollection<string> Capabilities, IReadOnlyCollection<string> Permissions);
+public sealed record CompanionHelloPayload(ProtocolDescriptor SelectedProtocol, string Role, Identity Identity, IReadOnlyCollection<string> Capabilities, IReadOnlyCollection<string> Permissions);
 
 public sealed record ProtocolMessage(ProtocolDescriptor Protocol, string Kind, string Id, DateTimeOffset Timestamp, string? SessionId = null, string? CorrelationId = null, string? Method = null, string? Event = null, JsonElement? Payload = null, bool? Ok = null, JsonElement? Result = null, BapError? Error = null);
 

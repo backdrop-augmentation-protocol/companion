@@ -51,7 +51,7 @@ $hello = @{
     payload = @{
         role = "host"
         identity = @{ id = "org.bap.examples.host-wallpaper"; name = "BAP Host Wallpaper Demo"; version = "0.1.0" }
-        supportedVersions = @("0.1.0")
+        protocolVersions = @("0.1.0")
         capabilities = @("component-discovery", "config")
         requestedPermissions = @("component.discovery", "config.read", "config.write")
     }
@@ -63,6 +63,9 @@ $received = $ws.ReceiveAsync($buffer, [Threading.CancellationToken]::None).GetAw
 $response = [Text.Encoding]::UTF8.GetString($buffer, 0, $received.Count) | ConvertFrom-Json
 if (-not $response.ok) { throw "Companion WebSocket hello was rejected" }
 Assert-Equal $response.result.identity.id "org.bap.companion" "companion identity"
+Assert-Equal $response.result.role "companion" "companion role"
+Assert-Equal $response.result.selectedProtocol.version "0.1.0" "selected protocol"
+Assert-Equal $response.sessionId $session.sessionId "session id"
 if ($response.result.permissions.Count -lt 2) { throw "Companion did not grant expected permissions" }
 $ws.Dispose()
 
