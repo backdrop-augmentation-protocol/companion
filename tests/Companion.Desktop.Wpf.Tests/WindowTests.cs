@@ -20,11 +20,9 @@ public sealed class WindowTests
         {
             try
             {
-                var application = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-                application.Resources.MergedDictionaries.Add(new ResourceDictionary
-                {
-                    Source = new Uri("pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.xaml")
-                });
+#pragma warning disable WPF0001 // Match the production Fluent dark-mode configuration.
+                var application = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown, ThemeMode = ThemeMode.Dark };
+#pragma warning restore WPF0001
                 using var iconStream = System.Windows.Application.GetResourceStream(
                     new Uri("pack://application:,,,/Bap.Companion.Desktop;component/Assets/bap-companion.ico"))?.Stream;
                 Assert.NotNull(iconStream);
@@ -67,16 +65,16 @@ public sealed class WindowTests
                     Assert.True(choice.IsEnabled);
                     Assert.True(choice.IsLoaded);
                     choice.ApplyTemplate();
-                    var button = Assert.IsType<System.Windows.Controls.Button>(choice.Template.FindName("DropDownButton", choice));
+                    Assert.Null(choice.Template.FindName("DropDownButton", choice));
+                    var toggle = Assert.IsType<System.Windows.Controls.Primitives.ToggleButton>(choice.Template.FindName("ToggleButton", choice));
                     var popup = Assert.IsType<System.Windows.Controls.Primitives.Popup>(choice.Template.FindName("PART_Popup", choice));
                     Assert.False(choice.IsDropDownOpen);
-                    choice.IsDropDownOpen = true;
-                    Assert.True(choice.IsDropDownOpen, $"{choice.Name} cannot open through its template");
-                    choice.IsDropDownOpen = false;
-                    button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    var peer = new System.Windows.Automation.Peers.ToggleButtonAutomationPeer(toggle);
+                    var togglePattern = Assert.IsAssignableFrom<System.Windows.Automation.Provider.IToggleProvider>(peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle));
+                    togglePattern.Toggle();
                     Assert.True(choice.IsDropDownOpen);
                     Assert.True(popup.IsOpen);
-                    button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    togglePattern.Toggle();
                     Assert.False(choice.IsDropDownOpen);
                     Assert.False(popup.IsOpen);
                 }

@@ -33,12 +33,9 @@ internal static class Program
 
     private static System.Windows.Application CreateApplication()
     {
-        var application = new System.Windows.Application();
-        application.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.xaml")
-        });
-        return application;
+#pragma warning disable WPF0001 // .NET 10 Fluent dark mode keeps native controls interactive and visually consistent.
+        return new System.Windows.Application { ThemeMode = ThemeMode.Dark };
+#pragma warning restore WPF0001
     }
 }
 

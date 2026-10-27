@@ -83,34 +83,13 @@
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
-    <Style TargetType="ComboBox">
+    <Style TargetType="ComboBox" BasedOn="{StaticResource DefaultComboBoxStyle}">
       <Setter Property="Background" Value="#132B51"/>
       <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
+      <Setter Property="Border.CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="9,5"/>
       <Setter Property="MinHeight" Value="38"/>
-      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
-        <Grid>
-          <Border x:Name="Box" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="8">
-            <Grid>
-              <ContentPresenter Margin="11,0,30,0" VerticalAlignment="Center" Content="{TemplateBinding SelectionBoxItem}"
-                                ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" IsHitTestVisible="False"/>
-              <Path Data="M 0 0 L 4 4 L 8 0" Stroke="#36D8FF" StrokeThickness="1.7" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" IsHitTestVisible="False"/>
-              <Button x:Name="DropDownButton" Focusable="False" Background="Transparent" BorderThickness="0" Click="DropDownButton_Click">
-                <Button.Template><ControlTemplate TargetType="Button"><Border Background="Transparent"/></ControlTemplate></Button.Template>
-              </Button>
-            </Grid>
-          </Border>
-          <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" PlacementTarget="{Binding ElementName=Box}"
-                 AllowsTransparency="True" StaysOpen="True" Focusable="False">
-            <Border Background="#132B51" BorderBrush="#397CB6" BorderThickness="1" CornerRadius="8" MinWidth="{Binding ActualWidth, ElementName=Box}" MaxHeight="340" Margin="0,3,0,0">
-              <ScrollViewer VerticalScrollBarVisibility="Auto"><ItemsPresenter/></ScrollViewer>
-            </Border>
-          </Popup>
-        </Grid>
-        <ControlTemplate.Triggers>
-          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="#36D8FF"/></Trigger>
-          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Box" Property="Opacity" Value="0.45"/></Trigger>
-        </ControlTemplate.Triggers>
-      </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style TargetType="ComboBoxItem">
       <Setter Property="Foreground" Value="{StaticResource Ink}"/>
