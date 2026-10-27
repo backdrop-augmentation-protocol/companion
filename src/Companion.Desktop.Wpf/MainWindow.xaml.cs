@@ -43,7 +43,21 @@ public partial class MainWindow : Window
         ApplyLanguage();
         SelectPage(InstalledPage, InstalledNav);
         uiReady = true;
+        StateChanged += (_, _) => UpdateMaximizeButton();
         Loaded += async (_, _) => await RunActionAsync(RefreshAsync);
+    }
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void UpdateMaximizeButton()
+    {
+        MaximizeButton.Content = WindowState == WindowState.Maximized ? "❐" : "□";
+        MaximizeButton.ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
     }
 
     private string L(string key, params object[] args) => UiStrings.Get(key, settings.Language, args);

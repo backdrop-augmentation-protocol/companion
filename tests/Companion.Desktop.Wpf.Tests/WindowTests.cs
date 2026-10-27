@@ -33,6 +33,16 @@ public sealed class WindowTests
                 var settings = new DesktopSettings(Path.Combine(directory, "desktop.json"), synchronizeStartup: false);
                 using var log = new CompanionLog(Path.Combine(directory, "companion.log"));
                 var window = new MainWindow(log, 4312, settings);
+                var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(window);
+                Assert.NotNull(chrome);
+                Assert.Equal(42, chrome.CaptionHeight);
+                Assert.False(chrome.UseAeroCaptionButtons);
+                Assert.Null(window.Icon);
+                Assert.True(System.Windows.Shell.WindowChrome.GetIsHitTestVisibleInChrome(window.CloseButton));
+                window.MaximizeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                Assert.Equal(WindowState.Maximized, window.WindowState);
+                window.MaximizeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                Assert.Equal(WindowState.Normal, window.WindowState);
                 Assert.Equal("Installed", window.InstalledNav.Content);
                 window.Measure(new System.Windows.Size(1220, 790));
                 window.Arrange(new Rect(0, 0, 1220, 790));

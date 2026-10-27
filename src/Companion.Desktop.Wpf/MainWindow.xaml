@@ -1,8 +1,12 @@
 <Window x:Class="Bap.Companion.Desktop.Wpf.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="BAP Companion" Icon="Assets/bap-companion.ico" Width="1220" Height="790" MinWidth="1100" MinHeight="640"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="BAP Companion" Width="1220" Height="790" MinWidth="1100" MinHeight="640"
         WindowStartupLocation="CenterScreen" Background="#07142D" FontFamily="Segoe UI Variable, Segoe UI" FontSize="14">
+  <shell:WindowChrome.WindowChrome>
+    <shell:WindowChrome CaptionHeight="42" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+  </shell:WindowChrome.WindowChrome>
   <Window.Resources>
     <SolidColorBrush x:Key="Ink" Color="#EAF3FF"/>
     <SolidColorBrush x:Key="Muted" Color="#9AB0D0"/>
@@ -63,6 +67,21 @@
     </Style>
     <Style x:Key="QuietButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
       <Setter Property="Background" Value="#19335E"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+    </Style>
+    <Style x:Key="CaptionButton" TargetType="Button">
+      <Setter Property="Width" Value="48"/><Setter Property="Height" Value="42"/>
+      <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/><Setter Property="FontFamily" Value="Segoe UI Symbol"/><Setter Property="FontSize" Value="16"/>
+      <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border x:Name="Surface" Background="{TemplateBinding Background}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="#193B68"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="#25527E"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style TargetType="ComboBox">
       <Setter Property="Background" Value="#132B51"/>
@@ -161,6 +180,18 @@
     </Style>
   </Window.Resources>
   <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="42"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <Border Background="#081631" BorderBrush="{StaticResource Border}" BorderThickness="0,0,0,1">
+      <Grid>
+        <TextBlock Text="BAP Companion" Foreground="{StaticResource Muted}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Margin="18,0,0,0" IsHitTestVisible="False"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="MinimizeButton" Style="{StaticResource CaptionButton}" Content="&#x2014;" Click="MinimizeButton_Click" ToolTip="Minimize"/>
+          <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Content="&#x25A1;" Click="MaximizeButton_Click" ToolTip="Maximize"/>
+          <Button x:Name="CloseButton" Style="{StaticResource CaptionButton}" Content="&#x00D7;" Click="CloseButton_Click" ToolTip="Close"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Grid Grid.Row="1">
     <Grid.ColumnDefinitions><ColumnDefinition Width="216"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
     <Border Background="#081631" BorderBrush="{StaticResource Border}" BorderThickness="0,0,1,0">
       <DockPanel Margin="16,24" LastChildFill="False">
@@ -303,6 +334,7 @@
           </StackPanel></Border>
         </StackPanel>
       </ScrollViewer>
+    </Grid>
     </Grid>
   </Grid>
 </Window>
