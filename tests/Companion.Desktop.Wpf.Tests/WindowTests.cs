@@ -33,6 +33,7 @@ public sealed class WindowTests
                 var settings = new DesktopSettings(Path.Combine(directory, "desktop.json"), synchronizeStartup: false);
                 using var log = new CompanionLog(Path.Combine(directory, "companion.log"));
                 var window = new MainWindow(log, 4312, settings);
+                window.Show();
                 var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(window);
                 Assert.NotNull(chrome);
                 Assert.Equal(42, chrome.CaptionHeight);
@@ -48,13 +49,32 @@ public sealed class WindowTests
                 window.Arrange(new Rect(0, 0, 1220, 790));
                 window.UpdateLayout();
                 Assert.True(window.LanguageChoice.ApplyTemplate());
-                Assert.NotNull(window.LanguageChoice.Template.FindName("PART_Popup", window.LanguageChoice));
                 window.LanguageChoice.SelectedIndex = 1;
                 Assert.Equal("zh-CN", settings.Language);
                 Assert.Equal("已安装", window.InstalledNav.Content);
                 window.LanguageChoice.SelectedIndex = 0;
                 Assert.Equal("en", settings.Language);
                 Assert.Equal("Settings", window.SettingsNav.Content);
+                window.SettingsNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                window.UpdateLayout();
+                var frame = new System.Windows.Threading.DispatcherFrame();
+                window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => frame.Continue = false);
+                System.Windows.Threading.Dispatcher.PushFrame(frame);
+                Assert.Equal(Visibility.Visible, window.SettingsPage.Visibility);
+                foreach (var choice in new[] { window.LanguageChoice, window.MonitorChoice })
+                {
+                    Assert.True(choice.IsVisible);
+                    Assert.True(choice.IsEnabled);
+                    Assert.True(choice.IsLoaded);
+                    choice.ApplyTemplate();
+                    var popup = Assert.IsType<System.Windows.Controls.Primitives.Popup>(choice.Template.FindName("PART_Popup", choice));
+                    Assert.False(choice.IsDropDownOpen);
+                    choice.IsDropDownOpen = true;
+                    Assert.True(choice.IsDropDownOpen);
+                    Assert.True(popup.IsOpen);
+                    choice.IsDropDownOpen = false;
+                    Assert.False(popup.IsOpen);
+                }
                 Assert.Equal(0, window.EffectiveDisplayIndex);
                 settings.SetDisplayIndex(99);
                 Assert.Equal(Math.Max(0, System.Windows.Forms.Screen.AllScreens.Length - 1), window.EffectiveDisplayIndex);
