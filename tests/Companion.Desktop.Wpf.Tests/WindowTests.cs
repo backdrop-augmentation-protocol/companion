@@ -114,6 +114,40 @@ public sealed class WindowTests
                     window.SettingsNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     SavePage("settings");
                 }
+                window.InstalledNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                window.RenderSnapshot(
+                    Enumerable.Range(0, 30).Select(index => new InstalledItem(
+                        $"local:host-{index}", "local", "host", $"Host wallpaper {index}", "host", null,
+                        $"org.example.host-{index}", "1.0.0", null, null))
+                    .Concat([new InstalledItem("local:widget", "local", "component", "Widget", "component", null,
+                        "org.example.widget", "1.0.0", null, null)]).ToArray(),
+                    new PresetState([], null, new Dictionary<string, string>()));
+                window.UpdateLayout();
+                Assert.True(window.CatalogScrollViewer.ScrollableHeight > 0);
+                var firstHost = Assert.IsType<System.Windows.Controls.ListBoxItem>(window.HostsList.ItemContainerGenerator.ContainerFromIndex(0));
+                var wheel = new System.Windows.Input.MouseWheelEventArgs(
+                    System.Windows.Input.InputManager.Current.PrimaryMouseDevice, Environment.TickCount, -120)
+                { RoutedEvent = UIElement.PreviewMouseWheelEvent };
+                firstHost.RaiseEvent(wheel);
+                Assert.True(wheel.Handled, "The catalog list must take ownership of wheel input.");
+                window.UpdateLayout();
+                Assert.True(window.CatalogScrollViewer.VerticalOffset > 0,
+                    $"offset={window.CatalogScrollViewer.VerticalOffset}, scrollable={window.CatalogScrollViewer.ScrollableHeight}, wheelLines={SystemParameters.WheelScrollLines}");
+                var scrolledOffset = window.CatalogScrollViewer.VerticalOffset;
+                firstHost.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(
+                    System.Windows.Input.InputManager.Current.PrimaryMouseDevice, Environment.TickCount, 120)
+                { RoutedEvent = UIElement.PreviewMouseWheelEvent });
+                window.UpdateLayout();
+                Assert.True(window.CatalogScrollViewer.VerticalOffset < scrolledOffset);
+                window.CatalogScrollViewer.ScrollToBottom();
+                window.UpdateLayout();
+                var bottomOffset = window.CatalogScrollViewer.VerticalOffset;
+                var widget = Assert.IsType<System.Windows.Controls.ListBoxItem>(window.ComponentsList.ItemContainerGenerator.ContainerFromIndex(0));
+                widget.RaiseEvent(new System.Windows.Input.MouseWheelEventArgs(
+                    System.Windows.Input.InputManager.Current.PrimaryMouseDevice, Environment.TickCount, 120)
+                { RoutedEvent = UIElement.PreviewMouseWheelEvent });
+                window.UpdateLayout();
+                Assert.True(window.CatalogScrollViewer.VerticalOffset < bottomOffset);
                 window.Close();
                 application.Shutdown();
             }

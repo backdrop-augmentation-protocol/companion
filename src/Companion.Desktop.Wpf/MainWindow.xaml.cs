@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Bap.Companion.Core;
@@ -112,6 +113,21 @@ public partial class MainWindow : Window
     }
 
     private void InstalledNav_Click(object sender, RoutedEventArgs e) => SelectPage(InstalledPage, InstalledNav);
+
+    private void CatalogList_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (CatalogScrollViewer.ScrollableHeight <= 0) return;
+        var lines = SystemParameters.WheelScrollLines;
+        if (lines == 0) return;
+        e.Handled = true;
+        if (lines < 0)
+        {
+            if (e.Delta > 0) CatalogScrollViewer.PageUp();
+            else CatalogScrollViewer.PageDown();
+        }
+        else CatalogScrollViewer.ScrollToVerticalOffset(
+            CatalogScrollViewer.VerticalOffset - e.Delta / 120.0 * lines * 16);
+    }
     private void PresetsNav_Click(object sender, RoutedEventArgs e) => SelectPage(PresetsPage, PresetsNav);
     private void SettingsNav_Click(object sender, RoutedEventArgs e) => SelectPage(SettingsPage, SettingsNav);
     private void RefreshButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(RefreshAsync);
