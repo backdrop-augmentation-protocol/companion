@@ -365,13 +365,4 @@ public sealed class CoreTests
         finally { if (Directory.Exists(steam)) Directory.Delete(steam, true); }
     }
 
-    [Fact]
-    public void ResourceTicketIsScopedToComponent()
-    {
-        var tickets = new ResourceTickets();
-        var ticket = tickets.Create("org.example.clock", TimeSpan.FromMinutes(1));
-        Assert.True(tickets.Accepts(ticket, "org.example.clock"));
-        Assert.False(tickets.Accepts(ticket, "org.example.other"));
-        Assert.False(tickets.Accepts("invalid", "org.example.clock"));
-    }
 }

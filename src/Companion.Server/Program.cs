@@ -7,7 +7,6 @@ using Bap.Companion.Core;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton(new CompanionOptions());
 builder.Services.AddSingleton<ISessionStore, InMemorySessionStore>();
-builder.Services.AddSingleton<ResourceTickets>();
 builder.Services.AddSingleton(_ => new JsonPresetStore(JsonPresetStore.DefaultPath));
 builder.Services.AddSingleton(_ => InstalledCatalog.FromEnvironment());
 builder.Services.AddSingleton<IWorkshopComponentSource>(_ => new WorkshopDirectorySource(() => WorkshopRoots.FromEnvironment()));
@@ -74,31 +73,6 @@ app.MapGet("/v1/components/{id}/resources/{**resourcePath}", async (string id, s
         if (!WorkshopResourceResolver.TryResolve(component, resourcePath, out var path)) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "resource was not found");
         return Results.File(path, ContentType(path), enableRangeProcessing: true);
     });
-});
-
-app.MapPost("/v1/components/{id}/launch", async (string id, HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, ResourceTickets tickets, CancellationToken ct) =>
-    await Authenticated(request, sessions, "component.discovery", async () =>
-    {
-        var component = await source.GetAsync(id, ct);
-        if (component is null || !component.Manifest.Entrypoints.TryGetValue("embedded", out var entrypoint))
-            return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "embedded component was not found");
-        var relative = entrypoint.TrimStart('.', '/');
-        if (!WorkshopResourceResolver.TryResolve(component, relative, out _))
-            return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "embedded entrypoint was not found");
-        var ticket = tickets.Create(id, TimeSpan.FromHours(8));
-        var baseUrl = $"http://127.0.0.1:{request.Host.Port ?? 4311}/v1/content/{ticket}/{Uri.EscapeDataString(id)}/";
-        return Results.Ok(new { url = baseUrl + string.Join('/', relative.Split('/').Select(Uri.EscapeDataString)) });
-    }));
-
-app.MapGet("/v1/content/{ticket}/{id}/{**resourcePath}", async (string ticket, string id, string? resourcePath, HttpContext context, IWorkshopComponentSource source, ResourceTickets tickets, CancellationToken ct) =>
-{
-    context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    context.Response.Headers.CacheControl = "no-store";
-    if (!tickets.Accepts(ticket, id)) return Error(StatusCodes.Status401Unauthorized, "UNAUTHORIZED", "resource ticket is invalid");
-    var component = await source.GetAsync(id, ct);
-    if (component is null || !WorkshopResourceResolver.TryResolve(component, resourcePath, out var path))
-        return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "resource was not found");
-    return Results.File(path, ContentType(path), enableRangeProcessing: true);
 });
 
 app.MapGet("/v1/config", async (HttpRequest request, IConfigStore store, ISessionStore sessions, CancellationToken ct) =>
