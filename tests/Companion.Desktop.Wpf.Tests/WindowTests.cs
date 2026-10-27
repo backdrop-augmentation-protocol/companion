@@ -29,9 +29,16 @@ public sealed class WindowTests
                 using var log = new CompanionLog(Path.Combine(directory, "companion.log"));
                 var window = new MainWindow(log, 4312, settings);
                 Assert.Equal("Installed", window.InstalledNav.Content);
-                settings.SetLanguage("zh-CN");
+                window.Measure(new System.Windows.Size(1220, 790));
+                window.Arrange(new Rect(0, 0, 1220, 790));
+                window.UpdateLayout();
+                Assert.True(window.LanguageChoice.ApplyTemplate());
+                Assert.NotNull(window.LanguageChoice.Template.FindName("PART_Popup", window.LanguageChoice));
+                window.LanguageChoice.SelectedIndex = 1;
+                Assert.Equal("zh-CN", settings.Language);
                 Assert.Equal("已安装", window.InstalledNav.Content);
-                settings.SetLanguage("en");
+                window.LanguageChoice.SelectedIndex = 0;
+                Assert.Equal("en", settings.Language);
                 Assert.Equal("Settings", window.SettingsNav.Content);
                 Assert.Equal(0, window.EffectiveDisplayIndex);
                 settings.SetDisplayIndex(99);

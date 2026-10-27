@@ -12,7 +12,6 @@ using ListBox = System.Windows.Controls.ListBox;
 using TextBox = System.Windows.Controls.TextBox;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
-using Color = System.Windows.Media.Color;
 
 namespace Bap.Companion.Desktop.Wpf;
 
@@ -93,7 +92,7 @@ public partial class MainWindow : Window
         SettingsPage.Visibility = page == SettingsPage ? Visibility.Visible : Visibility.Collapsed;
         foreach (var button in new[] { InstalledNav, PresetsNav, SettingsNav })
         {
-            button.Background = button == nav ? new SolidColorBrush(Color.FromRgb(235, 238, 255)) : Brushes.Transparent;
+            button.Background = button == nav ? (Brush)FindResource("NavSelected") : Brushes.Transparent;
             button.Foreground = button == nav ? (Brush)FindResource("Accent") : (Brush)FindResource("Muted");
         }
     }
