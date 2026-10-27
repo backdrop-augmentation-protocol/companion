@@ -67,12 +67,17 @@ public sealed class WindowTests
                     Assert.True(choice.IsEnabled);
                     Assert.True(choice.IsLoaded);
                     choice.ApplyTemplate();
+                    var button = Assert.IsType<System.Windows.Controls.Button>(choice.Template.FindName("DropDownButton", choice));
                     var popup = Assert.IsType<System.Windows.Controls.Primitives.Popup>(choice.Template.FindName("PART_Popup", choice));
                     Assert.False(choice.IsDropDownOpen);
                     choice.IsDropDownOpen = true;
+                    Assert.True(choice.IsDropDownOpen, $"{choice.Name} cannot open through its template");
+                    choice.IsDropDownOpen = false;
+                    button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     Assert.True(choice.IsDropDownOpen);
                     Assert.True(popup.IsOpen);
-                    choice.IsDropDownOpen = false;
+                    button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    Assert.False(choice.IsDropDownOpen);
                     Assert.False(popup.IsOpen);
                 }
                 Assert.Equal(0, window.EffectiveDisplayIndex);

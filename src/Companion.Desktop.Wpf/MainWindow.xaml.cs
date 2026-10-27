@@ -54,6 +54,12 @@ public partial class MainWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void DropDownButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { TemplatedParent: System.Windows.Controls.ComboBox choice })
+            choice.IsDropDownOpen = !choice.IsDropDownOpen;
+    }
+
     private void UpdateMaximizeButton()
     {
         MaximizeButton.Content = WindowState == WindowState.Maximized ? "❐" : "□";
