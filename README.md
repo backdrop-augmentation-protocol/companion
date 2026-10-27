@@ -35,6 +35,8 @@ The service runs without a console window. The current and previous rolling
 logs are in `%LOCALAPPDATA%\BAP Companion\logs` and can be opened from Settings.
 
 Run the service alone with `dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311`.
+The service accepts requests only from loopback clients using a loopback Host
+name, even if its listening URL is configured more broadly.
 
 ## End-to-end smoke test
 

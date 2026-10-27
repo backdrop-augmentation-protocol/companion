@@ -26,6 +26,7 @@ Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 `%LOCALAPPDATA%\BAP Companion\logs`，可从设置页打开。
 
 单独启动服务时使用 `dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311`。
+即使将监听地址配置得更宽，服务也只接受来自回环地址、且 Host 名称为回环地址的请求。
 
 ## 端到端冒烟测试
 

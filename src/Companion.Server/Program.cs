@@ -1,4 +1,5 @@
 using System.Net.WebSockets;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -16,6 +17,19 @@ builder.Services.AddCors(options => options.AddPolicy("local-companion", policy 
     .AllowAnyHeader()
     .AllowAnyMethod()));
 var app = builder.Build();
+app.Use(async (context, next) =>
+{
+    var remote = context.Connection.RemoteIpAddress;
+    if (remote?.IsIPv4MappedToIPv6 == true) remote = remote.MapToIPv4();
+    var host = context.Request.Host.Host;
+    if (remote is null || !IPAddress.IsLoopback(remote) ||
+        host != "127.0.0.1" && host != "::1" && !string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+    await next(context);
+});
 app.UseWebSockets();
 app.UseCors("local-companion");
 
