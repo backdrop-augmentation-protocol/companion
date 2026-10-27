@@ -25,6 +25,11 @@ public sealed class WindowTests
                 {
                     Source = new Uri("pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.xaml")
                 });
+                using var iconStream = System.Windows.Application.GetResourceStream(
+                    new Uri("pack://application:,,,/Bap.Companion.Desktop;component/Assets/bap-companion.ico"))?.Stream;
+                Assert.NotNull(iconStream);
+                using var trayIcon = new System.Drawing.Icon(iconStream);
+                Assert.True(trayIcon.Width > 0);
                 var settings = new DesktopSettings(Path.Combine(directory, "desktop.json"), synchronizeStartup: false);
                 using var log = new CompanionLog(Path.Combine(directory, "companion.log"));
                 var window = new MainWindow(log, 4312, settings);
