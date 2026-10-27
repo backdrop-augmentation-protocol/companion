@@ -1,0 +1,18 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet test Companion.slnx --configuration Release
+      - run: dotnet publish src/Companion.Server/Companion.Server.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/ci-server
+      - run: dotnet publish src/Companion.Desktop.Wpf/Companion.Desktop.Wpf.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/ci-desktop
