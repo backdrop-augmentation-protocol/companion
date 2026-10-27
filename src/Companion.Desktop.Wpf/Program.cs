@@ -50,6 +50,8 @@ internal sealed class CompanionLifetime : IDisposable
     private readonly Process server;
     private readonly MainWindow window;
     private readonly Forms.NotifyIcon tray;
+    private readonly System.Drawing.Icon trayIcon;
+    private readonly Stream trayIconStream;
     private readonly Forms.ContextMenuStrip menu;
     private readonly Forms.ToolStripItem openItem;
     private readonly Forms.ToolStripItem healthItem;
@@ -76,7 +78,10 @@ internal sealed class CompanionLifetime : IDisposable
         exitItem = menu.Items.Add("", null, (_, _) => Exit());
         UpdateTrayLanguage();
         settings.LanguageChanged += OnLanguageChanged;
-        tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "BAP Companion", ContextMenuStrip = menu, Visible = true };
+        trayIconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/bap-companion.ico"))?.Stream
+            ?? throw new InvalidOperationException("BAP Companion icon resource is missing.");
+        trayIcon = new System.Drawing.Icon(trayIconStream);
+        tray = new Forms.NotifyIcon { Icon = trayIcon, Text = "BAP Companion", ContextMenuStrip = menu, Visible = true };
         tray.DoubleClick += (_, _) => ShowWindow();
 
         activationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -130,6 +135,8 @@ internal sealed class CompanionLifetime : IDisposable
         settings.LanguageChanged -= OnLanguageChanged;
         tray.Visible = false;
         tray.Dispose();
+        trayIcon.Dispose();
+        trayIconStream.Dispose();
         menu.Dispose();
         if (!server.HasExited) server.Kill(true);
         server.Dispose();

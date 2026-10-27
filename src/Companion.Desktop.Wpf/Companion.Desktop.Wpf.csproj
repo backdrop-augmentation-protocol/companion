@@ -7,8 +7,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Bap.Companion.Desktop</AssemblyName>
+    <ApplicationIcon>Assets\bap-companion.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets\bap-logo.png" />
+    <Resource Include="Assets\bap-companion.ico" />
     <ProjectReference Include="..\Companion.Core\Companion.Core.csproj" />
     <InternalsVisibleTo Include="Companion.Desktop.Wpf.Tests" />
     <Compile Include="..\Companion.Desktop\DesktopSettings.cs" Link="Shared\DesktopSettings.cs" />
