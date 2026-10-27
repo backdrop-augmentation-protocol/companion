@@ -241,6 +241,59 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void PackageFilesRejectLinksOutsideThePackage()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), $"bap-package-links-{Guid.NewGuid():N}");
+        var root = Path.Combine(parent, "package");
+        var outside = Path.Combine(parent, "outside");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(root, "valid.html"), "ok");
+        File.WriteAllText(Path.Combine(outside, "private.html"), "outside");
+        File.WriteAllText(Path.Combine(outside, "preview.jpg"), "outside");
+        var directoryLink = Path.Combine(root, "linked-directory");
+        var fileLink = Path.Combine(root, "linked-preview.jpg");
+        var component = new ComponentDescriptor(new ComponentManifest(new("bap", "0.1.0", "core"), "org.example.clock", "1.0.0", "Clock", "component", [], new Dictionary<string, string> { ["default"] = "valid.html", ["standalone"] = "valid.html", ["embedded"] = "valid.html" }, ["standalone", "embedded"]), root);
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                // Junction creation does not require the developer-mode symlink privilege.
+                using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe")
+                {
+                    Arguments = $"/c mklink /J \"{directoryLink}\" \"{outside}\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true
+                });
+                Assert.NotNull(process);
+                process.WaitForExit();
+                Assert.True(process.ExitCode == 0, $"mklink failed: {process.StandardOutput.ReadToEnd()} {process.StandardError.ReadToEnd()}");
+            }
+            else
+            {
+                Directory.CreateSymbolicLink(directoryLink, outside);
+                File.CreateSymbolicLink(fileLink, Path.Combine(outside, "preview.jpg"));
+            }
+            Assert.True(WorkshopResourceResolver.TryResolve(component, "valid.html", out _));
+            Assert.False(WorkshopResourceResolver.TryResolve(component, "linked-directory/private.html", out _));
+            Assert.Null(InstalledCatalog.ResolvePreviewPath(root, "linked-directory/preview.jpg"));
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.False(WorkshopResourceResolver.TryResolve(component, "linked-preview.jpg", out _));
+                Assert.Null(InstalledCatalog.ResolvePreviewPath(root, "linked-preview.jpg"));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(directoryLink)) Directory.Delete(directoryLink);
+            if (File.Exists(fileLink)) File.Delete(fileLink);
+            Directory.Delete(parent, true);
+        }
+    }
+
+    [Fact]
     public void SteamWorkshopLocatorReadsLibraryFolders()
     {
         var root = Path.Combine(Path.GetTempPath(), $"bap-steam-{Guid.NewGuid():N}");

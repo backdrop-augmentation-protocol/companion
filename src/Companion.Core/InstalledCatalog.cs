@@ -118,12 +118,9 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(preview) || Path.IsPathRooted(preview)) return null;
-            var root = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            var path = Path.GetFullPath(Path.Combine(root, preview));
-            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return null;
+            if (!PackagePathResolver.TryResolveFile(directory, preview, out var path)) return null;
             if (!new[] { ".png", ".jpg", ".jpeg", ".gif", ".bmp" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)) return null;
-            return File.Exists(path) ? path : null;
+            return path;
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { return null; }
     }
