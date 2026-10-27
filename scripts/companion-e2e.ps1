@@ -24,21 +24,6 @@ $session = Invoke-RestMethod "$BaseUrl/v1/session" -Method Post -ContentType "ap
 if ([string]::IsNullOrWhiteSpace($session.accessToken)) { throw "session did not return an access token" }
 $headers = @{ Authorization = "Bearer $($session.accessToken)" }
 
-$components = Invoke-RestMethod "$BaseUrl/v1/components" -Headers $headers
-$before = Invoke-RestMethod "$BaseUrl/v1/config" -Headers $headers
-$values = @{ locale = "zh-CN"; showSeconds = $false }
-$payload = $values | ConvertTo-Json -Depth 5
-$http = [System.Net.Http.HttpClient]::new()
-$request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Put, "$BaseUrl/v1/config/wallpapers/$WallpaperId")
-$request.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $session.accessToken)
-$request.Content = [System.Net.Http.StringContent]::new($payload, [Text.Encoding]::UTF8, "application/json")
-$putResponse = $http.SendAsync($request).GetAwaiter().GetResult()
-if (-not $putResponse.IsSuccessStatusCode) { throw "wallpaper config update failed with HTTP $([int]$putResponse.StatusCode)" }
-$request.Dispose(); $putResponse.Dispose(); $http.Dispose()
-$after = Invoke-RestMethod "$BaseUrl/v1/config" -Headers $headers
-Assert-Equal $after.wallpapers.$WallpaperId.locale "zh-CN" "wallpaper locale"
-Assert-Equal ([bool]$after.wallpapers.$WallpaperId.showSeconds) $false "wallpaper seconds setting"
-
 $ws = [System.Net.WebSockets.ClientWebSocket]::new()
 $wsUri = [Uri]("ws://$(([Uri]$BaseUrl).Authority)/v1/ws?token=" + [Uri]::EscapeDataString($session.accessToken))
 $ws.ConnectAsync($wsUri, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
@@ -67,6 +52,20 @@ Assert-Equal $response.result.role "companion" "companion role"
 Assert-Equal $response.result.selectedProtocol.version "0.1.0" "selected protocol"
 Assert-Equal $response.sessionId $session.sessionId "session id"
 if ($response.result.permissions.Count -lt 2) { throw "Companion did not grant expected permissions" }
+$components = Invoke-RestMethod "$BaseUrl/v1/components" -Headers $headers
+$before = Invoke-RestMethod "$BaseUrl/v1/config" -Headers $headers
+$values = @{ locale = "zh-CN"; showSeconds = $false }
+$payload = $values | ConvertTo-Json -Depth 5
+$http = [System.Net.Http.HttpClient]::new()
+$request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Put, "$BaseUrl/v1/config/wallpapers/$WallpaperId")
+$request.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $session.accessToken)
+$request.Content = [System.Net.Http.StringContent]::new($payload, [Text.Encoding]::UTF8, "application/json")
+$putResponse = $http.SendAsync($request).GetAwaiter().GetResult()
+if (-not $putResponse.IsSuccessStatusCode) { throw "wallpaper config update failed with HTTP $([int]$putResponse.StatusCode)" }
+$request.Dispose(); $putResponse.Dispose(); $http.Dispose()
+$after = Invoke-RestMethod "$BaseUrl/v1/config" -Headers $headers
+Assert-Equal $after.wallpapers.$WallpaperId.locale "zh-CN" "wallpaper locale"
+Assert-Equal ([bool]$after.wallpapers.$WallpaperId.showSeconds) $false "wallpaper seconds setting"
 $ws.Dispose()
 
 [pscustomobject]@{

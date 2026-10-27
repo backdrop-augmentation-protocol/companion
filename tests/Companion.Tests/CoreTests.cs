@@ -153,7 +153,16 @@ public sealed class CoreTests
         var session = store.Create("host", TimeSpan.FromMinutes(1));
         Assert.True(store.TryGet(session.Token, out var found));
         Assert.Equal(session.Id, found.Id);
+        Assert.Empty(found.GrantedPermissions);
+        Assert.True(store.SetPermissions(session.Token, ["component.discovery", "config.read"]));
+        Assert.True(store.TryGet(session.Token, out found));
+        Assert.Contains("config.read", found.GrantedPermissions);
+        Assert.DoesNotContain("config.write", found.GrantedPermissions);
+        store.ClearPermissions(session.Token);
+        Assert.True(store.TryGet(session.Token, out found));
+        Assert.Empty(found.GrantedPermissions);
         Assert.False(store.TryGet("invalid", out _));
+        Assert.False(store.SetPermissions("invalid", ["config.write"]));
     }
 
     [Fact]

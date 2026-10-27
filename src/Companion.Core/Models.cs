@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace Bap.Companion.Core;
 
-public sealed record Session(string Id, string Token, DateTimeOffset ExpiresAt, string ClientKind);
+public sealed record Session(string Id, string Token, DateTimeOffset ExpiresAt, string ClientKind, IReadOnlyCollection<string> GrantedPermissions);
 
 public sealed record SessionRequest(string ClientName, string ClientKind, ProtocolDescriptor? Protocol = null);
 

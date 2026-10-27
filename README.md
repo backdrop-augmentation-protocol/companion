@@ -49,6 +49,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 
 The check covers health, bearer session creation, authenticated component
 discovery, wallpaper configuration persistence, and the Host/Companion hello
 handshake with permission negotiation.
+HTTP component and configuration endpoints require both a valid Bearer token
+and the corresponding permission granted by a live WebSocket `hello` session.
+Session creation alone grants no access; closing the WebSocket clears its grants.
 
 ## Installed content discovery
 
