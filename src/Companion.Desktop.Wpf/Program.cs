@@ -16,19 +16,47 @@ internal static class Program
 #endif
         if (uiPreview)
         {
+            var previewLog = new CompanionLog(Path.Combine(Path.GetTempPath(), "bap-companion-ui-preview.log"));
+            previewLog.Write("boot", $"Desktop (WPF) preview UI starting; args=[{string.Join(" ", args)}]");
             var preview = CreateApplication();
-            using var previewLog = new CompanionLog(Path.Combine(Path.GetTempPath(), "bap-companion-ui-preview.log"));
-            preview.Run(new MainWindow(previewLog, 4311, new DesktopSettings(synchronizeStartup: false)));
+            try { preview.Run(new MainWindow(previewLog, 4311, new DesktopSettings(synchronizeStartup: false))); }
+            catch (Exception error) { previewLog.Write("boot-error", $"Preview UI failed: {error}"); throw; }
+            previewLog.Write("boot", "Preview UI exited.");
             return;
         }
+        var log = new CompanionLog();
+        log.Write("boot", $"Desktop (WPF) starting; args=[{string.Join(" ", args)}]");
         using var singleInstance = new Mutex(true, @"Local\BAP.Companion.Desktop", out var firstInstance);
         using var activation = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\BAP.Companion.Activate");
-        if (!firstInstance) { activation.Set(); return; }
-
-        var application = CreateApplication();
-        application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        using var context = new CompanionLifetime(application, activation, args);
-        application.Run();
+        if (!firstInstance)
+        {
+            log.Write("boot", "Another instance is already running; activating it and exiting.");
+            activation.Set();
+            try
+            {
+                System.Windows.MessageBox.Show(
+                    "BAP Companion 已在运行。\n\nBAP Companion is already running.",
+                    "BAP Companion", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+            }
+            catch { }
+            log.Dispose();
+            return;
+        }
+        log.Write("boot", "Single instance acquired.");
+        try
+        {
+            var application = CreateApplication();
+            application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            using var context = new CompanionLifetime(application, activation, args, log);
+            log.Write("boot", "Companion lifetime created; running application loop.");
+            application.Run();
+            log.Write("boot", "Application loop exited cleanly.");
+        }
+        catch (Exception error)
+        {
+            log.Write("boot-error", $"Startup failed: {error}");
+            throw;
+        }
     }
 
     private static System.Windows.Application CreateApplication()
@@ -56,15 +84,17 @@ internal sealed class CompanionLifetime : IDisposable
     private readonly DispatcherTimer activationTimer;
     private bool exiting;
 
-    public CompanionLifetime(System.Windows.Application application, EventWaitHandle activation, string[] args)
+    public CompanionLifetime(System.Windows.Application application, EventWaitHandle activation, string[] args, CompanionLog log)
     {
         this.application = application;
+        this.log = log;
         var portIndex = Array.IndexOf(args, "--port");
         var port = portIndex >= 0 && portIndex + 1 < args.Length && int.TryParse(args[portIndex + 1], out var parsed) ? parsed : 4311;
         settings = new DesktopSettings();
-        log = new CompanionLog();
         log.Write("desktop", "Starting Companion WPF front end");
+        log.Write("boot", $"Starting server subprocess on port {port}.");
         server = StartServer(port);
+        log.Write("boot", $"Server subprocess started (pid={server.Id}).");
         window = new MainWindow(log, port, settings);
         window.Closing += (_, eventArgs) => { if (!exiting) { eventArgs.Cancel = true; window.Hide(); } };
 
@@ -85,6 +115,7 @@ internal sealed class CompanionLifetime : IDisposable
         activationTimer.Tick += (_, _) => { if (activation.WaitOne(0)) ShowWindow(); };
         activationTimer.Start();
         if (!args.Contains("--background")) ShowWindow();
+        log.Write("boot", "Tray and window initialized; desktop ready.");
     }
 
     private void OnLanguageChanged(object? sender, EventArgs e) => UpdateTrayLanguage();
@@ -113,7 +144,7 @@ internal sealed class CompanionLifetime : IDisposable
     private Process StartServer(int port)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "server", "Bap.Companion.Server.exe");
-        if (!File.Exists(path)) throw new FileNotFoundException("Companion Server was not found in the server subdirectory.", path);
+        if (!File.Exists(path)) { log.Write("boot-error", $"Server executable not found at {path}."); throw new FileNotFoundException("Companion Server was not found in the server subdirectory.", path); }
         var start = new ProcessStartInfo(path)
         {
             WorkingDirectory = Path.GetDirectoryName(path), UseShellExecute = false,
@@ -121,7 +152,9 @@ internal sealed class CompanionLifetime : IDisposable
         };
         start.ArgumentList.Add("--urls");
         start.ArgumentList.Add($"http://127.0.0.1:{port}");
-        var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion Server.");
+        Process process;
+        try { process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion Server."); }
+        catch (Exception error) { log.Write("boot-error", $"Failed to launch server subprocess: {error}"); throw; }
         log.Capture(process);
         return process;
     }

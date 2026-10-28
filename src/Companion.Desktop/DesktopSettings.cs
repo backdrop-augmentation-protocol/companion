@@ -29,7 +29,12 @@ internal sealed class DesktopSettings
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             { StartupError = error.Message; }
         }
-        if (!File.Exists(this.path)) Save(preferences);
+        if (!File.Exists(this.path))
+        {
+            try { Save(preferences); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            { StartupError = StartupError ?? error.Message; }
+        }
     }
 
     public void SetLanguage(string language)

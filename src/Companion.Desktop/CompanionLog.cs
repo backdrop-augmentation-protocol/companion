@@ -5,7 +5,7 @@ namespace Bap.Companion.Desktop;
 internal sealed class CompanionLog : IDisposable
 {
     private readonly object gate = new();
-    private StreamWriter writer;
+    private StreamWriter? writer;
     public string Path { get; }
 
     public CompanionLog(string? path = null)
@@ -13,11 +13,21 @@ internal sealed class CompanionLog : IDisposable
         var directory = path is null
             ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BAP Companion", "logs")
             : System.IO.Path.GetDirectoryName(path)!;
-        Directory.CreateDirectory(directory);
         Path = path ?? System.IO.Path.Combine(directory, "companion.log");
-        if (File.Exists(Path) && new FileInfo(Path).Length > 5 * 1024 * 1024)
-            File.Move(Path, System.IO.Path.Combine(directory, "companion.previous.log"), true);
-        writer = OpenWriter();
+        // If the log directory or file cannot be created/written, drop logging instead of
+        // crashing the application startup.
+        try
+        {
+            Directory.CreateDirectory(directory);
+            if (File.Exists(Path) && new FileInfo(Path).Length > 5 * 1024 * 1024)
+                File.Move(Path, System.IO.Path.Combine(directory, "companion.previous.log"), true);
+            writer = OpenWriter();
+        }
+        catch (Exception)
+        {
+            writer = null;
+            Path = string.Empty;
+        }
     }
 
     public void Write(string source, string line)
@@ -26,11 +36,19 @@ internal sealed class CompanionLog : IDisposable
         var sanitized = System.Text.RegularExpressions.Regex.Replace(line, @"(?i)(token=)[^&\s]+", "$1[redacted]");
         lock (gate)
         {
-            writer.WriteLine($"{DateTimeOffset.Now:O} [{source}] {sanitized}");
-            if (writer.BaseStream.Length <= 5 * 1024 * 1024) return;
-            writer.Dispose();
-            File.Move(Path, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!, "companion.previous.log"), true);
-            writer = OpenWriter();
+            if (writer is null) return;
+            try
+            {
+                writer.WriteLine($"{DateTimeOffset.Now:O} [{source}] {sanitized}");
+                if (writer.BaseStream.Length <= 5 * 1024 * 1024) return;
+                writer.Dispose();
+                File.Move(Path, System.IO.Path.GetDirectoryName(Path)! is { } dir ? System.IO.Path.Combine(dir, "companion.previous.log") : Path + ".previous", true);
+                writer = OpenWriter();
+            }
+            catch (Exception)
+            {
+                writer = null;
+            }
         }
     }
 
@@ -40,7 +58,7 @@ internal sealed class CompanionLog : IDisposable
         _ = Task.Run(async () => { while (await process.StandardError.ReadLineAsync() is { } line) Write("server-error", line); });
     }
 
-    public void Dispose() { lock (gate) writer.Dispose(); }
+    public void Dispose() { lock (gate) writer?.Dispose(); }
 
     private StreamWriter OpenWriter() => new(new FileStream(Path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)) { AutoFlush = true };
 }

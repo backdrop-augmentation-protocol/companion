@@ -14,7 +14,8 @@ builder.Services.AddSingleton<ISessionStore, InMemorySessionStore>();
 builder.Services.AddSingleton(_ => new JsonPresetStore(JsonPresetStore.DefaultPath));
 builder.Services.AddSingleton(_ => InstalledCatalog.FromEnvironment());
 builder.Services.AddSingleton<IWorkshopComponentSource>(_ => new WorkshopDirectorySource(() => WorkshopRoots.FromEnvironment()));
-builder.Services.AddSingleton<IConfigStore>(_ => new JsonConfigStore(Path.Combine(AppContext.BaseDirectory, "data", "config.json")));
+builder.Services.AddSingleton<IConfigStore>(_ => new JsonConfigStore(Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BAP Companion", "data", "config.json")));
 builder.Services.AddCors(options => options.AddPolicy("local-companion", policy => policy
     .SetIsOriginAllowed(IsAllowedOrigin)
     .AllowAnyHeader()

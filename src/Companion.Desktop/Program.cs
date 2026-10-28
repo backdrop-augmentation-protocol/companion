@@ -9,13 +9,41 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        var log = new CompanionLog();
+        log.Write("boot", $"Desktop (WinForms) starting; args=[{string.Join(" ", args)}]");
         using var singleInstance = new Mutex(true, @"Local\BAP.Companion.Desktop", out var firstInstance);
-        using var activation = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\BAP.Companion.Activate");
-        if (!firstInstance) { activation.Set(); return; }
-        ApplicationConfiguration.Initialize();
-        var settings = new DesktopSettings();
-        using var context = new CompanionContext(ParsePort(args), activation, args.Contains("--background"), settings);
-        Application.Run(context);
+        EventWaitHandle? activation = firstInstance
+            ? new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\BAP.Companion.Activate")
+            : null;
+        if (!firstInstance)
+        {
+            log.Write("boot", "Another instance is already running; activating it and exiting.");
+            activation?.Set();
+            activation?.Dispose();
+            try { MessageBox.Show("BAP Companion is already running.", "BAP Companion", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+            catch { }
+            log.Dispose();
+            return;
+        }
+        log.Write("boot", "Single instance acquired.");
+        try
+        {
+            ApplicationConfiguration.Initialize();
+            log.Write("boot", "Application configuration initialized.");
+            var settings = new DesktopSettings();
+            log.Write("boot", "Desktop settings loaded.");
+            var port = ParsePort(args);
+            log.Write("boot", $"Resolved listen port {port}.");
+            using var context = new CompanionContext(port, activation!, args.Contains("--background"), settings, log);
+            log.Write("boot", "Companion context created; running application loop.");
+            Application.Run(context);
+            log.Write("boot", "Application loop exited cleanly.");
+        }
+        catch (Exception error)
+        {
+            log.Write("boot-error", $"Startup failed: {error}");
+            throw;
+        }
     }
 
     private static int ParsePort(string[] args)
@@ -38,13 +66,15 @@ internal sealed class CompanionContext : ApplicationContext
     private readonly ToolStripItem healthItem;
     private readonly ToolStripItem exitItem;
 
-    public CompanionContext(int port, EventWaitHandle activation, bool background, DesktopSettings settings)
+    public CompanionContext(int port, EventWaitHandle activation, bool background, DesktopSettings settings, CompanionLog log)
     {
         this.port = port;
         this.settings = settings;
-        log = new CompanionLog();
+        this.log = log;
         log.Write("desktop", "Starting Companion");
+        log.Write("boot", $"Starting server subprocess on port {port}.");
         server = StartServer(port);
+        log.Write("boot", $"Server subprocess started (pid={server.Id}).");
         window = new MainForm(log, port, settings);
         window.FormClosing += (_, eventArgs) => { if (eventArgs.CloseReason == CloseReason.UserClosing) { eventArgs.Cancel = true; window.Hide(); } };
         var menu = new ContextMenuStrip();
@@ -60,6 +90,7 @@ internal sealed class CompanionContext : ApplicationContext
         activationTimer.Tick += (_, _) => { if (activation.WaitOne(0)) ShowWindow(); };
         activationTimer.Start();
         if (!background) ShowWindow();
+        log.Write("boot", "Tray and window initialized; desktop ready.");
     }
 
     private void ShowWindow()
@@ -93,12 +124,14 @@ internal sealed class CompanionContext : ApplicationContext
     private Process StartServer(int port)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "server", "Bap.Companion.Server.exe");
-        if (!File.Exists(path)) throw new FileNotFoundException("Companion Server was not found in the server subdirectory.", path);
+        if (!File.Exists(path)) { log.Write("boot-error", $"Server executable not found at {path}."); throw new FileNotFoundException("Companion Server was not found in the server subdirectory.", path); }
         var start = new ProcessStartInfo(path) { WorkingDirectory = Path.GetDirectoryName(path), UseShellExecute = false,
             CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         start.ArgumentList.Add("--urls");
         start.ArgumentList.Add($"http://127.0.0.1:{port}");
-        var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion Server.");
+        Process process;
+        try { process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion Server."); }
+        catch (Exception error) { log.Write("boot-error", $"Failed to launch server subprocess: {error}"); throw; }
         log.Capture(process);
         return process;
     }
