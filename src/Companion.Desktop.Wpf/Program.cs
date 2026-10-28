@@ -24,6 +24,13 @@ internal static class Program
             previewLog.Write("boot", "Preview UI exited.");
             return;
         }
+        // Surface logging failures through a dialog instead of failing silently.
+        CompanionLog.FallbackError = message =>
+        {
+            try { System.Windows.MessageBox.Show(message, "BAP Companion", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning); }
+            catch { }
+        };
+
         var log = new CompanionLog();
         log.Write("boot", $"Desktop (WPF) starting; args=[{string.Join(" ", args)}]");
         using var singleInstance = new Mutex(true, @"Local\BAP.Companion.Desktop", out var firstInstance);
@@ -55,6 +62,9 @@ internal static class Program
         catch (Exception error)
         {
             log.Write("boot-error", $"Startup failed: {error}");
+            // Fallback channel so the failure reason is shown even if the log file is unavailable.
+            try { System.Windows.MessageBox.Show($"BAP Companion failed to start.\n\n{error.Message}", "BAP Companion", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error); }
+            catch { }
             throw;
         }
     }

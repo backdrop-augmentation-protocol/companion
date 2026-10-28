@@ -14,6 +14,9 @@ builder.Services.AddSingleton<ISessionStore, InMemorySessionStore>();
 builder.Services.AddSingleton(_ => new JsonPresetStore(JsonPresetStore.DefaultPath));
 builder.Services.AddSingleton(_ => InstalledCatalog.FromEnvironment());
 builder.Services.AddSingleton<IWorkshopComponentSource>(_ => new WorkshopDirectorySource(() => WorkshopRoots.FromEnvironment()));
+// Store configuration under the per-user local data directory rather than next to the
+// executable, so the server can persist its settings even when the install location is
+// read-only (e.g. Program Files or a restricted deployment).
 builder.Services.AddSingleton<IConfigStore>(_ => new JsonConfigStore(Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BAP Companion", "data", "config.json")));
 builder.Services.AddCors(options => options.AddPolicy("local-companion", policy => policy

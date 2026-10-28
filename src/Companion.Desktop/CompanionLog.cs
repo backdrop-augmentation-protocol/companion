@@ -4,6 +4,11 @@ namespace Bap.Companion.Desktop;
 
 internal sealed class CompanionLog : IDisposable
 {
+    // Fallback reporting channel that does NOT depend on the log file. When logging cannot
+    // be initialized or written, the desktop front end can surface the reason to the user
+    // through a dialog instead of failing silently.
+    public static Action<string>? FallbackError;
+
     private readonly object gate = new();
     private StreamWriter? writer;
     public string Path { get; }
@@ -14,8 +19,9 @@ internal sealed class CompanionLog : IDisposable
             ? System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BAP Companion", "logs")
             : System.IO.Path.GetDirectoryName(path)!;
         Path = path ?? System.IO.Path.Combine(directory, "companion.log");
-        // If the log directory or file cannot be created/written, drop logging instead of
-        // crashing the application startup.
+        // If the log directory or file cannot be created/written, degrade to no logging
+        // instead of crashing startup, but report the reason through the fallback channel
+        // so the failure is visible to the user.
         try
         {
             Directory.CreateDirectory(directory);
@@ -23,10 +29,11 @@ internal sealed class CompanionLog : IDisposable
                 File.Move(Path, System.IO.Path.Combine(directory, "companion.previous.log"), true);
             writer = OpenWriter();
         }
-        catch (Exception)
+        catch (Exception error)
         {
             writer = null;
             Path = string.Empty;
+            FallbackError?.Invoke($"无法创建或写入日志（{directory}）：{error.Message}。本次运行将不记录日志。");
         }
     }
 
@@ -45,9 +52,10 @@ internal sealed class CompanionLog : IDisposable
                 File.Move(Path, System.IO.Path.GetDirectoryName(Path)! is { } dir ? System.IO.Path.Combine(dir, "companion.previous.log") : Path + ".previous", true);
                 writer = OpenWriter();
             }
-            catch (Exception)
+            catch (Exception error)
             {
                 writer = null;
+                FallbackError?.Invoke($"日志写入失败，后续日志将不再记录：{error.Message}");
             }
         }
     }
