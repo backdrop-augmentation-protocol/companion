@@ -1,6 +1,7 @@
 param(
     [string]$BaseUrl = "http://127.0.0.1:4311",
-    [string]$WallpaperId = "bap-host-wallpaper"
+    [string]$WallpaperId = "bap-host-wallpaper",
+    [string]$AuthorizationPipeName = "Bap.Companion.E2E"
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,6 +10,32 @@ Add-Type -AssemblyName System.Net.Http
 
 function Assert-Equal([object]$Actual, [object]$Expected, [string]$Name) {
     if ($Actual -ne $Expected) { throw "$Name expected '$Expected' but was '$Actual'" }
+}
+
+function Invoke-AuthorizationPipe([hashtable]$Request) {
+    $pipe = [System.IO.Pipes.NamedPipeClientStream]::new('.', $AuthorizationPipeName, [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::Asynchronous)
+    try {
+        $pipe.Connect(3000)
+        $reader = [System.IO.StreamReader]::new($pipe, [Text.Encoding]::UTF8, $false, 1024, $true)
+        $writer = [System.IO.StreamWriter]::new($pipe, [Text.Encoding]::UTF8, 1024, $true)
+        $writer.AutoFlush = $true
+        $writer.WriteLine(($Request | ConvertTo-Json -Depth 8 -Compress))
+        $responseLine = $reader.ReadLine()
+        if ([string]::IsNullOrWhiteSpace($responseLine)) { throw "Authorization pipe returned no response." }
+        return $responseLine | ConvertFrom-Json
+    }
+    finally { $pipe.Dispose() }
+}
+
+function Wait-ForPendingApproval([string]$SessionId) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $snapshot = Invoke-AuthorizationPipe @{ operation = 'snapshot' }
+        $request = @($snapshot.requests | Where-Object { $_.sessionId -eq $SessionId } | Select-Object -First 1)
+        if ($request.Count -gt 0) { return $request[0] }
+        Start-Sleep -Milliseconds 150
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Host approval request $SessionId did not arrive on the authorization pipe '$AuthorizationPipeName'. Start the Server with BAP_AUTHORIZATION_PIPE set to this name."
 }
 
 $health = Invoke-RestMethod "$BaseUrl/healthz"
@@ -24,9 +51,18 @@ $session = Invoke-RestMethod "$BaseUrl/v1/session" -Method Post -ContentType "ap
 if ([string]::IsNullOrWhiteSpace($session.accessToken)) { throw "session did not return an access token" }
 $headers = @{ Authorization = "Bearer $($session.accessToken)" }
 
+try {
+    Invoke-RestMethod "$BaseUrl/v1/components" -Headers $headers | Out-Null
+    throw "unapproved session unexpectedly accessed component discovery"
+}
+catch {
+    $statusCode = [int]$_.Exception.Response.StatusCode
+    if ($statusCode -ne 403) { throw }
+}
+
 $ws = [System.Net.WebSockets.ClientWebSocket]::new()
 $wsUri = [Uri]("ws://$(([Uri]$BaseUrl).Authority)/v1/ws?token=" + [Uri]::EscapeDataString($session.accessToken))
-$ws.ConnectAsync($wsUri, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
+$ws.ConnectAsync($wsUri, [Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
 $hello = @{
     protocol = @{ name = "bap"; version = "0.1.0"; profile = "core" }
     kind = "request"
@@ -43,6 +79,14 @@ $hello = @{
 } | ConvertTo-Json -Depth 8
 $bytes = [Text.Encoding]::UTF8.GetBytes($hello)
 $ws.SendAsync($bytes, [Net.WebSockets.WebSocketMessageType]::Text, $true, [Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
+$pending = Wait-ForPendingApproval $session.sessionId
+$approved = Invoke-AuthorizationPipe @{
+    operation = 'approve'
+    sessionId = $pending.sessionId
+    permissions = @('component.discovery', 'config.read', 'config.write')
+    remember = $false
+}
+if (-not $approved.success) { throw "Host approval decision could not be applied" }
 $buffer = New-Object byte[] 8192
 $received = $ws.ReceiveAsync($buffer, [Threading.CancellationToken]::None).GetAwaiter().GetResult()
 $response = [Text.Encoding]::UTF8.GetString($buffer, 0, $received.Count) | ConvertFrom-Json
@@ -66,6 +110,7 @@ $request.Dispose(); $putResponse.Dispose(); $http.Dispose()
 $after = Invoke-RestMethod "$BaseUrl/v1/config" -Headers $headers
 Assert-Equal $after.wallpapers.$WallpaperId.locale "zh-CN" "wallpaper locale"
 Assert-Equal ([bool]$after.wallpapers.$WallpaperId.showSeconds) $false "wallpaper seconds setting"
+$ws.CloseAsync([Net.WebSockets.WebSocketCloseStatus]::NormalClosure, "E2E complete", [Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
 $ws.Dispose()
 
 [pscustomobject]@{

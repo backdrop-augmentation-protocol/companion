@@ -30,14 +30,20 @@ Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 
 ## 端到端冒烟测试
 
-先在回环端口启动服务，再运行可重复的 HTTP 和 WebSocket 验收检查：
+先为服务配置本地授权控制管道并启动服务，再在第二个 PowerShell 窗口运行验收脚本。脚本会先确认未批准的会话令牌无法发现组件，再通过当前用户的管道显式批准测试 Host，随后继续进行 HTTP 与 WebSocket 检查。
 
 ```powershell
+$env:BAP_AUTHORIZATION_PIPE = 'Bap.Companion.E2E'
 dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
+```
+
+在第二个 PowerShell 窗口运行：
+
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 -BaseUrl http://127.0.0.1:4311
 ```
 
-检查覆盖健康状态、Bearer 会话、认证后的组件发现、壁纸配置持久化，以及带权限协商的 Host/Companion hello 握手。
+检查覆盖健康状态、Bearer 会话、未批准时拒绝组件发现、显式审批后的组件发现、壁纸配置持久化，以及带权限协商的 Host/Companion hello 握手。测试批准不会跨会话记住。
 组件和配置的 HTTP 接口既需要有效的 Bearer Token，也需要当前 WebSocket `hello`
 会话授予相应权限。单独创建会话不会授予访问权；WebSocket 关闭后权限清空。
 

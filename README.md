@@ -40,17 +40,26 @@ name, even if its listening URL is configured more broadly.
 
 ## End-to-end smoke test
 
-Start the server on a loopback port, then run the repeatable HTTP and WebSocket
-acceptance check:
+Start the server with a local authorization control pipe, then run the acceptance
+check from a second PowerShell window. The script confirms an unapproved token
+cannot discover components, approves its test Host through that current-user
+pipe, and continues through the HTTP and WebSocket checks.
 
 ```powershell
+$env:BAP_AUTHORIZATION_PIPE = 'Bap.Companion.E2E'
 dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
+```
+
+In a second PowerShell window:
+
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 -BaseUrl http://127.0.0.1:4311
 ```
 
 The check covers health, bearer session creation, authenticated component
 discovery, wallpaper configuration persistence, and the Host/Companion hello
-handshake with permission negotiation.
+handshake with permission negotiation. The test approval is explicit and is not
+remembered across sessions.
 HTTP component and configuration endpoints require both a valid Bearer token
 and the corresponding permission granted by a live WebSocket `hello` session.
 Session creation alone grants no access; closing the WebSocket clears its grants.
