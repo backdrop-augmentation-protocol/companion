@@ -6,6 +6,15 @@ Open-source official Windows Companion for discovering Workshop components, vali
 
 The Companion is optional and does not replace Wallpaper Engine as the rendering host.
 
+> **Experimental / limited preview — authorization source is not verified.** Host
+> identity and installation source are self-reported and are not independently
+> authenticated by Companion. Every new Host session, including reconnects,
+> requires manual approval; saved Host records do not bypass approval. Approve
+> only when you can independently identify the active Wallpaper Engine
+> wallpaper. This preview is not a verified authorization product for
+> unrestricted use with arbitrary third-party wallpapers. Official Host
+> auto-approval is disabled.
+
 ## Desktop app and local service
 
 The current implementation uses .NET 10 and ASP.NET Core Minimal API. The service binds to loopback when hosted by the desktop entry point and exposes:

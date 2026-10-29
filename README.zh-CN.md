@@ -6,6 +6,12 @@ BAP 官方开源 Windows Companion，用于发现 Workshop 组件、校验 Manif
 
 Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 
+> **实验性 / 受限预览：授权来源尚未验证。** Host 身份和安装来源由请求方自报，
+> Companion 不会独立认证。每个新的 Host 会话（包括断线重连）都需要人工批准；
+> 已保存的 Host 记录不会跳过审批。只有在你能独立确认 Wallpaper Engine 当前壁纸时
+> 才应批准。本预览版不是可不受限制地服务任意第三方壁纸的已验证授权产品。官方
+> Host 自动批准目前关闭。
+
 ## 桌面应用与本地服务
 
 当前实现使用 .NET 10 和 ASP.NET Core Minimal API。桌面入口托管服务时，服务绑定回环地址，并提供：
