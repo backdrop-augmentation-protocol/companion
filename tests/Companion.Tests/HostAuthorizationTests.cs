@@ -72,7 +72,11 @@ public sealed class HostAuthorizationTests
         Assert.True((await decision).Approved);
 
         var restarted = new HostAuthorizationQueue(new TrustedHostStore(path));
-        Assert.True(restarted.TryEnqueue(Request("session-b", ["component.discovery"]), out var remembered));
+        var spoofed = Request("session-b", ["component.discovery"]) with
+        {
+            ClaimedIdentity = new Identity("org.example.host", "Impostor", "9.9.9")
+        };
+        Assert.True(restarted.TryEnqueue(spoofed, out var remembered));
         Assert.False(remembered.IsCompleted);
         Assert.True(restarted.Approve("session-b", ["component.discovery"]));
         Assert.Equal(["component.discovery"], (await remembered).GrantedPermissions);
@@ -104,6 +108,8 @@ public sealed class HostAuthorizationTests
         Assert.True(sessions.SetPermissions(retained.Token, ["component.discovery"]));
 
         Assert.Equal(1, sessions.RevokeHost("org.example.host"));
+        Assert.True(revoked.RevocationToken.IsCancellationRequested);
+        Assert.False(retained.RevocationToken.IsCancellationRequested);
         Assert.False(sessions.TryGet(revoked.Token, out _));
         Assert.True(sessions.TryGet(retained.Token, out var remaining));
         Assert.Equal(["component.discovery"], remaining.GrantedPermissions);

@@ -118,15 +118,17 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
 {
     var token = GetToken(context.Request, allowQueryToken: true);
     if (token is null || !sessions.TryGet(token, out var session)) { context.Response.StatusCode = 401; return; }
+    using var sessionLifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, session.RevocationToken);
+    var sessionCancellation = sessionLifetime.Token;
     if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
     if (!IsAllowedOrigin(context.Request.Headers.Origin)) { context.Response.StatusCode = 403; return; }
     using var socket = await context.WebSockets.AcceptWebSocketAsync();
     var permissionsGranted = false;
     try
     {
-        var raw = await ReceiveTextAsync(socket, context.RequestAborted);
+        var raw = await ReceiveTextAsync(socket, sessionCancellation);
         if (raw is null || !TryReadMessage(raw, json, out var hello) || hello is null || hello.Kind != "request" || hello.Method != "hello" || string.IsNullOrWhiteSpace(hello.Id))
-        { await CloseProtocolError(socket, context.RequestAborted); return; }
+        { await CloseProtocolError(socket, sessionCancellation); return; }
         var payload = hello.Payload?.Deserialize<HostHelloPayload>(json);
         if (payload is null || payload.Identity is null ||
             string.IsNullOrWhiteSpace(payload.Identity.Id) || payload.Identity.Id.Length > 256 ||
@@ -135,15 +137,15 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
             payload.ProtocolVersions is null || payload.ProtocolVersions.Count > 16 ||
             payload.Capabilities?.Count > 32 || payload.RequestedPermissions?.Count > 32)
         {
-            await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, "INVALID_MESSAGE", "host hello fields are invalid"), context.RequestAborted);
-            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "invalid Host hello", context.RequestAborted);
+            await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, "INVALID_MESSAGE", "host hello fields are invalid"), sessionCancellation);
+            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "invalid Host hello", sessionCancellation);
             return;
         }
         if (payload.Role != "host" || !IsCompatible(hello.Protocol, options.Protocol) ||
             !payload.ProtocolVersions.Contains(options.Protocol.Version, StringComparer.Ordinal))
         {
-            await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, "UNSUPPORTED_VERSION", "host hello is not compatible"), context.RequestAborted);
-            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "unsupported protocol", context.RequestAborted); return;
+            await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, "UNSUPPORTED_VERSION", "host hello is not compatible"), sessionCancellation);
+            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "unsupported protocol", sessionCancellation); return;
         }
         var capabilities = (payload.Capabilities ?? []).Where(c => c is "component-discovery" or "config").Distinct().ToArray();
         var requestedPermissions = (payload.RequestedPermissions ?? []).Where(p =>
@@ -158,7 +160,7 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
             session.Id, payload.Identity.Id, payload.Identity.Name);
         authorizations.TryEnqueue(pendingRequest, out var decisionTask);
         HostAuthorizationDecision decision;
-        using (var approvalTimeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted))
+        using (var approvalTimeout = CancellationTokenSource.CreateLinkedTokenSource(sessionCancellation))
         {
             approvalTimeout.CancelAfter(TimeSpan.FromMinutes(5));
             try { decision = await decisionTask.WaitAsync(approvalTimeout.Token); }
@@ -166,14 +168,14 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
             {
                 authorizations.Cancel(session.Id);
                 if (!context.RequestAborted.IsCancellationRequested)
-                    await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, AuthorizationErrorCodes.TimedOut, "Host approval was not completed in time"), context.RequestAborted);
+                    await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, AuthorizationErrorCodes.TimedOut, "Host approval was not completed in time"), sessionCancellation);
                 return;
             }
         }
         if (!decision.Approved)
         {
-            await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, AuthorizationErrorCodes.Denied, "Host access was denied in Companion"), context.RequestAborted);
-            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Host approval denied", context.RequestAborted);
+            await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, AuthorizationErrorCodes.Denied, "Host access was denied in Companion"), sessionCancellation);
+            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Host approval denied", sessionCancellation);
             return;
         }
         var permissions = decision.GrantedPermissions;
@@ -182,25 +184,31 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
             capability == "config" && permissions.Any(permission => permission is "config.read" or "config.write"))
             .ToArray();
         if (!sessions.SetPermissions(token, permissions))
-        { await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "session expired", context.RequestAborted); return; }
+        { await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "session expired", sessionCancellation); return; }
         permissionsGranted = true;
         var result = new CompanionHelloPayload(options.Protocol, "companion", new(options.CompanionId, options.CompanionName, options.CompanionVersion), grantedCapabilities, permissions);
-        await SendAsync(socket, Response(options.Protocol, hello.Id, session.Id, result), context.RequestAborted);
+        await SendAsync(socket, Response(options.Protocol, hello.Id, session.Id, result), sessionCancellation);
         logger.LogInformation("Host session {SessionId} approved; Companion hello response sent with {PermissionCount} permissions", session.Id, permissions.Count);
-        while (socket.State == WebSocketState.Open && !context.RequestAborted.IsCancellationRequested)
+        while (socket.State == WebSocketState.Open && !sessionCancellation.IsCancellationRequested)
         {
-            var message = await ReceiveTextAsync(socket, context.RequestAborted);
+            var message = await ReceiveTextAsync(socket, sessionCancellation);
             if (message is null) break;
             if (!TryReadMessage(message, json, out var request) || request is null || request.Kind != "request" || string.IsNullOrWhiteSpace(request.Id))
-            { await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "valid BAP request required", context.RequestAborted); return; }
+            { await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "valid BAP request required", sessionCancellation); return; }
             if (request.SessionId != session.Id)
-            { await SendAsync(socket, ErrorResponse(options.Protocol, request.Id, session.Id, "UNAUTHORIZED", "session identifier does not match"), context.RequestAborted); continue; }
-            await SendAsync(socket, ErrorResponse(options.Protocol, request.Id, session.Id, "NOT_FOUND", $"method '{request.Method ?? ""}' is not supported"), context.RequestAborted);
+            { await SendAsync(socket, ErrorResponse(options.Protocol, request.Id, session.Id, "UNAUTHORIZED", "session identifier does not match"), sessionCancellation); continue; }
+            await SendAsync(socket, ErrorResponse(options.Protocol, request.Id, session.Id, "NOT_FOUND", $"method '{request.Method ?? ""}' is not supported"), sessionCancellation);
         }
     }
     catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
     {
         logger.LogDebug("Host WebSocket request aborted for session {SessionId}", session.Id);
+    }
+    catch (OperationCanceledException) when (session.RevocationToken.IsCancellationRequested)
+    {
+        logger.LogInformation("Host authorization revoked for session {SessionId}", session.Id);
+        if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+            await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Host authorization revoked", CancellationToken.None);
     }
     catch (WebSocketException error)
     {

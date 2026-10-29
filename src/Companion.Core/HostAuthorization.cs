@@ -127,11 +127,6 @@ public sealed class TrustedHostStore(string path)
 
     private readonly object gate = new();
 
-    public TrustedHost? Find(string id)
-    {
-        lock (gate) return Read().FirstOrDefault(host => string.Equals(host.Id, id, StringComparison.Ordinal));
-    }
-
     public IReadOnlyList<TrustedHost> List()
     {
         lock (gate) return Read();
