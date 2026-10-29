@@ -13,6 +13,16 @@ public sealed record HostAuthorizationRequest(
 
 public sealed record HostAuthorizationDecision(bool Approved, IReadOnlyCollection<string> GrantedPermissions);
 
+public sealed record AuthorizationControlRequest(
+    string Operation,
+    string? SessionId = null,
+    IReadOnlyCollection<string>? Permissions = null);
+
+public sealed record AuthorizationControlResponse(
+    bool Success,
+    IReadOnlyList<HostAuthorizationRequest> Requests,
+    string? Error = null);
+
 /// <summary>
 /// Holds explicit, session-scoped human decisions in memory. It does not persist trust.
 /// </summary>

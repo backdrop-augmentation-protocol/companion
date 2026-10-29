@@ -1,5 +1,7 @@
 using Bap.Companion.Desktop;
 using Bap.Companion.Core;
+using System.IO.Pipes;
+using System.Text.Json;
 using Xunit;
 
 namespace Companion.Desktop.Tests;
@@ -11,6 +13,52 @@ public sealed class DesktopTests
     {
         var path = Path.Combine(Path.GetTempPath(), $"bap-desktop-{Guid.NewGuid():N}.json");
         Assert.Equal(new DesktopPreferences("en", true), DesktopSettings.ReadPreferences(path));
+    }
+
+    [Fact]
+    public async Task AuthorizationClientExchangesSnapshotsAndExplicitDecisionsOverNamedPipe()
+    {
+        var name = $"Bap.Companion.Test.{Guid.NewGuid():N}";
+        var client = new HostAuthorizationClient(name);
+        var request = new HostAuthorizationRequest("session-1", new("example.host", "Example", "1.0"),
+            ["component-discovery"], ["component.discovery"], DateTimeOffset.UtcNow);
+        var snapshotServer = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var snapshotExchange = Task.Run(async () =>
+        {
+            await using (snapshotServer)
+            {
+                await snapshotServer.WaitForConnectionAsync();
+                using var reader = new StreamReader(snapshotServer, leaveOpen: true);
+                await using var writer = new StreamWriter(snapshotServer) { AutoFlush = true };
+                Assert.Equal("snapshot", JsonDocument.Parse(await reader.ReadLineAsync() ?? "{}").RootElement.GetProperty("operation").GetString());
+                var response = JsonSerializer.Serialize(new AuthorizationControlResponse(true, [request]), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                await writer.WriteLineAsync(response);
+            }
+        });
+
+        var pending = await client.GetPendingAsync();
+        await snapshotExchange;
+        Assert.Equal("session-1", Assert.Single(pending).SessionId);
+
+        var decisionServer = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var decisionExchange = Task.Run(async () =>
+        {
+            await using (decisionServer)
+            {
+                await decisionServer.WaitForConnectionAsync();
+                using var reader = new StreamReader(decisionServer, leaveOpen: true);
+                await using var writer = new StreamWriter(decisionServer) { AutoFlush = true };
+                using var message = JsonDocument.Parse(await reader.ReadLineAsync() ?? "{}");
+                Assert.Equal("approve", message.RootElement.GetProperty("operation").GetString());
+                Assert.Equal("session-1", message.RootElement.GetProperty("sessionId").GetString());
+                await writer.WriteLineAsync("{\"success\":true,\"requests\":[]}");
+            }
+        });
+
+        Assert.True(await client.DecideAsync("session-1", true, ["component.discovery"]));
+        await decisionExchange;
     }
 
     [Fact]

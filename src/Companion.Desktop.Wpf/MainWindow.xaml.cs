@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Bap.Companion.Core;
 using Bap.Companion.Desktop;
 using Forms = System.Windows.Forms;
@@ -29,12 +30,16 @@ public partial class MainWindow : Window
     private bool uiReady;
     private bool changingCatalogSelection;
     private bool changingDisplayChoice;
+    private readonly HostAuthorizationClient? authorizationClient;
+    private readonly DispatcherTimer authorizationTimer;
+    private bool showingAuthorizationPrompt;
 
-    internal MainWindow(CompanionLog log, int port, DesktopSettings settings)
+    internal MainWindow(CompanionLog log, int port, DesktopSettings settings, HostAuthorizationClient? authorizationClient = null)
     {
         this.log = log;
         this.port = port;
         this.settings = settings;
+        this.authorizationClient = authorizationClient;
         InitializeComponent();
         LanguageChoice.SelectedIndex = settings.Language == "zh-CN" ? 1 : 0;
         StartupCheck.IsChecked = settings.AutoStartEnabled;
@@ -46,6 +51,33 @@ public partial class MainWindow : Window
         uiReady = true;
         StateChanged += (_, _) => UpdateMaximizeButton();
         Loaded += async (_, _) => await RunActionAsync(RefreshAsync);
+        authorizationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        authorizationTimer.Tick += AuthorizationTimer_Tick;
+        if (authorizationClient is not null) authorizationTimer.Start();
+        Closed += (_, _) => authorizationTimer.Stop();
+    }
+
+    private async void AuthorizationTimer_Tick(object? sender, EventArgs e)
+    {
+        if (authorizationClient is null || showingAuthorizationPrompt) return;
+        try
+        {
+            var request = (await authorizationClient.GetPendingAsync()).FirstOrDefault();
+            if (request is null) return;
+            showingAuthorizationPrompt = true;
+            if (!IsVisible) Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate();
+            var approved = HostApprovalDialog.Show(this, request, settings.Language, out var permissions);
+            var applied = await authorizationClient.DecideAsync(request.SessionId, approved, permissions);
+            if (!applied) log.Write("authorization", $"Request {request.SessionId} was no longer pending when the decision was submitted.");
+            else log.Write("authorization", $"Host request {request.SessionId} {(approved ? "approved" : "denied")} for this session.");
+        }
+        catch (Exception error) when (error is IOException or TimeoutException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            log.Write("authorization", error.Message);
+        }
+        finally { showingAuthorizationPrompt = false; }
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -284,7 +316,7 @@ public partial class MainWindow : Window
             {
                 var item = items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId &&
                     (component.SourceKey is null || candidate.Key == component.SourceKey));
-                return new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}]" );
+                return new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}]");
             }).ToArray();
     }
 
@@ -392,9 +424,16 @@ public partial class MainWindow : Window
     {
         var dialog = new Window
         {
-            Title = title, Owner = this, Width = 390, Height = 168, MinWidth = 340,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize,
-            Background = Brushes.White, FontFamily = FontFamily, FontSize = FontSize
+            Title = title,
+            Owner = this,
+            Width = 390,
+            Height = 168,
+            MinWidth = 340,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            Background = Brushes.White,
+            FontFamily = FontFamily,
+            FontSize = FontSize
         };
         var input = new TextBox { Text = value, Margin = new Thickness(0, 0, 0, 16) };
         var ok = new Button { Content = "OK", Width = 84, Height = 34, IsDefault = true };

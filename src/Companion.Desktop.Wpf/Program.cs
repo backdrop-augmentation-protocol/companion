@@ -46,6 +46,7 @@ internal sealed class CompanionLifetime : IDisposable
     private readonly CompanionLog log;
     private readonly Process server;
     private readonly MainWindow window;
+    private readonly string authorizationPipeName;
     private readonly Forms.NotifyIcon tray;
     private readonly System.Drawing.Icon trayIcon;
     private readonly Stream trayIconStream;
@@ -64,8 +65,9 @@ internal sealed class CompanionLifetime : IDisposable
         settings = new DesktopSettings();
         log = new CompanionLog();
         log.Write("desktop", "Starting Companion WPF front end");
-        server = StartServer(port);
-        window = new MainWindow(log, port, settings);
+        authorizationPipeName = $"Bap.Companion.Authorization.{Guid.NewGuid():N}";
+        server = StartServer(port, authorizationPipeName);
+        window = new MainWindow(log, port, settings, new HostAuthorizationClient(authorizationPipeName));
         window.Closing += (_, eventArgs) => { if (!exiting) { eventArgs.Cancel = true; window.Hide(); } };
 
         menu = new Forms.ContextMenuStrip();
@@ -110,17 +112,21 @@ internal sealed class CompanionLifetime : IDisposable
         application.Shutdown();
     }
 
-    private Process StartServer(int port)
+    private Process StartServer(int port, string controlPipeName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "server", "Bap.Companion.Server.exe");
         if (!File.Exists(path)) throw new FileNotFoundException("Companion Server was not found in the server subdirectory.", path);
         var start = new ProcessStartInfo(path)
         {
-            WorkingDirectory = Path.GetDirectoryName(path), UseShellExecute = false,
-            CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+            WorkingDirectory = Path.GetDirectoryName(path),
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
         };
         start.ArgumentList.Add("--urls");
         start.ArgumentList.Add($"http://127.0.0.1:{port}");
+        start.Environment["BAP_AUTHORIZATION_PIPE"] = controlPipeName;
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion Server.");
         log.Capture(process);
         return process;
