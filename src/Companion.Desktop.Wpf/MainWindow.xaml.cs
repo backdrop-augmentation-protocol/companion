@@ -41,6 +41,7 @@ public partial class MainWindow : Window
         this.settings = settings;
         this.authorizationClient = authorizationClient;
         InitializeComponent();
+        StartupCheck.FocusVisualStyle = (Style)FindResource("NoFocusVisual");
         LanguageChoice.SelectedIndex = settings.Language == "zh-CN" ? 1 : 0;
         StartupCheck.IsChecked = settings.AutoStartEnabled;
         ServiceAddress.Text = $"Service: http://127.0.0.1:{port}";
@@ -183,7 +184,7 @@ public partial class MainWindow : Window
         catch (Exception error)
         {
             log.Write("desktop-error", error.ToString());
-            System.Windows.MessageBox.Show(this, error.Message, "BAP Companion", MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedDialog.ShowMessage(this, "BAP Companion", error.Message, settings.Language == "zh-CN" ? "确定" : "OK");
         }
     }
 
@@ -364,7 +365,8 @@ public partial class MainWindow : Window
     private void DeleteButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
     {
         var preset = SelectedPreset;
-        if (preset is null || System.Windows.MessageBox.Show(this, L("deletePreset", preset.Name), "BAP Companion", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+        if (preset is null || !ThemedDialog.Confirm(this, "BAP Companion", L("deletePreset", preset.Name),
+                settings.Language == "zh-CN" ? "删除" : "Delete", settings.Language == "zh-CN" ? "取消" : "Cancel")) return;
         await SaveAsync(state with
         {
             Presets = state.Presets.Where(item => item.Id != preset.Id).ToArray(),
@@ -380,7 +382,7 @@ public partial class MainWindow : Window
         if (preset is null || item?.BapId is null) return;
         if (preset.Components.Any(component => component.ComponentId == item.BapId))
         {
-            System.Windows.MessageBox.Show(this, L("duplicateComponent"));
+            ThemedDialog.ShowMessage(this, L("presets"), L("duplicateComponent"), settings.Language == "zh-CN" ? "确定" : "OK");
             return;
         }
         await ReplacePresetAsync(preset with { Components = [.. preset.Components, new(item.BapId, item.Key)] });
@@ -418,7 +420,7 @@ public partial class MainWindow : Window
         if (SelectedPreset is not { } preset) return;
         if ((HostChoice.SelectedItem as CatalogChoice)?.Item.BapId is not { } hostId)
         {
-            System.Windows.MessageBox.Show(this, L("selectHostFirst"));
+            ThemedDialog.ShowMessage(this, L("presets"), L("selectHostFirst"), settings.Language == "zh-CN" ? "确定" : "OK");
             return;
         }
         var bindings = new Dictionary<string, string>(state.HostPresetIds) { [hostId] = preset.Id };
@@ -435,28 +437,9 @@ public partial class MainWindow : Window
 
     private string? PromptForName(string title, string value = "")
     {
-        var dialog = new Window
-        {
-            Title = title,
-            Owner = this,
-            Width = 390,
-            Height = 168,
-            MinWidth = 340,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            ResizeMode = ResizeMode.NoResize,
-            Background = Brushes.White,
-            FontFamily = FontFamily,
-            FontSize = FontSize
-        };
-        var input = new TextBox { Text = value, Margin = new Thickness(0, 0, 0, 16) };
-        var ok = new Button { Content = "OK", Width = 84, Height = 34, IsDefault = true };
-        ok.Click += (_, _) => dialog.DialogResult = true;
-        var panel = new StackPanel { Margin = new Thickness(20) };
-        panel.Children.Add(input);
-        panel.Children.Add(ok);
-        dialog.Content = panel;
-        dialog.Loaded += (_, _) => { input.Focus(); input.SelectAll(); };
-        return dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(input.Text) ? input.Text.Trim() : null;
+        return ThemedDialog.Prompt(this, title, value,
+            settings.Language == "zh-CN" ? "确定" : "OK",
+            settings.Language == "zh-CN" ? "取消" : "Cancel");
     }
 
     private void LanguageChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -470,7 +453,7 @@ public partial class MainWindow : Window
         try { settings.SetDisplayIndex(MonitorChoice.SelectedIndex); }
         catch (Exception error)
         {
-            System.Windows.MessageBox.Show(this, error.Message, L("settings"), MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedDialog.ShowMessage(this, L("settings"), error.Message, settings.Language == "zh-CN" ? "确定" : "OK");
             changingDisplayChoice = true;
             try { MonitorChoice.SelectedIndex = Math.Clamp(settings.DisplayIndex, 0, MonitorChoice.Items.Count - 1); }
             finally { changingDisplayChoice = false; }
@@ -483,7 +466,7 @@ public partial class MainWindow : Window
         try { settings.SetAutoStart(StartupCheck.IsChecked == true); StartupError.Text = ""; }
         catch (Exception error)
         {
-            System.Windows.MessageBox.Show(this, error.Message, L("settings"), MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedDialog.ShowMessage(this, L("settings"), error.Message, settings.Language == "zh-CN" ? "确定" : "OK");
             StartupCheck.IsChecked = settings.AutoStartEnabled;
         }
     }

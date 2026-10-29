@@ -38,6 +38,25 @@ public sealed class WindowTests
                 Assert.False(chrome.UseAeroCaptionButtons);
                 Assert.Null(window.Icon);
                 Assert.True(System.Windows.Shell.WindowChrome.GetIsHitTestVisibleInChrome(window.CloseButton));
+                Assert.Equal(22, window.CloseButton.FontSize);
+                foreach (var control in new System.Windows.Controls.Control[]
+                {
+                    window.CloseButton, window.MinimizeButton, window.MaximizeButton,
+                    window.InstalledNav, window.PresetsNav, window.SettingsNav,
+                    window.HostsList, window.ComponentsList, window.PresetList,
+                    window.SelectedComponents, window.LanguageChoice, window.MonitorChoice,
+                    window.StartupCheck, window.TrustedHostsList
+                })
+                    Assert.True(ReferenceEquals(window.FindResource("NoFocusVisual"), control.FocusVisualStyle), $"Unexpected focus adorner on {control.Name}.");
+                Assert.False(window.CatalogScrollViewer.Focusable);
+                Assert.False(window.SettingsPage.Focusable);
+                var dialog = ThemedDialog.CreateWindow(window, "Preview", new System.Windows.Controls.TextBlock { Text = "Dialog body" });
+                var dialogChrome = System.Windows.Shell.WindowChrome.GetWindowChrome(dialog);
+                Assert.Equal(WindowStyle.None, dialog.WindowStyle);
+                Assert.NotNull(dialogChrome);
+                Assert.Equal(44, dialogChrome.CaptionHeight);
+                Assert.Same(window.FindResource("PrimaryButton"), ThemedDialog.CreateButton(window, "OK", primary: true).Style);
+                dialog.Close();
                 window.MaximizeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 Assert.Equal(WindowState.Maximized, window.WindowState);
                 window.MaximizeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
@@ -91,6 +110,10 @@ public sealed class WindowTests
                     [new ComponentPreset("preset-1", "Daily setup", [new PresetComponent("org.example.time", "workshop:123")])],
                     "preset-1", new Dictionary<string, string>()));
                 window.HostsList.SelectedIndex = 0;
+                window.UpdateLayout();
+                var selectedHostCard = Assert.IsType<System.Windows.Controls.ListBoxItem>(window.HostsList.ItemContainerGenerator.ContainerFromIndex(0));
+                var cardBorder = Assert.IsType<System.Windows.Controls.Border>(selectedHostCard.Template.FindName("Card", selectedHostCard));
+                Assert.Equal(System.Windows.Media.Color.FromRgb(42, 71, 117), Assert.IsType<SolidColorBrush>(cardBorder.BorderBrush).Color);
                 if (Environment.GetEnvironmentVariable("BAP_WPF_SCREENSHOT") is { Length: > 0 } screenshotPrefix)
                 {
                     var visual = Assert.IsAssignableFrom<FrameworkElement>(window.Content);

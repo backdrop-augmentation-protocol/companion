@@ -32,7 +32,7 @@ internal static class HostApprovalDialog
             FontSize = 14
         };
 
-        var content = new StackPanel { Margin = new Thickness(24) };
+        var content = new StackPanel();
         content.Children.Add(new TextBlock
         {
             Text = chinese ? "宿主身份由壁纸自行声明，尚未验证" : "Host identity is self-reported and unverified",
@@ -82,7 +82,8 @@ internal static class HostApprovalDialog
                 Content = PermissionLabel(permission, chinese),
                 IsChecked = false,
                 Margin = new Thickness(0, 5, 0, 5),
-                Foreground = Brushes.White
+                Foreground = Brushes.White,
+                FocusVisualStyle = (Style)owner.FindResource("NoFocusVisual")
             };
             checkBox.Checked += (_, _) => { if (approveButton is not null) approveButton.IsEnabled = true; };
             checkBox.Unchecked += (_, _) => { if (approveButton is not null) approveButton.IsEnabled = selected.Any(item => item.IsChecked == true); };
@@ -101,7 +102,8 @@ internal static class HostApprovalDialog
             },
             IsChecked = true,
             Margin = new Thickness(0, 14, 0, 0),
-            Foreground = Brushes.White
+            Foreground = Brushes.White,
+            FocusVisualStyle = (Style)owner.FindResource("NoFocusVisual")
         };
         content.Children.Add(rememberCheck);
 
@@ -109,12 +111,16 @@ internal static class HostApprovalDialog
         var deny = new Button { Content = chinese ? "拒绝" : "Deny", MinWidth = 100, Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 10, 0) };
         var approve = new Button { Content = chinese ? "批准所选权限" : "Approve selected", MinWidth = 140, Padding = new Thickness(14, 8, 14, 8), IsDefault = true, IsEnabled = false };
         approveButton = approve;
+        deny.Style = (Style)owner.FindResource("QuietButton");
+        deny.FocusVisualStyle = (Style)owner.FindResource("NoFocusVisual");
+        approve.Style = (Style)owner.FindResource("PrimaryButton");
+        approve.FocusVisualStyle = (Style)owner.FindResource("NoFocusVisual");
         deny.Click += (_, _) => window.DialogResult = false;
         approve.Click += (_, _) => window.DialogResult = true;
         buttons.Children.Add(deny);
         buttons.Children.Add(approve);
         content.Children.Add(buttons);
-        window.Content = content;
+        ThemedDialog.ApplyChrome(owner, window, content);
 
         var approved = window.ShowDialog() == true;
         grantedPermissions = approved
