@@ -114,7 +114,7 @@ app.MapPut("/v1/config/wallpapers/{wallpaperId}", async (string wallpaperId, Htt
         return Results.NoContent();
     }));
 
-app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionOptions options, HostAuthorizationQueue authorizations) =>
+app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionOptions options, HostAuthorizationQueue authorizations, ILogger<Program> logger) =>
 {
     var token = GetToken(context.Request, allowQueryToken: true);
     if (token is null || !sessions.TryGet(token, out var session)) { context.Response.StatusCode = 401; return; }
@@ -151,6 +151,9 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
             p is "config.read" or "config.write" && capabilities.Contains("config")).Distinct().ToArray();
         var pendingRequest = new HostAuthorizationRequest(
             session.Id, payload.Identity, capabilities, requestedPermissions, DateTimeOffset.UtcNow);
+        logger.LogInformation(
+            "Host session {SessionId} requested access for self-reported identity {HostId} ({HostName}); awaiting approval",
+            session.Id, payload.Identity.Id, payload.Identity.Name);
         authorizations.TryEnqueue(pendingRequest, out var decisionTask);
         HostAuthorizationDecision decision;
         using (var approvalTimeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted))
@@ -181,6 +184,7 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
         permissionsGranted = true;
         var result = new CompanionHelloPayload(options.Protocol, "companion", new(options.CompanionId, options.CompanionName, options.CompanionVersion), grantedCapabilities, permissions);
         await SendAsync(socket, Response(options.Protocol, hello.Id, session.Id, result), context.RequestAborted);
+        logger.LogInformation("Host session {SessionId} approved; Companion hello response sent with {PermissionCount} permissions", session.Id, permissions.Count);
         while (socket.State == WebSocketState.Open && !context.RequestAborted.IsCancellationRequested)
         {
             var message = await ReceiveTextAsync(socket, context.RequestAborted);
@@ -192,13 +196,22 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
             await SendAsync(socket, ErrorResponse(options.Protocol, request.Id, session.Id, "NOT_FOUND", $"method '{request.Method ?? ""}' is not supported"), context.RequestAborted);
         }
     }
-    catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
-    catch (WebSocketException) { }
+    catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+    {
+        logger.LogDebug("Host WebSocket request aborted for session {SessionId}", session.Id);
+    }
+    catch (WebSocketException error)
+    {
+        logger.LogWarning(error, "Host WebSocket failed for session {SessionId}", session.Id);
+    }
     finally
     {
         if (permissionsGranted) sessions.ClearPermissions(token);
         // Disconnects never restore lifecycle state or permissions; reconnects must handshake again.
         if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived) await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "disconnected", CancellationToken.None);
+        logger.LogInformation(
+            "Host WebSocket ended for session {SessionId}: state={State}, closeStatus={CloseStatus}, closeDescription={CloseDescription}",
+            session.Id, socket.State, socket.CloseStatus, socket.CloseStatusDescription);
     }
 });
 
