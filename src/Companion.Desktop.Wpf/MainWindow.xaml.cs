@@ -20,6 +20,7 @@ namespace Bap.Companion.Desktop.Wpf;
 public partial class MainWindow : Window
 {
     private readonly InstalledCatalog catalog = InstalledCatalog.FromEnvironment();
+    private readonly SteamWorkshopCreatorLookup creatorLookup;
     private readonly JsonPresetStore store = new(JsonPresetStore.DefaultPath);
     private readonly CompanionLog log;
     private readonly int port;
@@ -33,13 +34,16 @@ public partial class MainWindow : Window
     private readonly HostAuthorizationClient? authorizationClient;
     private readonly DispatcherTimer authorizationTimer;
     private bool showingAuthorizationPrompt;
+    private int creatorLookupGeneration;
 
-    internal MainWindow(CompanionLog log, int port, DesktopSettings settings, HostAuthorizationClient? authorizationClient = null)
+    internal MainWindow(CompanionLog log, int port, DesktopSettings settings, HostAuthorizationClient? authorizationClient = null,
+        SteamWorkshopCreatorLookup? creatorLookup = null)
     {
         this.log = log;
         this.port = port;
         this.settings = settings;
         this.authorizationClient = authorizationClient;
+        this.creatorLookup = creatorLookup ?? new SteamWorkshopCreatorLookup();
         InitializeComponent();
         StartupCheck.FocusVisualStyle = (Style)FindResource("NoFocusVisual");
         LanguageChoice.SelectedIndex = settings.Language == "zh-CN" ? 1 : 0;
@@ -271,11 +275,30 @@ public partial class MainWindow : Window
         if (selectedItem is not { } item) return;
         DetailPreview.Source = LoadPreview(item.PreviewPath);
         DetailTitle.Text = item.Title;
-        DetailMetadata.Text = $"{L("source")}: {L(item.SourceKind)}\n{L("status")}: {L(item.Status)}\n{L("bapId")}: {item.BapId ?? "—"}\n{L("version")}: {item.Version ?? "—"}" +
+        var creatorGeneration = ++creatorLookupGeneration;
+        var creatorText = item.WorkshopId is null ? "" : $"\n{L("creator")}: {L("creatorLoading")}";
+        DetailMetadata.Text = $"{L("source")}: {L(item.SourceKind)}\n{L("status")}: {L(item.Status)}\n{L("bapId")}: {item.BapId ?? "—"}\n{L("version")}: {item.Version ?? "—"}" + creatorText +
             (item.WorkshopId is null ? "" : $"\n{L("workshopId")}: {item.WorkshopId}");
+        if (item.WorkshopId is { } workshopId) _ = LoadCreatorNameAsync(item.Key, workshopId, creatorGeneration);
         DetailPath.Text = item.ProjectDirectory;
         HostActions.Visibility = item.Role == "host" && item.Status != "invalid" ? Visibility.Visible : Visibility.Collapsed;
         SwitchStatus.Text = "";
+    }
+
+    private async Task LoadCreatorNameAsync(string itemKey, string workshopId, int generation)
+    {
+        string? creator;
+        try { creator = await creatorLookup.GetCreatorNameAsync(workshopId); }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or System.Xml.XmlException or InvalidOperationException)
+        {
+            log.Write("workshop-metadata", $"Could not read creator for Workshop item {workshopId}: {error.Message}");
+            creator = null;
+        }
+        if (generation != creatorLookupGeneration || selectedItem?.Key != itemKey || DetailMetadata is null) return;
+        var name = string.IsNullOrWhiteSpace(creator) ? L("creatorUnavailable") : creator;
+        var metadata = DetailMetadata.Text;
+        var loadingLine = $"{L("creator")}: {L("creatorLoading")}";
+        DetailMetadata.Text = metadata.Replace(loadingLine, $"{L("creator")}: {name}", StringComparison.Ordinal);
     }
 
     private void SwitchHostButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>

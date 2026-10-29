@@ -1,4 +1,7 @@
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -30,7 +33,11 @@ public sealed class WindowTests
                 Assert.True(trayIcon.Width > 0);
                 var settings = new DesktopSettings(Path.Combine(directory, "desktop.json"), synchronizeStartup: false);
                 using var log = new CompanionLog(Path.Combine(directory, "companion.log"));
-                var window = new MainWindow(log, 4312, settings);
+                using var creatorHttpClient = new HttpClient(new StaticHttpMessageHandler(request =>
+                    request.RequestUri!.Host == "api.steampowered.com"
+                        ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"response\":{\"publishedfiledetails\":[{\"creator\":\"76561198000000000\"}]}}", Encoding.UTF8, "application/json") }
+                        : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<profile><steamID>Creator Name</steamID></profile>", Encoding.UTF8, "application/xml") }));
+                var window = new MainWindow(log, 4312, settings, creatorLookup: new SteamWorkshopCreatorLookup(creatorHttpClient));
                 window.Show();
                 var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(window);
                 Assert.NotNull(chrome);
@@ -62,6 +69,7 @@ public sealed class WindowTests
                 window.MaximizeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 Assert.Equal(WindowState.Normal, window.WindowState);
                 Assert.Equal("Installed", window.InstalledNav.Content);
+                Assert.Equal("Wallpaper Manager", window.AppSubtitle.Text);
                 window.Measure(new System.Windows.Size(1220, 790));
                 window.Arrange(new Rect(0, 0, 1220, 790));
                 window.UpdateLayout();
@@ -69,6 +77,7 @@ public sealed class WindowTests
                 window.LanguageChoice.SelectedIndex = 1;
                 Assert.Equal("zh-CN", settings.Language);
                 Assert.Equal("已安装", window.InstalledNav.Content);
+                Assert.Equal("壁纸管理器", window.AppSubtitle.Text);
                 window.LanguageChoice.SelectedIndex = 0;
                 Assert.Equal("en", settings.Language);
                 Assert.Equal("Settings", window.SettingsNav.Content);
@@ -111,6 +120,14 @@ public sealed class WindowTests
                     "preset-1", new Dictionary<string, string>()));
                 window.HostsList.SelectedIndex = 0;
                 window.UpdateLayout();
+                window.ComponentsList.SelectedIndex = 0;
+                var creatorFrame = new System.Windows.Threading.DispatcherFrame();
+                var creatorTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
+                creatorTimer.Tick += (_, _) => { creatorTimer.Stop(); creatorFrame.Continue = false; };
+                creatorTimer.Start();
+                System.Windows.Threading.Dispatcher.PushFrame(creatorFrame);
+                Assert.Contains("Creator: Creator Name", window.DetailMetadata.Text);
+                window.HostsList.SelectedIndex = 0;
                 var selectedHostCard = Assert.IsType<System.Windows.Controls.ListBoxItem>(window.HostsList.ItemContainerGenerator.ContainerFromIndex(0));
                 var cardBorder = Assert.IsType<System.Windows.Controls.Border>(selectedHostCard.Template.FindName("Card", selectedHostCard));
                 Assert.Equal(System.Windows.Media.Color.FromRgb(42, 71, 117), Assert.IsType<SolidColorBrush>(cardBorder.BorderBrush).Color);
@@ -181,5 +198,11 @@ public sealed class WindowTests
         thread.Join();
         try { Assert.Null(failure); }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    private sealed class StaticHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(respond(request));
     }
 }
