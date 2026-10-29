@@ -41,18 +41,6 @@ internal static class HostApprovalDialog
             Foreground = new SolidColorBrush(Color.FromRgb(34, 211, 255)),
             TextWrapping = TextWrapping.Wrap
         });
-        var rememberCheck = new CheckBox
-        {
-            Content = new TextBlock
-            {
-                Text = chinese ? "Remember this Host and its approved permissions on this device" : "Remember this Host and approved permissions on this device",
-                TextWrapping = TextWrapping.Wrap
-            },
-            IsChecked = false,
-            Margin = new Thickness(0, 14, 0, 0),
-            Foreground = Brushes.White
-        };
-        content.Children.Add(rememberCheck);
         content.Children.Add(new TextBlock
         {
             Text = $"{Display(request.ClaimedIdentity.Name)}\n{Display(request.ClaimedIdentity.Id)}\n{(chinese ? "版本" : "Version")}: {Display(request.ClaimedIdentity.Version)}",
@@ -75,6 +63,9 @@ internal static class HostApprovalDialog
                 Foreground = new SolidColorBrush(Color.FromRgb(255, 190, 202))
             }
         });
+        ((TextBlock)((Border)content.Children[2]).Child).Text = chinese
+            ? "\u65e0\u6cd5\u6838\u9a8c\u58c1\u7eb8\u7684\u81ea\u62a5\u8eab\u4efd\u6216\u5b89\u88c5\u6765\u6e90\u3002\u8bf7\u5148\u72ec\u7acb\u786e\u8ba4 Wallpaper Engine \u5f53\u524d\u58c1\u7eb8\u3002\u8bb0\u4f4f\u4fe1\u4efb\u53ea\u4f9d\u636e BAP ID\uff0c\u4e0d\u4f1a\u9a8c\u8bc1\u53d1\u884c\u8005\u8eab\u4efd\u3002"
+            : "Companion cannot verify this self-reported identity or installation source. Approve only if you can independently identify the active Wallpaper Engine wallpaper. Remembering trusts this BAP ID on this Windows account; it does not authenticate the publisher.";
         content.Children.Add(new TextBlock
         {
             Text = chinese ? "请求权限（可按需勾选）" : "Requested permissions (select only what you need)",
@@ -98,6 +89,21 @@ internal static class HostApprovalDialog
             selected.Add(checkBox);
             content.Children.Add(checkBox);
         }
+
+        var rememberCheck = new CheckBox
+        {
+            Content = new TextBlock
+            {
+                Text = chinese
+                    ? "\u8bb0\u4f4f\u6b64\u5bbf\u4e3b\u53ca\u5df2\u6279\u51c6\u7684\u6743\u9650\uff08\u4ec5\u9650\u6b64 Windows \u8d26\u6237\uff09"
+                    : "Remember this Host and approved permissions on this Windows account",
+                TextWrapping = TextWrapping.Wrap
+            },
+            IsChecked = true,
+            Margin = new Thickness(0, 14, 0, 0),
+            Foreground = Brushes.White
+        };
+        content.Children.Add(rememberCheck);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 22, 0, 0) };
         var deny = new Button { Content = chinese ? "拒绝" : "Deny", MinWidth = 100, Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 10, 0) };
