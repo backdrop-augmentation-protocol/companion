@@ -26,7 +26,7 @@ public sealed record AuthorizationControlResponse(
     IReadOnlyList<TrustedHost>? TrustedHosts = null);
 
 /// <summary>
-/// Holds explicit human decisions and optional per-user trust for self-reported Host IDs.
+/// Holds explicit human decisions and optional per-user records for self-reported Host IDs.
 /// </summary>
 public sealed class HostAuthorizationQueue(TrustedHostStore? trustedHosts = null)
 {
@@ -60,13 +60,6 @@ public sealed class HostAuthorizationQueue(TrustedHostStore? trustedHosts = null
             if (pending.TryGetValue(request.SessionId, out var existing))
             {
                 decision = existing.Completion.Task;
-                return false;
-            }
-
-            var remembered = trustStore.Find(request.ClaimedIdentity.Id);
-            if (remembered is not null && request.RequestedPermissions.All(remembered.Permissions.Contains))
-            {
-                decision = Task.FromResult(new HostAuthorizationDecision(true, request.RequestedPermissions.ToArray()));
                 return false;
             }
 
@@ -120,7 +113,7 @@ public sealed class HostAuthorizationQueue(TrustedHostStore? trustedHosts = null
 
 public sealed record TrustedHost(string Id, string Name, string Version, IReadOnlyCollection<string> Permissions, DateTimeOffset ApprovedAt);
 
-/// <summary>Per-Windows-user persistence for explicitly remembered Host permissions. IDs remain self-asserted.</summary>
+/// <summary>Per-Windows-user records for Host IDs and permissions previously approved by a person. IDs remain self-asserted and records never authorize a new session.</summary>
 public sealed class TrustedHostStore(string path)
 {
     public static string DefaultPath => Path.Combine(

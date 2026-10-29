@@ -121,13 +121,13 @@ public partial class MainWindow : Window
         TrustedHostsHeading.Text = settings.Language == "zh-CN" ? "宸茶浣忕殑瀹夸富" : "Remembered Hosts";
         TrustedHostsHint.Text = settings.Language == "zh-CN"
             ? "杩欎簺鏍囪瘑鐢卞绾歌嚜琛屽０鏄庯紝骞撮潪鍙戣鑰呴獙璇併€傚垹闄ゆ潯鐩悗锛屼笅娆¤繛鎺ラ渶閲嶆柊鎵瑰噯銆?
-            : "These IDs are self-reported, not publisher-verified. Remove an entry to require approval again.";
+            : "These IDs are self-reported and not publisher-verified. Saved entries never bypass approval for a new session; removing one also revokes active permissions.";
         RevokeTrustButton.Content = settings.Language == "zh-CN" ? "蹇樿閫変腑瀹夸富" : "Forget selected Host";
 #endif
         TrustedHostsHeading.Text = settings.Language == "zh-CN" ? "\u5df2\u8bb0\u4f4f\u7684\u5bbf\u4e3b" : "Remembered Hosts";
         TrustedHostsHint.Text = settings.Language == "zh-CN"
-            ? "\u8fd9\u4e9b\u6807\u8bc6\u7531\u58c1\u7eb8\u81ea\u884c\u58f0\u660e\uff0c\u5e76\u672a\u9a8c\u8bc1\u53d1\u884c\u8005\u3002\u79fb\u9664\u6761\u76ee\u540e\uff0c\u4e0b\u6b21\u8fde\u63a5\u9700\u91cd\u65b0\u6279\u51c6\u3002"
-            : "These IDs are self-reported, not publisher-verified. Remove an entry to require approval again.";
+            ? "\u8fd9\u4e9b\u6807\u8bc6\u7531\u5bbf\u4e3b\u81ea\u884c\u58f0\u660e\uff0c\u672a\u9a8c\u8bc1\u53d1\u884c\u8005\u3002\u4fdd\u5b58\u6761\u76ee\u4e0d\u4f1a\u8df3\u8fc7\u65b0\u4f1a\u8bdd\u5ba1\u6279\uff1b\u79fb\u9664\u6761\u76ee\u4f1a\u540c\u65f6\u64a4\u9500\u6d3b\u8dc3\u6743\u9650\u3002"
+            : "These IDs are self-reported and not publisher-verified. Saved entries never bypass approval for a new session; removing one also revokes active permissions.";
         RevokeTrustButton.Content = settings.Language == "zh-CN" ? "\u5fd8\u8bb0\u9009\u4e2d\u5bbf\u4e3b" : "Forget selected Host";
         if (settings.StartupError is not null) StartupError.Text = L("startupError", settings.StartupError);
         changingDisplayChoice = true;

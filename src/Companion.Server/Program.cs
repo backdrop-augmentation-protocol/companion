@@ -151,6 +151,8 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
             p is "config.read" or "config.write" && capabilities.Contains("config")).Distinct().ToArray();
         var pendingRequest = new HostAuthorizationRequest(
             session.Id, payload.Identity, capabilities, requestedPermissions, DateTimeOffset.UtcNow);
+        if (!sessions.BindHost(token, payload.Identity.Id))
+        { await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "session expired", context.RequestAborted); return; }
         logger.LogInformation(
             "Host session {SessionId} requested access for self-reported identity {HostId} ({HostName}); awaiting approval",
             session.Id, payload.Identity.Id, payload.Identity.Name);

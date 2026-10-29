@@ -63,7 +63,7 @@ public sealed class HostAuthorizationTests
     }
 
     [Fact]
-    public async Task RememberedApprovalPersistsAcrossQueueInstancesAndOnlyCoversGrantedPermissions()
+    public async Task RememberedApprovalDoesNotBypassApprovalForAnotherSession()
     {
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "trusted.json");
         var first = new HostAuthorizationQueue(new TrustedHostStore(path));
@@ -72,7 +72,9 @@ public sealed class HostAuthorizationTests
         Assert.True((await decision).Approved);
 
         var restarted = new HostAuthorizationQueue(new TrustedHostStore(path));
-        Assert.False(restarted.TryEnqueue(Request("session-b", ["component.discovery"]), out var remembered));
+        Assert.True(restarted.TryEnqueue(Request("session-b", ["component.discovery"]), out var remembered));
+        Assert.False(remembered.IsCompleted);
+        Assert.True(restarted.Approve("session-b", ["component.discovery"]));
         Assert.Equal(["component.discovery"], (await remembered).GrantedPermissions);
 
         Assert.True(restarted.TryEnqueue(Request("session-c", ["component.discovery", "config.write"]), out var expanded));
@@ -88,6 +90,23 @@ public sealed class HostAuthorizationTests
         store.Remember(new("org.example.host", "Example", "1.0"), ["component.discovery"]);
         Assert.True(store.Remove("org.example.host"));
         Assert.Empty(store.List());
+    }
+
+    [Fact]
+    public void RevokingHostInvalidatesItsActiveSessions()
+    {
+        var sessions = new InMemorySessionStore();
+        var revoked = sessions.Create("host", TimeSpan.FromMinutes(5));
+        var retained = sessions.Create("host", TimeSpan.FromMinutes(5));
+        Assert.True(sessions.BindHost(revoked.Token, "org.example.host"));
+        Assert.True(sessions.BindHost(retained.Token, "org.other.host"));
+        Assert.True(sessions.SetPermissions(revoked.Token, ["component.discovery"]));
+        Assert.True(sessions.SetPermissions(retained.Token, ["component.discovery"]));
+
+        Assert.Equal(1, sessions.RevokeHost("org.example.host"));
+        Assert.False(sessions.TryGet(revoked.Token, out _));
+        Assert.True(sessions.TryGet(retained.Token, out var remaining));
+        Assert.Equal(["component.discovery"], remaining.GrantedPermissions);
     }
 
     private static HostAuthorizationQueue NewQueue() => new(new TrustedHostStore(

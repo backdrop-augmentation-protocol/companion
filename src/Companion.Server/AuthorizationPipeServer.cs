@@ -6,6 +6,7 @@ namespace Bap.Companion.Server;
 
 internal sealed class AuthorizationPipeServer(
     HostAuthorizationQueue authorizations,
+    ISessionStore sessions,
     ILogger<AuthorizationPipeServer> logger) : BackgroundService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -48,13 +49,19 @@ internal sealed class AuthorizationPipeServer(
         {
             "snapshot" => new(true, authorizations.Snapshot()),
             "trusted" => new(true, [], TrustedHosts: authorizations.TrustedHosts()),
-            "revoke" when !string.IsNullOrWhiteSpace(request.SessionId) => new(
-                authorizations.RevokeTrust(request.SessionId), [], TrustedHosts: authorizations.TrustedHosts()),
+            "revoke" when !string.IsNullOrWhiteSpace(request.SessionId) => Revoke(request.SessionId),
             "approve" when !string.IsNullOrWhiteSpace(request.SessionId) => new(
                 authorizations.Approve(request.SessionId, request.Permissions ?? [], request.Remember), []),
             "deny" when !string.IsNullOrWhiteSpace(request.SessionId) => new(
                 authorizations.Deny(request.SessionId), []),
             _ => new(false, [], "unsupported operation")
         };
+    }
+
+    private AuthorizationControlResponse Revoke(string hostId)
+    {
+        var trustRemoved = authorizations.RevokeTrust(hostId);
+        var sessionsRevoked = sessions.RevokeHost(hostId);
+        return new(trustRemoved || sessionsRevoked > 0, [], TrustedHosts: authorizations.TrustedHosts());
     }
 }

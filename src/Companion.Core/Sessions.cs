@@ -6,8 +6,10 @@ public interface ISessionStore
 {
     Session Create(string clientKind, TimeSpan lifetime);
     bool TryGet(string token, out Session session);
+    bool BindHost(string token, string hostId);
     bool SetPermissions(string token, IReadOnlyCollection<string> permissions);
     void ClearPermissions(string token);
+    int RevokeHost(string hostId);
 }
 
 public sealed class InMemorySessionStore : ISessionStore
@@ -43,11 +45,35 @@ public sealed class InMemorySessionStore : ISessionStore
         }
     }
 
+    public bool BindHost(string token, string hostId)
+    {
+        if (string.IsNullOrWhiteSpace(hostId)) return false;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(token, out var session) || session.ExpiresAt <= DateTimeOffset.UtcNow) return false;
+            sessions[token] = session with { HostId = hostId };
+            return true;
+        }
+    }
+
     public void ClearPermissions(string token)
     {
         lock (gate)
         {
             if (sessions.TryGetValue(token, out var session)) sessions[token] = session with { GrantedPermissions = [] };
+        }
+    }
+
+    public int RevokeHost(string hostId)
+    {
+        lock (gate)
+        {
+            var tokens = sessions.Values
+                .Where(session => string.Equals(session.HostId, hostId, StringComparison.Ordinal))
+                .Select(session => session.Token)
+                .ToArray();
+            foreach (var token in tokens) sessions.Remove(token);
+            return tokens.Length;
         }
     }
 }
