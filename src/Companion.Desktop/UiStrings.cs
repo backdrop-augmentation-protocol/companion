@@ -23,7 +23,7 @@ internal static class UiStrings
         ["workshopId"] = ("Workshop ID", "创意工坊 ID"),
         ["creator"] = ("Creator", "创作者"),
         ["creatorLoading"] = ("Loading creator…", "正在获取创作者…"),
-        ["creatorUnavailable"] = ("Unavailable", "暂不可用"),
+        ["creatorUnavailable"] = ("Steam did not provide creator information", "Steam 未提供创作者信息"),
         ["location"] = ("Project folder", "项目目录"),
         ["monitor"] = ("Display", "显示器"),
         ["switchDisplay"] = ("Display for wallpaper switching", "切换壁纸使用的显示器"),
