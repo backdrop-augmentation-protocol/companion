@@ -61,7 +61,10 @@ discovery, wallpaper configuration persistence, and the Host/Companion hello
 handshake with permission negotiation. It also remembers the first approval,
 confirms that a new session with the same Host ID still requires explicit
 approval, then revokes that Host and verifies the active WebSocket closes and
-both session tokens lose access.
+both session tokens lose access. It also checks that an approval granting only
+component discovery cannot read configuration, and that an incompatible
+protocol version is rejected before authorization. Reconnecting with the same
+session token after a normal disconnect also requires a fresh approval.
 HTTP component and configuration endpoints require both a valid Bearer token
 and the corresponding permission granted by a live WebSocket `hello` session.
 Session creation alone grants no access; closing the WebSocket clears its grants.

@@ -38,9 +38,9 @@ function Wait-ForPendingApproval([string]$SessionId) {
     throw "Host approval request $SessionId did not arrive on the authorization pipe '$AuthorizationPipeName'. Start the Server with BAP_AUTHORIZATION_PIPE set to this name."
 }
 
-function New-HostHello([string]$Id) {
+function New-HostHello([string]$Id, [string]$ProtocolVersion = "0.1.0") {
     return @{
-        protocol = @{ name = "bap"; version = "0.1.0"; profile = "core" }
+        protocol = @{ name = "bap"; version = $ProtocolVersion; profile = "core" }
         kind = "request"
         id = $Id
         timestamp = [DateTimeOffset]::UtcNow.ToString("o")
@@ -48,15 +48,15 @@ function New-HostHello([string]$Id) {
         payload = @{
             role = "host"
             identity = @{ id = "org.bap.examples.host-wallpaper"; name = "BAP Host Wallpaper Demo"; version = "0.1.0" }
-            protocolVersions = @("0.1.0")
+            protocolVersions = @($ProtocolVersion)
             capabilities = @("component-discovery", "config")
             requestedPermissions = @("component.discovery", "config.read", "config.write")
         }
     } | ConvertTo-Json -Depth 8
 }
 
-function Send-HostHello($Socket, [string]$Id) {
-    $bytes = [Text.Encoding]::UTF8.GetBytes((New-HostHello $Id))
+function Send-HostHello($Socket, [string]$Id, [string]$ProtocolVersion = "0.1.0") {
+    $bytes = [Text.Encoding]::UTF8.GetBytes((New-HostHello $Id $ProtocolVersion))
     $Socket.SendAsync($bytes, [Net.WebSockets.WebSocketMessageType]::Text, $true, [Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
 }
 
@@ -83,6 +83,24 @@ function Assert-Unauthorized([string]$AccessToken, [string]$Name) {
         $statusCode = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
         if ($statusCode -ne 401) { throw }
     }
+}
+
+function Assert-Forbidden([string]$Url, [string]$AccessToken, [string]$Name) {
+    try {
+        Invoke-RestMethod $Url -Headers @{ Authorization = "Bearer $AccessToken" } | Out-Null
+        throw "$Name unexpectedly succeeded"
+    }
+    catch {
+        $statusCode = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+        if ($statusCode -ne 403) { throw }
+    }
+}
+
+function Receive-WebSocketClose($Socket) {
+    $buffer = New-Object byte[] 256
+    $timeout = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(5))
+    try { return $Socket.ReceiveAsync($buffer, $timeout.Token).GetAwaiter().GetResult() }
+    finally { $timeout.Dispose() }
 }
 
 $health = Invoke-RestMethod "$BaseUrl/healthz"
@@ -141,6 +159,24 @@ Assert-Equal ([bool]$after.wallpapers.$WallpaperId.showSeconds) $false "wallpape
 $ws.CloseAsync([Net.WebSockets.WebSocketCloseStatus]::NormalClosure, "E2E complete", [Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
 $ws.Dispose()
 
+# A normal disconnect clears session permissions; reconnecting the same token
+# must not silently restore them from the remembered Host record.
+Assert-Forbidden "$BaseUrl/v1/components" $session.accessToken "Disconnected session before reapproval"
+$reconnectWs = New-HostWebSocket $session.accessToken
+Send-HostHello $reconnectWs "companion-e2e-hello-reconnect"
+$reconnectPending = Wait-ForPendingApproval $session.sessionId
+$reconnectApproval = Invoke-AuthorizationPipe @{
+    operation = 'approve'
+    sessionId = $reconnectPending.sessionId
+    permissions = @('component.discovery')
+    remember = $false
+}
+if (-not $reconnectApproval.success) { throw "Reconnect approval decision could not be applied" }
+$reconnectResponse = Receive-JsonMessage $reconnectWs
+if (-not $reconnectResponse.ok) { throw "Reconnected Companion WebSocket hello was rejected" }
+$reconnectWs.CloseAsync([Net.WebSockets.WebSocketCloseStatus]::NormalClosure, "E2E reconnect complete", [Threading.CancellationToken]::None).GetAwaiter().GetResult() | Out-Null
+$reconnectWs.Dispose()
+
 # A remembered Host ID is not proof of identity: every new session must wait for
 # an explicit approval, and revoking the Host must invalidate all its sessions.
 $secondSession = Invoke-RestMethod "$BaseUrl/v1/session" -Method Post -ContentType "application/json" -Body $sessionBody
@@ -159,24 +195,34 @@ $pending2 = Wait-ForPendingApproval $secondSession.sessionId
 $approved2 = Invoke-AuthorizationPipe @{
     operation = 'approve'
     sessionId = $pending2.sessionId
-    permissions = @('component.discovery', 'config.read', 'config.write')
+    permissions = @('component.discovery')
     remember = $false
 }
 if (-not $approved2.success) { throw "Second Host approval decision could not be applied" }
 $response2 = Receive-JsonMessage $ws2
 if (-not $response2.ok) { throw "Second Companion WebSocket hello was rejected" }
+Assert-Equal @($response2.result.permissions).Count 1 "least-privilege permission count"
+Assert-Equal $response2.result.permissions[0] "component.discovery" "least-privilege permission"
+Assert-Forbidden "$BaseUrl/v1/config" $secondSession.accessToken "Config read without config.read"
 
 $revoked = Invoke-AuthorizationPipe @{ operation = 'revoke'; sessionId = 'org.bap.examples.host-wallpaper' }
 if (-not $revoked.success) { throw "Host trust revocation was not applied" }
-$closeBuffer = New-Object byte[] 256
-$closeTimeout = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds(5))
-try { $closeResult = $ws2.ReceiveAsync($closeBuffer, $closeTimeout.Token).GetAwaiter().GetResult() }
-finally { $closeTimeout.Dispose() }
+$closeResult = Receive-WebSocketClose $ws2
 if ($closeResult.MessageType -ne [Net.WebSockets.WebSocketMessageType]::Close) { throw "Revocation did not close the active Host WebSocket" }
 if ($closeResult.CloseStatus -ne [Net.WebSockets.WebSocketCloseStatus]::PolicyViolation) { throw "Revocation closed the WebSocket with unexpected status '$($closeResult.CloseStatus)'" }
 $ws2.Dispose()
 Assert-Unauthorized $session.accessToken "Previously approved session"
 Assert-Unauthorized $secondSession.accessToken "Reapproved session"
+
+$versionSession = Invoke-RestMethod "$BaseUrl/v1/session" -Method Post -ContentType "application/json" -Body $sessionBody
+$ws3 = New-HostWebSocket $versionSession.accessToken
+Send-HostHello $ws3 "companion-e2e-incompatible-version" "9.9.9"
+$versionError = Receive-JsonMessage $ws3
+Assert-Equal $versionError.error.code "UNSUPPORTED_VERSION" "incompatible protocol error code"
+$versionClose = Receive-WebSocketClose $ws3
+if ($versionClose.MessageType -ne [Net.WebSockets.WebSocketMessageType]::Close) { throw "Incompatible protocol version did not close the WebSocket" }
+$ws3.Dispose()
+Assert-Forbidden "$BaseUrl/v1/components" $versionSession.accessToken "Incompatible-version session"
 
 [pscustomobject]@{
     status = "passed"
@@ -185,7 +231,10 @@ Assert-Unauthorized $secondSession.accessToken "Reapproved session"
     wallpaperId = $WallpaperId
     websocketHello = $true
     grantedPermissions = @($response.result.permissions)
+    reconnectRequiresReapproval = $true
     savedHostRequiresReapproval = $true
     revokeClosesWebSocket = $true
     revokedTokensUnauthorized = $true
+    leastPrivilegeEnforced = $true
+    incompatibleVersionRejected = $true
 } | ConvertTo-Json -Depth 6

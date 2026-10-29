@@ -43,7 +43,7 @@ dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 -BaseUrl http://127.0.0.1:4311
 ```
 
-检查覆盖健康状态、Bearer 会话、未批准时拒绝组件发现、显式审批后的组件发现、壁纸配置持久化，以及带权限协商的 Host/Companion hello 握手。脚本还会记住首次批准，确认同一 Host ID 的新会话仍需显式批准；随后撤销该 Host，并验证活动 WebSocket 被关闭且两个会话令牌均失去访问权限。
+检查覆盖健康状态、Bearer 会话、未批准时拒绝组件发现、显式审批后的组件发现、壁纸配置持久化，以及带权限协商的 Host/Companion hello 握手。脚本还会记住首次批准，确认同一会话令牌断开后重连仍需重新批准，同一 Host ID 的新会话也仍需显式批准；随后撤销该 Host，并验证活动 WebSocket 被关闭且会话令牌均失去访问权限。脚本也会验证只授予组件发现权限时不能读取配置，并确认不兼容的协议版本会在授权前被拒绝。
 组件和配置的 HTTP 接口既需要有效的 Bearer Token，也需要当前 WebSocket `hello`
 会话授予相应权限。单独创建会话不会授予访问权；WebSocket 关闭后权限清空。
 
