@@ -8,7 +8,7 @@ public sealed class HostAuthorizationTests
     [Fact]
     public async Task NewRequestRemainsPendingUntilAnExplicitDecision()
     {
-        var queue = new HostAuthorizationQueue();
+        var queue = NewQueue();
         Assert.True(queue.TryEnqueue(Request("session-a"), out var decision));
 
         Assert.False(decision.IsCompleted);
@@ -24,7 +24,7 @@ public sealed class HostAuthorizationTests
     [Fact]
     public async Task ApprovalGrantsOnlySupportedPermissionsThatWereRequested()
     {
-        var queue = new HostAuthorizationQueue();
+        var queue = NewQueue();
         queue.TryEnqueue(Request("session-a", ["component.discovery", "config.read"]), out var decision);
 
         Assert.True(queue.Approve("session-a", ["component.discovery", "config.write", "unknown.permission"]));
@@ -37,7 +37,7 @@ public sealed class HostAuthorizationTests
     [Fact]
     public async Task RequestsAreIsolatedAndDuplicateSessionDoesNotReplacePendingRequest()
     {
-        var queue = new HostAuthorizationQueue();
+        var queue = NewQueue();
         queue.TryEnqueue(Request("session-a", ["config.read"]), out var first);
         Assert.False(queue.TryEnqueue(Request("session-a", ["config.write"]), out var duplicate));
         queue.TryEnqueue(Request("session-b", ["component.discovery"]), out var second);
@@ -53,7 +53,7 @@ public sealed class HostAuthorizationTests
     [Fact]
     public async Task CancelRemovesPendingRequestWithoutGrantingPermissions()
     {
-        var queue = new HostAuthorizationQueue();
+        var queue = NewQueue();
         queue.TryEnqueue(Request("session-a"), out var decision);
 
         Assert.True(queue.Cancel("session-a"));
@@ -61,6 +61,37 @@ public sealed class HostAuthorizationTests
         Assert.Empty(queue.Snapshot());
         Assert.False(queue.Approve("session-a", ["component.discovery"]));
     }
+
+    [Fact]
+    public async Task RememberedApprovalPersistsAcrossQueueInstancesAndOnlyCoversGrantedPermissions()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "trusted.json");
+        var first = new HostAuthorizationQueue(new TrustedHostStore(path));
+        first.TryEnqueue(Request("session-a", ["component.discovery"]), out var decision);
+        Assert.True(first.Approve("session-a", ["component.discovery"], remember: true));
+        Assert.True((await decision).Approved);
+
+        var restarted = new HostAuthorizationQueue(new TrustedHostStore(path));
+        Assert.False(restarted.TryEnqueue(Request("session-b", ["component.discovery"]), out var remembered));
+        Assert.Equal(["component.discovery"], (await remembered).GrantedPermissions);
+
+        Assert.True(restarted.TryEnqueue(Request("session-c", ["component.discovery", "config.write"]), out var expanded));
+        Assert.False(expanded.IsCompleted);
+        Assert.True(restarted.Deny("session-c"));
+        Assert.False((await expanded).Approved);
+    }
+
+    [Fact]
+    public void RememberedHostCanBeRevoked()
+    {
+        var store = new TrustedHostStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "trusted.json"));
+        store.Remember(new("org.example.host", "Example", "1.0"), ["component.discovery"]);
+        Assert.True(store.Remove("org.example.host"));
+        Assert.Empty(store.List());
+    }
+
+    private static HostAuthorizationQueue NewQueue() => new(new TrustedHostStore(
+        Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "trusted.json")));
 
     private static HostAuthorizationRequest Request(string sessionId, IReadOnlyCollection<string>? permissions = null) => new(
         sessionId,

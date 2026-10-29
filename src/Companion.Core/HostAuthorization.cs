@@ -16,17 +16,19 @@ public sealed record HostAuthorizationDecision(bool Approved, IReadOnlyCollectio
 public sealed record AuthorizationControlRequest(
     string Operation,
     string? SessionId = null,
-    IReadOnlyCollection<string>? Permissions = null);
+    IReadOnlyCollection<string>? Permissions = null,
+    bool Remember = false);
 
 public sealed record AuthorizationControlResponse(
     bool Success,
     IReadOnlyList<HostAuthorizationRequest> Requests,
-    string? Error = null);
+    string? Error = null,
+    IReadOnlyList<TrustedHost>? TrustedHosts = null);
 
 /// <summary>
-/// Holds explicit, session-scoped human decisions in memory. It does not persist trust.
+/// Holds explicit human decisions and optional per-user trust for self-reported Host IDs.
 /// </summary>
-public sealed class HostAuthorizationQueue
+public sealed class HostAuthorizationQueue(TrustedHostStore? trustedHosts = null)
 {
     private static readonly HashSet<string> SupportedPermissions = new(StringComparer.Ordinal)
     {
@@ -35,11 +37,15 @@ public sealed class HostAuthorizationQueue
 
     private readonly object gate = new();
     private readonly Dictionary<string, PendingDecision> pending = new(StringComparer.Ordinal);
+    private readonly TrustedHostStore trustStore = trustedHosts ?? new TrustedHostStore(TrustedHostStore.DefaultPath);
 
     public IReadOnlyList<HostAuthorizationRequest> Snapshot()
     {
         lock (gate) return pending.Values.Select(item => item.Request).ToArray();
     }
+
+    public IReadOnlyList<TrustedHost> TrustedHosts() => trustStore.List();
+    public bool RevokeTrust(string id) => trustStore.Remove(id);
 
     public bool TryEnqueue(HostAuthorizationRequest request, out Task<HostAuthorizationDecision> decision)
     {
@@ -57,6 +63,13 @@ public sealed class HostAuthorizationQueue
                 return false;
             }
 
+            var remembered = trustStore.Find(request.ClaimedIdentity.Id);
+            if (remembered is not null && request.RequestedPermissions.All(remembered.Permissions.Contains))
+            {
+                decision = Task.FromResult(new HostAuthorizationDecision(true, request.RequestedPermissions.ToArray()));
+                return false;
+            }
+
             var item = new PendingDecision(request, new(TaskCreationOptions.RunContinuationsAsynchronously));
             pending.Add(request.SessionId, item);
             decision = item.Completion.Task;
@@ -64,8 +77,8 @@ public sealed class HostAuthorizationQueue
         }
     }
 
-    public bool Approve(string sessionId, IEnumerable<string> permissions) =>
-        Resolve(sessionId, approved: true, permissions);
+    public bool Approve(string sessionId, IEnumerable<string> permissions, bool remember = false) =>
+        Resolve(sessionId, approved: true, permissions, remember);
 
     public bool Deny(string sessionId) => Resolve(sessionId, approved: false, []);
 
@@ -80,7 +93,7 @@ public sealed class HostAuthorizationQueue
         return true;
     }
 
-    private bool Resolve(string sessionId, bool approved, IEnumerable<string> permissions)
+    private bool Resolve(string sessionId, bool approved, IEnumerable<string> permissions, bool remember = false)
     {
         ArgumentNullException.ThrowIfNull(permissions);
         PendingDecision? item;
@@ -94,6 +107,8 @@ public sealed class HostAuthorizationQueue
             ? permissions.Where(permission => SupportedPermissions.Contains(permission) && requested.Contains(permission))
                 .Distinct(StringComparer.Ordinal).ToArray()
             : [];
+        if (approved && remember && granted.Length > 0)
+            trustStore.Remember(item.Request.ClaimedIdentity, granted);
         item.Completion.TrySetResult(new(approved, granted));
         return true;
     }
@@ -101,4 +116,69 @@ public sealed class HostAuthorizationQueue
     private sealed record PendingDecision(
         HostAuthorizationRequest Request,
         TaskCompletionSource<HostAuthorizationDecision> Completion);
+}
+
+public sealed record TrustedHost(string Id, string Name, string Version, IReadOnlyCollection<string> Permissions, DateTimeOffset ApprovedAt);
+
+/// <summary>Per-Windows-user persistence for explicitly remembered Host permissions. IDs remain self-asserted.</summary>
+public sealed class TrustedHostStore(string path)
+{
+    public static string DefaultPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BAP Companion", "trusted-hosts.json");
+
+    private readonly object gate = new();
+
+    public TrustedHost? Find(string id)
+    {
+        lock (gate) return Read().FirstOrDefault(host => string.Equals(host.Id, id, StringComparison.Ordinal));
+    }
+
+    public IReadOnlyList<TrustedHost> List()
+    {
+        lock (gate) return Read();
+    }
+
+    public void Remember(Identity identity, IEnumerable<string> permissions)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        var allowed = permissions.Distinct(StringComparer.Ordinal).ToArray();
+        lock (gate)
+        {
+            var hosts = Read().Where(host => !string.Equals(host.Id, identity.Id, StringComparison.Ordinal)).ToList();
+            hosts.Add(new(identity.Id, identity.Name, identity.Version, allowed, DateTimeOffset.UtcNow));
+            Write(hosts);
+        }
+    }
+
+    public bool Remove(string id)
+    {
+        lock (gate)
+        {
+            var hosts = Read().Where(host => !string.Equals(host.Id, id, StringComparison.Ordinal)).ToArray();
+            if (hosts.Length == Read().Count) return false;
+            Write(hosts);
+            return true;
+        }
+    }
+
+    private IReadOnlyList<TrustedHost> Read()
+    {
+        if (!File.Exists(path)) return [];
+        try
+        {
+            return (System.Text.Json.JsonSerializer.Deserialize<List<TrustedHost>>(File.ReadAllText(path)) ?? [])
+                .Where(host => !string.IsNullOrWhiteSpace(host.Id) && host.Permissions.All(permission =>
+                    permission is "component.discovery" or "config.read" or "config.write"))
+                .ToArray();
+        }
+        catch (System.Text.Json.JsonException) { return []; }
+    }
+
+    private void Write(IEnumerable<TrustedHost> hosts)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, System.Text.Json.JsonSerializer.Serialize(hosts));
+        File.Move(temp, path, overwrite: true);
+    }
 }

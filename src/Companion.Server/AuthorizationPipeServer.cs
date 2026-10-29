@@ -47,8 +47,11 @@ internal sealed class AuthorizationPipeServer(
         return request.Operation switch
         {
             "snapshot" => new(true, authorizations.Snapshot()),
+            "trusted" => new(true, [], TrustedHosts: authorizations.TrustedHosts()),
+            "revoke" when !string.IsNullOrWhiteSpace(request.SessionId) => new(
+                authorizations.RevokeTrust(request.SessionId), [], TrustedHosts: authorizations.TrustedHosts()),
             "approve" when !string.IsNullOrWhiteSpace(request.SessionId) => new(
-                authorizations.Approve(request.SessionId, request.Permissions ?? []), []),
+                authorizations.Approve(request.SessionId, request.Permissions ?? [], request.Remember), []),
             "deny" when !string.IsNullOrWhiteSpace(request.SessionId) => new(
                 authorizations.Deny(request.SessionId), []),
             _ => new(false, [], "unsupported operation")

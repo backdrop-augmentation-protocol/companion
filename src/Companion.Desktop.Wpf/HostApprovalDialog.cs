@@ -13,7 +13,7 @@ namespace Bap.Companion.Desktop.Wpf;
 internal static class HostApprovalDialog
 {
     public static bool Show(Window owner, HostAuthorizationRequest request, string language,
-        out IReadOnlyCollection<string> grantedPermissions)
+        out IReadOnlyCollection<string> grantedPermissions, out bool remember)
     {
         var chinese = language == "zh-CN";
         var selected = new List<CheckBox>();
@@ -41,6 +41,18 @@ internal static class HostApprovalDialog
             Foreground = new SolidColorBrush(Color.FromRgb(34, 211, 255)),
             TextWrapping = TextWrapping.Wrap
         });
+        var rememberCheck = new CheckBox
+        {
+            Content = new TextBlock
+            {
+                Text = chinese ? "Remember this Host and its approved permissions on this device" : "Remember this Host and approved permissions on this device",
+                TextWrapping = TextWrapping.Wrap
+            },
+            IsChecked = false,
+            Margin = new Thickness(0, 14, 0, 0),
+            Foreground = Brushes.White
+        };
+        content.Children.Add(rememberCheck);
         content.Children.Add(new TextBlock
         {
             Text = $"{Display(request.ClaimedIdentity.Name)}\n{Display(request.ClaimedIdentity.Id)}\n{(chinese ? "版本" : "Version")}: {Display(request.ClaimedIdentity.Version)}",
@@ -58,7 +70,7 @@ internal static class HostApprovalDialog
             {
                 Text = chinese
                     ? "安装来源无法由 Companion 验证。只在你能独立确认当前 Wallpaper Engine 壁纸身份时批准；批准仅适用于本次会话。"
-                    : "Companion cannot verify the installation source. Approve only if you can independently identify the active Wallpaper Engine wallpaper. Approval applies to this session only.",
+                    : "Companion cannot verify this self-reported identity or installation source. Approve only if you can independently identify the active Wallpaper Engine wallpaper. Remembering trusts this BAP ID on this Windows account; it does not authenticate the publisher.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = new SolidColorBrush(Color.FromRgb(255, 190, 202))
             }
@@ -102,6 +114,7 @@ internal static class HostApprovalDialog
         grantedPermissions = approved
             ? selected.Where(checkBox => checkBox.IsChecked == true).Select(checkBox => (string)checkBox.Tag!).ToArray()
             : [];
+        remember = approved && rememberCheck.IsChecked == true;
         return approved;
     }
 

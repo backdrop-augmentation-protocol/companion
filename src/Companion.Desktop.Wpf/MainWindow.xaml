@@ -301,6 +301,12 @@
             <CheckBox x:Name="StartupCheck" Checked="StartupCheck_Changed" Unchecked="StartupCheck_Changed"/>
             <TextBlock x:Name="StartupError" Foreground="#FF8899" TextWrapping="Wrap" Margin="0,9,0,0"/>
           </StackPanel></Border>
+          <Border Style="{StaticResource Panel}" Padding="22" Margin="0,0,0,14"><StackPanel>
+            <TextBlock x:Name="TrustedHostsHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,8" Text="Remembered Hosts"/>
+            <TextBlock x:Name="TrustedHostsHint" Style="{StaticResource Hint}" Text="These IDs are self-reported, not publisher-verified. Remove an entry to require approval again." Margin="0,0,0,10"/>
+            <ListBox x:Name="TrustedHostsList" MaxHeight="180" Background="#0A1C3B" Foreground="#EAF3FF" BorderBrush="#284572"/>
+            <Button x:Name="RevokeTrustButton" Content="Forget selected Host" Style="{StaticResource QuietButton}" Click="RevokeTrustButton_Click" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+          </StackPanel></Border>
           <Border Style="{StaticResource Panel}" Padding="22"><StackPanel>
             <TextBlock x:Name="LogsHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,12"/>
             <StackPanel Orientation="Horizontal">

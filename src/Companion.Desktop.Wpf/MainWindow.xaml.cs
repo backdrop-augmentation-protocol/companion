@@ -68,10 +68,10 @@ public partial class MainWindow : Window
             if (!IsVisible) Show();
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
             Activate();
-            var approved = HostApprovalDialog.Show(this, request, settings.Language, out var permissions);
-            var applied = await authorizationClient.DecideAsync(request.SessionId, approved, permissions);
+            var approved = HostApprovalDialog.Show(this, request, settings.Language, out var permissions, out var remember);
+            var applied = await authorizationClient.DecideAsync(request.SessionId, approved, permissions, remember);
             if (!applied) log.Write("authorization", $"Request {request.SessionId} was no longer pending when the decision was submitted.");
-            else log.Write("authorization", $"Host request {request.SessionId} {(approved ? "approved" : "denied")} for this session.");
+            else log.Write("authorization", $"Host request {request.SessionId} {(approved ? "approved" : "denied")}{(remember ? " and remembered on this device" : " for this session")}.");
         }
         catch (Exception error) when (error is IOException or TimeoutException or InvalidDataException or System.Text.Json.JsonException)
         {
@@ -117,6 +117,18 @@ public partial class MainWindow : Window
         StartupCheck.Content = L("startup"); LogsHeading.Text = L("logs");
         OpenLogButton.Content = L("openLog"); OpenLogFolderButton.Content = L("openLogFolder");
         CheckServiceButton.Content = L("checkService");
+#if false
+        TrustedHostsHeading.Text = settings.Language == "zh-CN" ? "宸茶浣忕殑瀹夸富" : "Remembered Hosts";
+        TrustedHostsHint.Text = settings.Language == "zh-CN"
+            ? "杩欎簺鏍囪瘑鐢卞绾歌嚜琛屽０鏄庯紝骞撮潪鍙戣鑰呴獙璇併€傚垹闄ゆ潯鐩悗锛屼笅娆¤繛鎺ラ渶閲嶆柊鎵瑰噯銆?
+            : "These IDs are self-reported, not publisher-verified. Remove an entry to require approval again.";
+        RevokeTrustButton.Content = settings.Language == "zh-CN" ? "蹇樿閫変腑瀹夸富" : "Forget selected Host";
+#endif
+        TrustedHostsHeading.Text = settings.Language == "zh-CN" ? "\u5df2\u8bb0\u4f4f\u7684\u5bbf\u4e3b" : "Remembered Hosts";
+        TrustedHostsHint.Text = settings.Language == "zh-CN"
+            ? "\u8fd9\u4e9b\u6807\u8bc6\u7531\u58c1\u7eb8\u81ea\u884c\u58f0\u660e\uff0c\u5e76\u672a\u9a8c\u8bc1\u53d1\u884c\u8005\u3002\u79fb\u9664\u6761\u76ee\u540e\uff0c\u4e0b\u6b21\u8fde\u63a5\u9700\u91cd\u65b0\u6279\u51c6\u3002"
+            : "These IDs are self-reported, not publisher-verified. Remove an entry to require approval again.";
+        RevokeTrustButton.Content = settings.Language == "zh-CN" ? "\u5fd8\u8bb0\u9009\u4e2d\u5bbf\u4e3b" : "Forget selected Host";
         if (settings.StartupError is not null) StartupError.Text = L("startupError", settings.StartupError);
         changingDisplayChoice = true;
         try
@@ -130,6 +142,7 @@ public partial class MainWindow : Window
         RenderChoices();
         RenderPresets();
         RenderDetails();
+        _ = RunActionAsync(RefreshTrustedHostsAsync);
     }
 
     private void SelectPage(UIElement page, Button nav)
@@ -480,6 +493,23 @@ public partial class MainWindow : Window
     private static void OpenPath(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
     private void CheckServiceButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(CheckServiceAsync);
 
+    private async Task RefreshTrustedHostsAsync()
+    {
+        if (authorizationClient is null || TrustedHostsList is null) return;
+        var selectedId = (TrustedHostsList.SelectedItem as TrustedHostChoice)?.Host.Id;
+        var hosts = await authorizationClient.GetTrustedHostsAsync();
+        TrustedHostsList.ItemsSource = hosts.Select(host => new TrustedHostChoice(host,
+            $"{host.Name}  ·  {host.Id}  ·  {string.Join(", ", host.Permissions)}")).ToArray();
+        TrustedHostsList.SelectedItem = TrustedHostsList.Items.Cast<TrustedHostChoice>().FirstOrDefault(item => item.Host.Id == selectedId);
+    }
+
+    private void RevokeTrustButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
+    {
+        if (authorizationClient is null || TrustedHostsList.SelectedItem is not TrustedHostChoice selected) return;
+        await authorizationClient.RevokeTrustAsync(selected.Host.Id);
+        await RefreshTrustedHostsAsync();
+    });
+
     private async Task CheckServiceAsync()
     {
         try
@@ -496,4 +526,5 @@ public partial class MainWindow : Window
     private sealed record CatalogChoice(InstalledItem Item, string Label);
     private sealed record PresetChoice(ComponentPreset Preset) { public override string ToString() => Preset.Name; }
     private sealed record ComponentChoice(PresetComponent Component, string Label);
+    private sealed record TrustedHostChoice(TrustedHost Host, string Label) { public override string ToString() => Label; }
 }

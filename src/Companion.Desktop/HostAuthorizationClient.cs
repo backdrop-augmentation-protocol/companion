@@ -11,11 +11,18 @@ public sealed class HostAuthorizationClient(string pipeName)
     public async Task<IReadOnlyList<HostAuthorizationRequest>> GetPendingAsync(CancellationToken cancellationToken = default) =>
         (await SendAsync(new("snapshot"), cancellationToken)).Requests;
 
+    public async Task<IReadOnlyList<TrustedHost>> GetTrustedHostsAsync(CancellationToken cancellationToken = default) =>
+        (await SendAsync(new("trusted"), cancellationToken)).TrustedHosts ?? [];
+
+    public async Task<bool> RevokeTrustAsync(string id, CancellationToken cancellationToken = default) =>
+        (await SendAsync(new("revoke", id), cancellationToken)).Success;
+
     public async Task<bool> DecideAsync(string sessionId, bool approve, IReadOnlyCollection<string> permissions,
+        bool remember = false,
         CancellationToken cancellationToken = default)
     {
         var request = approve
-            ? new AuthorizationControlRequest("approve", sessionId, permissions)
+            ? new AuthorizationControlRequest("approve", sessionId, permissions, remember)
             : new AuthorizationControlRequest("deny", sessionId);
         return (await SendAsync(request, cancellationToken)).Success;
     }
