@@ -191,7 +191,17 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
         logger.LogInformation("Host session {SessionId} approved; Companion hello response sent with {PermissionCount} permissions", session.Id, permissions.Count);
         while (socket.State == WebSocketState.Open && !sessionCancellation.IsCancellationRequested)
         {
-            var message = await ReceiveTextAsync(socket, sessionCancellation);
+            // Keep revocation independent from the pending receive. Cancelling a
+            // WebSocket receive can abort the transport before a close frame is sent.
+            var receiveTask = ReceiveTextAsync(socket, context.RequestAborted);
+            var revocationTask = Task.Delay(Timeout.InfiniteTimeSpan, session.RevocationToken);
+            if (await Task.WhenAny(receiveTask, revocationTask) != receiveTask)
+            {
+                if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                    await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Host authorization revoked", CancellationToken.None);
+                return;
+            }
+            var message = await receiveTask;
             if (message is null) break;
             if (!TryReadMessage(message, json, out var request) || request is null || request.Kind != "request" || string.IsNullOrWhiteSpace(request.Id))
             { await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "valid BAP request required", sessionCancellation); return; }

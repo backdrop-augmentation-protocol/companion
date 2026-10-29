@@ -62,6 +62,7 @@ internal sealed class AuthorizationPipeServer(
     {
         var trustRemoved = authorizations.RevokeTrust(hostId);
         var sessionsRevoked = sessions.RevokeHost(hostId);
+        logger.LogInformation("Host authorization revoked for {HostId}; removedTrust={TrustRemoved}, invalidatedSessions={SessionCount}", hostId, trustRemoved, sessionsRevoked);
         return new(trustRemoved || sessionsRevoked > 0, [], TrustedHosts: authorizations.TrustedHosts());
     }
 }

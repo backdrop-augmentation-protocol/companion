@@ -58,8 +58,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 
 
 The check covers health, bearer session creation, authenticated component
 discovery, wallpaper configuration persistence, and the Host/Companion hello
-handshake with permission negotiation. The test approval is explicit and is not
-remembered across sessions.
+handshake with permission negotiation. It also remembers the first approval,
+confirms that a new session with the same Host ID still requires explicit
+approval, then revokes that Host and verifies the active WebSocket closes and
+both session tokens lose access.
 HTTP component and configuration endpoints require both a valid Bearer token
 and the corresponding permission granted by a live WebSocket `hello` session.
 Session creation alone grants no access; closing the WebSocket clears its grants.
