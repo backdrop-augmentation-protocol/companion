@@ -47,9 +47,23 @@ public sealed record CompanionConfig(
 
 public sealed class CompanionOptions
 {
+    public const int DefaultAuthorizationTimeoutMilliseconds = 300_000;
+    public const int MinimumAuthorizationTimeoutMilliseconds = 1_000;
+    public const int MaximumAuthorizationTimeoutMilliseconds = 300_000;
+
     public ProtocolDescriptor Protocol { get; init; } = new("bap", "0.1.0", "core");
     public string CompanionId { get; init; } = "org.bap.companion";
     public string CompanionName { get; init; } = "BAP Companion";
     public string CompanionVersion { get; init; } = "0.1.0";
     public TimeSpan SessionLifetime { get; init; } = TimeSpan.FromHours(8);
+    public TimeSpan AuthorizationTimeout { get; init; } = TimeSpan.FromSeconds(300);
+
+    public static TimeSpan ParseAuthorizationTimeout(string? configured)
+    {
+        return int.TryParse(configured, out var milliseconds) &&
+               milliseconds >= MinimumAuthorizationTimeoutMilliseconds &&
+               milliseconds <= MaximumAuthorizationTimeoutMilliseconds
+            ? TimeSpan.FromMilliseconds(milliseconds)
+            : TimeSpan.FromMilliseconds(DefaultAuthorizationTimeoutMilliseconds);
+    }
 }

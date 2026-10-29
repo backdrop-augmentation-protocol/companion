@@ -93,3 +93,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install-companion.ps1
 ```
 
 安装位置为 `%LOCALAPPDATA%\Programs\BAP Companion`，并在当前用户的“开始”菜单添加 `BAP Companion` 快捷方式。无需管理员权限；首次运行默认启用开机自启，可在设置页取消。更新前请通过托盘菜单退出已安装的 Companion；安装程序会保留其配置数据。
+
+待处理的 Host 授权期限由 Companion 统一管理，默认 300 秒。可通过 `BAP_APPROVAL_TIMEOUT_MS` 调低期限以进行受控测试（有效范围：1,000–300,000 毫秒）；Host 必须等待 Companion 决策或关闭会话，不得使用更短的本地授权计时器。

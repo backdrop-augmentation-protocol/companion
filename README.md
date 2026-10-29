@@ -59,6 +59,11 @@ $env:BAP_AUTHORIZATION_PIPE = 'Bap.Companion.E2E'
 dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
 ```
 
+The Companion owns the pending Host approval deadline (300 seconds by default).
+`BAP_APPROVAL_TIMEOUT_MS` can lower it for controlled testing (valid range:
+1,000–300,000 milliseconds); Hosts must wait for the Companion's decision or
+session close rather than applying a shorter local authorization timer.
+
 In a second PowerShell window:
 
 ```powershell

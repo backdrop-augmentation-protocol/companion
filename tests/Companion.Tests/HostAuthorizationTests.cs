@@ -5,6 +5,17 @@ namespace Bap.Companion.Tests;
 
 public sealed class HostAuthorizationTests
 {
+    [Theory]
+    [InlineData(null, 300_000)]
+    [InlineData("3000", 3_000)]
+    [InlineData("999", 300_000)]
+    [InlineData("300001", 300_000)]
+    [InlineData("invalid", 300_000)]
+    public void ApprovalTimeoutIsCompanionOwnedAndBounded(string? configured, int expectedMilliseconds)
+    {
+        Assert.Equal(TimeSpan.FromMilliseconds(expectedMilliseconds), CompanionOptions.ParseAuthorizationTimeout(configured));
+    }
+
     [Fact]
     public async Task NewRequestRemainsPendingUntilAnExplicitDecision()
     {
