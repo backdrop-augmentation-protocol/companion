@@ -166,13 +166,13 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
             {
                 authorizations.Cancel(session.Id);
                 if (!context.RequestAborted.IsCancellationRequested)
-                    await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, "APPROVAL_TIMEOUT", "Host approval was not completed in time"), context.RequestAborted);
+                    await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, AuthorizationErrorCodes.TimedOut, "Host approval was not completed in time"), context.RequestAborted);
                 return;
             }
         }
         if (!decision.Approved)
         {
-            await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, "APPROVAL_DENIED", "Host access was denied in Companion"), context.RequestAborted);
+            await SendAsync(socket, ErrorResponse(options.Protocol, hello.Id, session.Id, AuthorizationErrorCodes.Denied, "Host access was denied in Companion"), context.RequestAborted);
             await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Host approval denied", context.RequestAborted);
             return;
         }

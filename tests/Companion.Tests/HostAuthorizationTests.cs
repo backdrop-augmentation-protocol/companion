@@ -109,6 +109,20 @@ public sealed class HostAuthorizationTests
         Assert.Equal(["component.discovery"], remaining.GrantedPermissions);
     }
 
+    [Fact]
+    public void AuthorizationFailureCodesAreAllowedByCoreErrorSchema()
+    {
+        // Keep this Core 0.1.0 list synchronized with spec/versions/0.1.0/schemas/error.schema.json.
+        var coreErrorCodes = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "INVALID_MESSAGE", "UNSUPPORTED_VERSION", "UNSUPPORTED_PROFILE", "UNAUTHORIZED",
+            "CAPABILITY_DENIED", "INVALID_STATE", "NOT_FOUND", "CONFLICT", "TIMEOUT", "INTERNAL_ERROR"
+        };
+
+        Assert.Contains(AuthorizationErrorCodes.TimedOut, coreErrorCodes);
+        Assert.Contains(AuthorizationErrorCodes.Denied, coreErrorCodes);
+    }
+
     private static HostAuthorizationQueue NewQueue() => new(new TrustedHostStore(
         Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "trusted.json")));
 

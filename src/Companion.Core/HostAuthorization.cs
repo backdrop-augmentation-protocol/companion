@@ -13,6 +13,12 @@ public sealed record HostAuthorizationRequest(
 
 public sealed record HostAuthorizationDecision(bool Approved, IReadOnlyCollection<string> GrantedPermissions);
 
+public static class AuthorizationErrorCodes
+{
+    public const string TimedOut = "TIMEOUT";
+    public const string Denied = "UNAUTHORIZED";
+}
+
 public sealed record AuthorizationControlRequest(
     string Operation,
     string? SessionId = null,
