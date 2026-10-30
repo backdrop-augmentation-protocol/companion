@@ -55,7 +55,11 @@ public partial class MainWindow : Window
         SelectPage(InstalledPage, InstalledNav);
         uiReady = true;
         StateChanged += (_, _) => UpdateMaximizeButton();
-        Loaded += async (_, _) => await RunActionAsync(RefreshAsync);
+        Loaded += async (_, _) => await RunActionAsync(async () =>
+        {
+            await RefreshAsync();
+            await RefreshTrustedHostsAsync();
+        });
         authorizationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         authorizationTimer.Tick += AuthorizationTimer_Tick;
         if (authorizationClient is not null) authorizationTimer.Start();
@@ -65,11 +69,11 @@ public partial class MainWindow : Window
     private async void AuthorizationTimer_Tick(object? sender, EventArgs e)
     {
         if (authorizationClient is null || showingAuthorizationPrompt) return;
+        showingAuthorizationPrompt = true;
         try
         {
             var request = (await authorizationClient.GetPendingAsync()).FirstOrDefault();
             if (request is null) return;
-            showingAuthorizationPrompt = true;
             if (!IsVisible) Show();
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
             Activate();
@@ -147,7 +151,6 @@ public partial class MainWindow : Window
         RenderChoices();
         RenderPresets();
         RenderDetails();
-        _ = RunActionAsync(RefreshTrustedHostsAsync);
     }
 
     private void SelectPage(UIElement page, Button nav)
