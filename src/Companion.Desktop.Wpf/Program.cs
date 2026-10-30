@@ -29,6 +29,7 @@ internal static class Program
         application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         using var context = new CompanionLifetime(application, activation, args);
         application.Run();
+        context.MarkRunLoopReturned();
     }
 
     private static System.Windows.Application CreateApplication()
@@ -56,6 +57,7 @@ internal sealed class CompanionLifetime : IDisposable
     private readonly Forms.ToolStripItem exitItem;
     private readonly DispatcherTimer activationTimer;
     private bool exiting;
+    private string shutdownReason = "not-recorded";
 
     public CompanionLifetime(System.Windows.Application application, EventWaitHandle activation, string[] args)
     {
@@ -64,11 +66,21 @@ internal sealed class CompanionLifetime : IDisposable
         var port = portIndex >= 0 && portIndex + 1 < args.Length && int.TryParse(args[portIndex + 1], out var parsed) ? parsed : 4311;
         settings = new DesktopSettings();
         log = new CompanionLog();
-        log.Write("desktop", "Starting Companion WPF front end");
+        log.Write("desktop", $"Starting Companion WPF front end; processId={Environment.ProcessId}; executable={Environment.ProcessPath ?? "unknown"}");
+        application.DispatcherUnhandledException += OnDispatcherUnhandledException;
+        application.Exit += OnApplicationExit;
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+        AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         authorizationPipeName = $"Bap.Companion.Authorization.{Guid.NewGuid():N}";
         server = StartServer(port, authorizationPipeName);
         window = new MainWindow(log, port, settings, new HostAuthorizationClient(authorizationPipeName));
-        window.Closing += (_, eventArgs) => { if (!exiting) { eventArgs.Cancel = true; window.Hide(); } };
+        window.Closing += (_, eventArgs) =>
+        {
+            if (!exiting) { eventArgs.Cancel = true; window.Hide(); }
+            log.Write("desktop", $"Main window closing; canceled={eventArgs.Cancel}; exiting={exiting}");
+        };
+        window.Closed += (_, _) => log.Write("desktop", "Main window closed");
 
         menu = new Forms.ContextMenuStrip();
         openItem = menu.Items.Add("", null, (_, _) => ShowWindow());
@@ -109,8 +121,31 @@ internal sealed class CompanionLifetime : IDisposable
     {
         if (exiting) return;
         exiting = true;
+        shutdownReason = "tray-exit-command";
+        log.Write("desktop", "Shutdown requested from tray Exit command");
         application.Shutdown();
     }
+
+    public void MarkRunLoopReturned()
+    {
+        if (shutdownReason == "not-recorded") shutdownReason = "application-run-loop-returned-without-tray-exit";
+        log.Write("desktop", $"Application.Run returned; shutdownReason={shutdownReason}");
+    }
+
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs eventArgs) =>
+        log.Write("desktop-error", $"DispatcherUnhandledException; handled={eventArgs.Handled}; exception={eventArgs.Exception}");
+
+    private void OnApplicationExit(object? sender, ExitEventArgs eventArgs) =>
+        log.Write("desktop", $"WPF Application.Exit raised; exitCode={eventArgs.ApplicationExitCode}; shutdownReason={shutdownReason}");
+
+    private void OnUnhandledException(object sender, UnhandledExceptionEventArgs eventArgs) =>
+        log.Write("desktop-error", $"AppDomain.UnhandledException; terminating={eventArgs.IsTerminating}; exception={eventArgs.ExceptionObject}");
+
+    private void OnProcessExit(object? sender, EventArgs eventArgs) =>
+        log.Write("desktop", $"ProcessExit raised; processId={Environment.ProcessId}; shutdownReason={shutdownReason}");
+
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs eventArgs) =>
+        log.Write("desktop-error", $"TaskScheduler.UnobservedTaskException; exception={eventArgs.Exception}");
 
     private Process StartServer(int port, string controlPipeName)
     {
@@ -128,6 +163,12 @@ internal sealed class CompanionLifetime : IDisposable
         start.ArgumentList.Add($"http://127.0.0.1:{port}");
         start.Environment["BAP_AUTHORIZATION_PIPE"] = controlPipeName;
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion Server.");
+        process.EnableRaisingEvents = true;
+        process.Exited += (_, _) =>
+        {
+            try { log.Write("desktop", $"Companion Server process exited; processId={process.Id}; exitCode={process.ExitCode}; shutdownReason={shutdownReason}"); }
+            catch (InvalidOperationException error) { log.Write("desktop-error", $"Could not read Companion Server exit details: {error.Message}"); }
+        };
         log.Capture(process);
         return process;
     }
@@ -141,9 +182,18 @@ internal sealed class CompanionLifetime : IDisposable
         trayIcon.Dispose();
         trayIconStream.Dispose();
         menu.Dispose();
-        if (!server.HasExited) server.Kill(true);
+        if (!server.HasExited)
+        {
+            server.Kill(true);
+            server.WaitForExit(5000);
+        }
         server.Dispose();
-        log.Write("desktop", "Companion stopped");
+        log.Write("desktop", $"Companion stopping; shutdownReason={shutdownReason}; processId={Environment.ProcessId}");
+        application.DispatcherUnhandledException -= OnDispatcherUnhandledException;
+        application.Exit -= OnApplicationExit;
+        AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException;
+        AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+        TaskScheduler.UnobservedTaskException -= OnUnobservedTaskException;
         log.Dispose();
     }
 }
