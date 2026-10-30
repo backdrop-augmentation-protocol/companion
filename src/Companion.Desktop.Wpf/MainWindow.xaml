@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="BAP Companion" Width="1220" Height="790" MinWidth="1100" MinHeight="640"
+        Icon="pack://application:,,,/Bap.Companion.Desktop;component/Assets/bap-companion.ico"
         WindowStartupLocation="CenterScreen" Background="#07142D" FontFamily="Segoe UI Variable, Segoe UI" FontSize="14">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="42" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>

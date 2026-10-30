@@ -43,7 +43,7 @@ public sealed class WindowTests
                 Assert.NotNull(chrome);
                 Assert.Equal(42, chrome.CaptionHeight);
                 Assert.False(chrome.UseAeroCaptionButtons);
-                Assert.Null(window.Icon);
+                Assert.NotNull(window.Icon);
                 Assert.True(System.Windows.Shell.WindowChrome.GetIsHitTestVisibleInChrome(window.CloseButton));
                 Assert.Equal(22, window.CloseButton.FontSize);
                 foreach (var control in new System.Windows.Controls.Control[]
