@@ -60,6 +60,29 @@ app.MapPost("/v1/session", (SessionRequest? request, HttpContext context, ISessi
     return Results.Ok(new SessionResponse(session.Id, session.Token, session.ExpiresAt));
 });
 
+// Local diagnostic transport for the example Host only; this is not a BAP protocol endpoint.
+app.MapPost("/v1/diagnostics", (HttpContext context, JsonElement entry, ISessionStore sessions, ILogger<Program> logger) =>
+{
+    var token = GetToken(context.Request);
+    if (token is null || !sessions.TryGet(token, out _)) return Error(StatusCodes.Status401Unauthorized, "UNAUTHORIZED", "a valid bearer session is required");
+    if (entry.ValueKind != JsonValueKind.Object ||
+        !entry.TryGetProperty("event", out var eventValue) || eventValue.ValueKind != JsonValueKind.String ||
+        !entry.TryGetProperty("pageInstanceId", out var pageValue) || pageValue.ValueKind != JsonValueKind.String)
+        return Error(StatusCodes.Status400BadRequest, "INVALID_MESSAGE", "a diagnostic event and page instance ID are required");
+    var eventName = eventValue.GetString();
+    var pageInstanceId = pageValue.GetString();
+    if (string.IsNullOrWhiteSpace(eventName) || eventName.Length > 64 ||
+        !System.Text.RegularExpressions.Regex.IsMatch(eventName, "^[a-zA-Z0-9:-]+$") ||
+        !System.Text.RegularExpressions.Regex.IsMatch(pageInstanceId ?? "", "^[a-fA-F0-9]{32}$"))
+        return Error(StatusCodes.Status400BadRequest, "INVALID_MESSAGE", "diagnostic event fields are invalid");
+    var sessionId = entry.TryGetProperty("sessionId", out var sessionValue) && sessionValue.ValueKind == JsonValueKind.String
+        ? sessionValue.GetString()
+        : null;
+    logger.LogInformation("[BAP-DIAG] {EventName} page={PageInstanceId} session={SessionId} payload={Payload}",
+        eventName, pageInstanceId, sessionId, entry.GetRawText());
+    return Results.NoContent();
+});
+
 app.MapGet("/v1/components", async (HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
     await Authenticated(request, sessions, "component.discovery", async () => Results.Ok((await source.DiscoverAsync(ct)).Where(IsValid).Select(x => x.Manifest))));
 
