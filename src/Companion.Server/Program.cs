@@ -47,13 +47,16 @@ var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { DefaultIgnore
 
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok", protocol = new { name = "bap", version = "0.1.0", profile = "core" } }));
 
-app.MapPost("/v1/session", (SessionRequest? request, ISessionStore sessions, CompanionOptions options) =>
+app.MapPost("/v1/session", (SessionRequest? request, HttpContext context, ISessionStore sessions, CompanionOptions options, ILogger<Program> logger) =>
 {
     if (request is null || string.IsNullOrWhiteSpace(request.ClientName) || string.IsNullOrWhiteSpace(request.ClientKind))
         return Error(StatusCodes.Status400BadRequest, "INVALID_MESSAGE", "clientName and clientKind are required");
     if (request.Protocol is not null && !IsCompatible(request.Protocol, options.Protocol))
         return Error(StatusCodes.Status400BadRequest, "UNSUPPORTED_VERSION", "requested protocol is not supported");
     var session = sessions.Create(request.ClientKind, options.SessionLifetime);
+    var diagnosticInstanceId = context.Request.Headers["X-BAP-Diagnostic-Instance"].ToString();
+    if (System.Text.RegularExpressions.Regex.IsMatch(diagnosticInstanceId, "^[a-fA-F0-9]{32}$"))
+        logger.LogInformation("Created session {SessionId} for diagnostic Host page instance {DiagnosticInstanceId}", session.Id, diagnosticInstanceId);
     return Results.Ok(new SessionResponse(session.Id, session.Token, session.ExpiresAt));
 });
 
