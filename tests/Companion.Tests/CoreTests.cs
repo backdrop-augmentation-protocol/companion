@@ -111,6 +111,33 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task PresetStoreAdvancesRevisionOnlyWhenPresetContentChanges()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"bap-preset-revision-{Guid.NewGuid():N}");
+        var store = new JsonPresetStore(Path.Combine(directory, "presets.json"));
+        try
+        {
+            var initial = new ComponentPreset("daily", "Daily", []);
+            var state = new PresetState([initial], initial.Id, new Dictionary<string, string>());
+            await store.WriteAsync(state);
+            var first = await store.ReadAsync();
+            Assert.Equal(0, first.Presets[0].Revision);
+            Assert.NotNull(first.Presets[0].UpdatedAt);
+
+            await store.WriteAsync(first with { Presets = [first.Presets[0] with { Name = "Work" }] });
+            var changed = await store.ReadAsync();
+            Assert.Equal(1, changed.Presets[0].Revision);
+            var updatedAt = changed.Presets[0].UpdatedAt;
+
+            await store.WriteAsync(changed);
+            var unchanged = await store.ReadAsync();
+            Assert.Equal(1, unchanged.Presets[0].Revision);
+            Assert.Equal(updatedAt, unchanged.Presets[0].UpdatedAt);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task InstalledCatalogPreservesLocalAndWorkshopCopiesOfSameComponent()
     {
         var root = Path.Combine(Path.GetTempPath(), $"bap-catalog-{Guid.NewGuid():N}");

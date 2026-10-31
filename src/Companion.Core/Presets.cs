@@ -104,15 +104,17 @@ public sealed class JsonPresetStore(string path)
     public async Task WriteAsync(PresetState state, CancellationToken cancellationToken = default)
     {
         state = Normalize(state);
-        var errors = PresetSelection.Validate(state);
-        if (errors.Count > 0) throw new ArgumentException(string.Join("; ", errors), nameof(state));
         await gate.WaitAsync(cancellationToken);
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
-            var temporary = path + ".tmp";
-            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(state, Options), cancellationToken);
-            File.Move(temporary, path, true);
+            var current = File.Exists(path)
+                ? Normalize(JsonSerializer.Deserialize<PresetState>(await File.ReadAllTextAsync(path, cancellationToken), Options)
+                    ?? throw new InvalidDataException("Preset file is empty"))
+                : new PresetState([], null, new Dictionary<string, string>());
+            state = ApplyRevisions(current, state);
+            var errors = PresetSelection.Validate(state);
+            if (errors.Count > 0) throw new ArgumentException(string.Join("; ", errors), nameof(state));
+            await WriteUnlockedAsync(state, cancellationToken);
         }
         finally { gate.Release(); }
     }
@@ -139,7 +141,7 @@ public sealed class JsonPresetStore(string path)
     }
 
     private static bool HasLegacyInstances(PresetState state) => state.Presets.Any(preset =>
-        (preset.LayoutMode == "grid" && preset.Grid is null) ||
+        (preset.LayoutMode == "grid" && preset.Grid is null) || preset.UpdatedAt is null ||
         preset.Components.Any(component => component.InstanceId is null || component.Layout is null || component.Config is null));
 
     private static PresetState Normalize(PresetState state)
@@ -148,6 +150,7 @@ public sealed class JsonPresetStore(string path)
         {
             LayoutMode = preset.LayoutMode is "manual" or "grid" ? preset.LayoutMode : "grid",
             Grid = preset.LayoutMode == "manual" ? preset.Grid : preset.Grid ?? new GridLayoutSettings(),
+            UpdatedAt = preset.UpdatedAt ?? DateTimeOffset.UtcNow,
             Components = preset.Components.Select((component, index) => component with
             {
                 InstanceId = string.IsNullOrWhiteSpace(component.InstanceId) ? Guid.NewGuid().ToString("N") : component.InstanceId,
@@ -157,6 +160,21 @@ public sealed class JsonPresetStore(string path)
         }).ToArray();
         return state with { Presets = presets };
     }
+
+    private static PresetState ApplyRevisions(PresetState current, PresetState next) => next with
+    {
+        Presets = next.Presets.Select(preset =>
+        {
+            var previous = current.Presets.FirstOrDefault(candidate => candidate.Id == preset.Id);
+            if (previous is null) return preset with { Revision = Math.Max(0, preset.Revision), UpdatedAt = preset.UpdatedAt ?? DateTimeOffset.UtcNow };
+            if (SameContent(previous, preset)) return preset with { Revision = previous.Revision, UpdatedAt = previous.UpdatedAt ?? preset.UpdatedAt };
+            return preset with { Revision = Math.Max(previous.Revision + 1, preset.Revision), UpdatedAt = DateTimeOffset.UtcNow };
+        }).ToArray()
+    };
+
+    private static bool SameContent(ComponentPreset left, ComponentPreset right) =>
+        JsonSerializer.Serialize(left with { Revision = 0, UpdatedAt = null }, Options) ==
+        JsonSerializer.Serialize(right with { Revision = 0, UpdatedAt = null }, Options);
 
     private async Task WriteUnlockedAsync(PresetState state, CancellationToken cancellationToken)
     {
