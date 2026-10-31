@@ -2,6 +2,7 @@ using Bap.Companion.Core;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace Bap.Companion.Tests;
@@ -67,6 +68,46 @@ public sealed class CoreTests
             Assert.Throws<ArgumentException>(() => store.WriteAsync(state with { GlobalPresetId = "missing" }).GetAwaiter().GetResult());
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task LegacyPresetMigratesOnceWithBackupAndAllowsRepeatedComponentInstances()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"bap-preset-migration-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "presets.json");
+        Directory.CreateDirectory(directory);
+        const string legacy = """
+            {"presets":[{"id":"daily","name":"Daily","components":[{"componentId":"org.example.clock","sourceKey":"workshop:1"},{"componentId":"org.example.clock","sourceKey":"local:clock"}]}],"globalPresetId":"daily","hostPresetIds":{}}
+            """;
+        try
+        {
+            await File.WriteAllTextAsync(path, legacy);
+            var store = new JsonPresetStore(path);
+            var migrated = await store.ReadAsync();
+            var instances = migrated.Presets.Single().Components;
+            Assert.Equal(2, instances.Count);
+            Assert.NotEqual(instances[0].InstanceId, instances[1].InstanceId);
+            Assert.All(instances, instance =>
+            {
+                Assert.True(instance.Enabled);
+                Assert.True(instance.UserVisible);
+                Assert.Equal("automatic", instance.Layout?.Mode);
+                Assert.NotNull(instance.Config);
+            });
+            Assert.Equal("workshop:1", instances[0].SourceKey);
+            Assert.Equal("local:clock", instances[1].SourceKey);
+            Assert.Equal(2, migrated.Grid?.Columns);
+
+            var backup = Assert.Single(Directory.GetFiles(directory, "presets.json.pre-instance-migration-*.bak"));
+            Assert.Equal(legacy, await File.ReadAllTextAsync(backup));
+            var persisted = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+            Assert.Equal(instances[0].InstanceId, persisted.RootElement.GetProperty("presets")[0].GetProperty("components")[0].GetProperty("instanceId").GetString());
+
+            var secondRead = await store.ReadAsync();
+            Assert.Equal(instances.Select(instance => instance.InstanceId), secondRead.Presets.Single().Components.Select(instance => instance.InstanceId));
+            Assert.Single(Directory.GetFiles(directory, "presets.json.pre-instance-migration-*.bak"));
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     [Fact]
