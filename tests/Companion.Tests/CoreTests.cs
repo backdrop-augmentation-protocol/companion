@@ -96,7 +96,7 @@ public sealed class CoreTests
             });
             Assert.Equal("workshop:1", instances[0].SourceKey);
             Assert.Equal("local:clock", instances[1].SourceKey);
-            Assert.Equal(2, migrated.Grid?.Columns);
+            Assert.Equal(2, migrated.Presets.Single().Grid?.Columns);
 
             var backup = Assert.Single(Directory.GetFiles(directory, "presets.json.pre-instance-migration-*.bak"));
             Assert.Equal(legacy, await File.ReadAllTextAsync(backup));

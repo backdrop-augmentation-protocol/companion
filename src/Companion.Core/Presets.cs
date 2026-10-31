@@ -25,13 +25,18 @@ public sealed record PresetComponent(
     bool UserVisible = true,
     ComponentLayout? Layout = null,
     Dictionary<string, JsonElement>? Config = null);
-public sealed record ComponentPreset(string Id, string Name, IReadOnlyList<PresetComponent> Components);
+public sealed record ComponentPreset(
+    string Id,
+    string Name,
+    IReadOnlyList<PresetComponent> Components,
+    string LayoutMode = "grid",
+    GridLayoutSettings? Grid = null,
+    long Revision = 0,
+    DateTimeOffset? UpdatedAt = null);
 public sealed record PresetState(
     IReadOnlyList<ComponentPreset> Presets,
     string? GlobalPresetId,
-    IReadOnlyDictionary<string, string> HostPresetIds,
-    string LayoutMode = "grid",
-    GridLayoutSettings? Grid = null);
+    IReadOnlyDictionary<string, string> HostPresetIds);
 
 public static class PresetSelection
 {
@@ -51,6 +56,8 @@ public static class PresetSelection
         {
             if (string.IsNullOrWhiteSpace(preset.Id) || !ids.Add(preset.Id)) errors.Add("preset IDs must be nonempty and unique");
             if (string.IsNullOrWhiteSpace(preset.Name)) errors.Add("preset name is required");
+            if (preset.LayoutMode is not ("manual" or "grid")) errors.Add("preset layout mode must be manual or grid");
+            if (preset.LayoutMode == "grid" && (preset.Grid is null || preset.Grid.Columns is < 1 or > 32 || !InRange(preset.Grid.GapX, 0, 0.25) || !InRange(preset.Grid.GapY, 0, 0.25) || !InRange(preset.Grid.PaddingX, 0, 0.5) || !InRange(preset.Grid.PaddingY, 0, 0.5))) errors.Add("preset grid settings are invalid");
             if (preset.Components is null) { errors.Add("preset components are required"); continue; }
             var instances = new HashSet<string>(StringComparer.Ordinal);
             foreach (var component in preset.Components)
@@ -60,8 +67,6 @@ public static class PresetSelection
                 if (component.Layout is null || !ValidateLayout(component.Layout)) errors.Add("component layout is invalid");
             }
         }
-        if (state.LayoutMode is not ("manual" or "grid")) errors.Add("layout mode must be manual or grid");
-        if (state.LayoutMode == "grid" && (state.Grid is null || state.Grid.Columns is < 1 or > 32 || !InRange(state.Grid.GapX, 0, 0.25) || !InRange(state.Grid.GapY, 0, 0.25) || !InRange(state.Grid.PaddingX, 0, 0.5) || !InRange(state.Grid.PaddingY, 0, 0.5))) errors.Add("grid settings are invalid");
         if (state.GlobalPresetId is not null && !ids.Contains(state.GlobalPresetId)) errors.Add("global preset does not exist");
         foreach (var (hostId, presetId) in state.HostPresetIds)
             if (string.IsNullOrWhiteSpace(hostId) || !ids.Contains(presetId)) errors.Add("host binding refers to a missing preset");
@@ -133,12 +138,16 @@ public sealed class JsonPresetStore(string path)
         return state;
     }
 
-    private static bool HasLegacyInstances(PresetState state) => state.Grid is null || state.Presets.Any(preset => preset.Components.Any(component => component.InstanceId is null || component.Layout is null || component.Config is null));
+    private static bool HasLegacyInstances(PresetState state) => state.Presets.Any(preset =>
+        (preset.LayoutMode == "grid" && preset.Grid is null) ||
+        preset.Components.Any(component => component.InstanceId is null || component.Layout is null || component.Config is null));
 
     private static PresetState Normalize(PresetState state)
     {
         var presets = state.Presets.Select(preset => preset with
         {
+            LayoutMode = preset.LayoutMode is "manual" or "grid" ? preset.LayoutMode : "grid",
+            Grid = preset.LayoutMode == "manual" ? preset.Grid : preset.Grid ?? new GridLayoutSettings(),
             Components = preset.Components.Select((component, index) => component with
             {
                 InstanceId = string.IsNullOrWhiteSpace(component.InstanceId) ? Guid.NewGuid().ToString("N") : component.InstanceId,
@@ -146,8 +155,7 @@ public sealed class JsonPresetStore(string path)
                 Config = component.Config ?? []
             }).ToArray()
         }).ToArray();
-        var mode = state.LayoutMode is "manual" or "grid" ? state.LayoutMode : "grid";
-        return state with { Presets = presets, LayoutMode = mode, Grid = mode == "grid" ? state.Grid ?? new GridLayoutSettings() : state.Grid };
+        return state with { Presets = presets };
     }
 
     private async Task WriteUnlockedAsync(PresetState state, CancellationToken cancellationToken)
