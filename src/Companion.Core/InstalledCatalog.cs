@@ -7,7 +7,9 @@ namespace Bap.Companion.Core;
 public sealed record InstalledItem(
     string Key, string SourceKind, string Role, string Title, string ProjectDirectory,
     string? WorkshopId, string? BapId, string? Version, string? PreviewPath,
-    ComponentManifest? ComponentManifest, string Status = "valid");
+    ComponentManifest? ComponentManifest, string Status = "valid",
+    IReadOnlyList<WallpaperPropertyDefinition>? Properties = null,
+    IReadOnlyList<string>? PropertyDiagnostics = null);
 
 public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumerable<string> localRoots)
 {
@@ -103,13 +105,16 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
                 ? titleValue.GetString() : manifest?.Name;
             var preview = project is not null && project.Value.TryGetProperty("preview", out var previewValue)
                 ? previewValue.GetString() : null;
+            var propertyResult = roleName == "component" && project is not null
+                ? WallpaperPropertyReader.Read(project.Value)
+                : WallpaperPropertyReadResult.Empty;
             // Existing published demo hosts predate packaged Host Manifests.
             if (roleName == "host" && bapId is null && title == "BAP Host Wallpaper Demo")
             { bapId = "org.bap.examples.host-wallpaper"; status = "legacy"; }
             var workshopId = kind == "workshop" ? Path.GetFileName(directory) : null;
             var key = kind == "workshop" ? $"workshop:{workshopId}" : $"local:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())))[..16].ToLowerInvariant()}";
             return new(key, kind, roleName, title ?? Path.GetFileName(directory), Path.GetFullPath(directory), workshopId, bapId, version,
-                ResolvePreviewPath(directory, preview), manifest, status);
+                ResolvePreviewPath(directory, preview), manifest, status, propertyResult.Properties, propertyResult.Diagnostics);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return null; }
     }

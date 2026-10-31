@@ -39,6 +39,21 @@ public sealed record ComponentManifest(
 
 public sealed record ComponentDescriptor(ComponentManifest Manifest, string Location);
 
+public sealed record WallpaperPropertyOption(JsonElement Value, string Text);
+
+public sealed record WallpaperPropertyDefinition(
+    string Key,
+    string Type,
+    JsonElement DefaultValue,
+    string? Text,
+    double? Minimum = null,
+    double? Maximum = null,
+    double? Step = null,
+    int? Fraction = null,
+    IReadOnlyList<WallpaperPropertyOption>? Options = null,
+    string? Condition = null,
+    bool ConditionSupported = true);
+
 public sealed record CompanionConfig(
     Dictionary<string, object?> Global,
     Dictionary<string, Dictionary<string, object?>> Wallpapers,
