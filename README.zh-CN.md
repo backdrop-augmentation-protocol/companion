@@ -6,6 +6,12 @@ BAP 官方开源 Windows Companion，用于发现 Workshop 组件、校验 Manif
 
 Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 
+> **实验性 / 受限预览：授权来源尚未验证。** Host 身份和安装来源由请求方自报，
+> Companion 不会独立认证。每个新的 Host 会话（包括断线重连）都需要人工批准；
+> 已保存的 Host 记录不会跳过审批。只有在你能独立确认 Wallpaper Engine 当前壁纸时
+> 才应批准。本预览版不是可不受限制地服务任意第三方壁纸的已验证授权产品。官方
+> Host 自动批准目前关闭。
+
 ## 桌面应用与本地服务
 
 当前实现使用 .NET 10 和 ASP.NET Core Minimal API。桌面入口托管服务时，服务绑定回环地址，并提供：
@@ -30,14 +36,20 @@ Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 
 ## 端到端冒烟测试
 
-先在回环端口启动服务，再运行可重复的 HTTP 和 WebSocket 验收检查：
+先为服务配置本地授权控制管道并启动服务，再在第二个 PowerShell 窗口运行验收脚本。脚本会先确认未批准的会话令牌无法发现组件，再通过当前用户的管道显式批准测试 Host，随后继续进行 HTTP 与 WebSocket 检查。
 
 ```powershell
+$env:BAP_AUTHORIZATION_PIPE = 'Bap.Companion.E2E'
 dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
+```
+
+在第二个 PowerShell 窗口运行：
+
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 -BaseUrl http://127.0.0.1:4311
 ```
 
-检查覆盖健康状态、Bearer 会话、认证后的组件发现、壁纸配置持久化，以及带权限协商的 Host/Companion hello 握手。
+检查覆盖健康状态、Bearer 会话、未批准时拒绝组件发现、显式审批后的组件发现、壁纸配置持久化，以及带权限协商的 Host/Companion hello 握手。脚本还会记住首次批准，确认同一会话令牌断开后重连仍需重新批准，同一 Host ID 的新会话也仍需显式批准；随后撤销该 Host，并验证活动 WebSocket 被关闭且会话令牌均失去访问权限。脚本也会验证只授予组件发现权限时不能读取配置，并确认不兼容的协议版本会在授权前被拒绝。
 组件和配置的 HTTP 接口既需要有效的 Bearer Token，也需要当前 WebSocket `hello`
 会话授予相应权限。单独创建会话不会授予访问权；WebSocket 关闭后权限清空。
 
@@ -81,3 +93,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install-companion.ps1
 ```
 
 安装位置为 `%LOCALAPPDATA%\Programs\BAP Companion`，并在当前用户的“开始”菜单添加 `BAP Companion` 快捷方式。无需管理员权限；首次运行默认启用开机自启，可在设置页取消。更新前请通过托盘菜单退出已安装的 Companion；安装程序会保留其配置数据。
+
+待处理的 Host 授权期限由 Companion 统一管理，默认 300 秒。可通过 `BAP_APPROVAL_TIMEOUT_MS` 调低期限以进行受控测试（有效范围：1,000–300,000 毫秒）；Host 必须等待 Companion 决策或关闭会话，不得使用更短的本地授权计时器。

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Bap.Companion.Core;
 using Bap.Companion.Desktop;
 using Forms = System.Windows.Forms;
@@ -19,6 +20,7 @@ namespace Bap.Companion.Desktop.Wpf;
 public partial class MainWindow : Window
 {
     private readonly InstalledCatalog catalog = InstalledCatalog.FromEnvironment();
+    private readonly SteamWorkshopCreatorLookup creatorLookup;
     private readonly JsonPresetStore store = new(JsonPresetStore.DefaultPath);
     private readonly CompanionLog log;
     private readonly int port;
@@ -29,13 +31,21 @@ public partial class MainWindow : Window
     private bool uiReady;
     private bool changingCatalogSelection;
     private bool changingDisplayChoice;
+    private readonly HostAuthorizationClient? authorizationClient;
+    private readonly DispatcherTimer authorizationTimer;
+    private bool showingAuthorizationPrompt;
+    private int creatorLookupGeneration;
 
-    internal MainWindow(CompanionLog log, int port, DesktopSettings settings)
+    internal MainWindow(CompanionLog log, int port, DesktopSettings settings, HostAuthorizationClient? authorizationClient = null,
+        SteamWorkshopCreatorLookup? creatorLookup = null)
     {
         this.log = log;
         this.port = port;
         this.settings = settings;
+        this.authorizationClient = authorizationClient;
+        this.creatorLookup = creatorLookup ?? new SteamWorkshopCreatorLookup();
         InitializeComponent();
+        StartupCheck.FocusVisualStyle = (Style)FindResource("NoFocusVisual");
         LanguageChoice.SelectedIndex = settings.Language == "zh-CN" ? 1 : 0;
         StartupCheck.IsChecked = settings.AutoStartEnabled;
         ServiceAddress.Text = $"Service: http://127.0.0.1:{port}";
@@ -45,7 +55,38 @@ public partial class MainWindow : Window
         SelectPage(InstalledPage, InstalledNav);
         uiReady = true;
         StateChanged += (_, _) => UpdateMaximizeButton();
-        Loaded += async (_, _) => await RunActionAsync(RefreshAsync);
+        Loaded += async (_, _) => await RunActionAsync(async () =>
+        {
+            await RefreshAsync();
+            await RefreshTrustedHostsAsync();
+        });
+        authorizationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        authorizationTimer.Tick += AuthorizationTimer_Tick;
+        if (authorizationClient is not null) authorizationTimer.Start();
+        Closed += (_, _) => authorizationTimer.Stop();
+    }
+
+    private async void AuthorizationTimer_Tick(object? sender, EventArgs e)
+    {
+        if (authorizationClient is null || showingAuthorizationPrompt) return;
+        showingAuthorizationPrompt = true;
+        try
+        {
+            var request = (await authorizationClient.GetPendingAsync()).FirstOrDefault();
+            if (request is null) return;
+            if (!IsVisible) Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate();
+            var approved = HostApprovalDialog.Show(this, request, settings.Language, out var permissions, out var remember);
+            var applied = await authorizationClient.DecideAsync(request.SessionId, approved, permissions, remember);
+            if (!applied) log.Write("authorization", $"Request {request.SessionId} was no longer pending when the decision was submitted.");
+            else log.Write("authorization", $"Host request {request.SessionId} {(approved ? "approved" : "denied")}{(remember ? " and remembered on this device" : " for this session")}.");
+        }
+        catch (Exception error) when (error is IOException or TimeoutException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            log.Write("authorization", error.Message);
+        }
+        finally { showingAuthorizationPrompt = false; }
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -85,6 +126,18 @@ public partial class MainWindow : Window
         StartupCheck.Content = L("startup"); LogsHeading.Text = L("logs");
         OpenLogButton.Content = L("openLog"); OpenLogFolderButton.Content = L("openLogFolder");
         CheckServiceButton.Content = L("checkService");
+#if false
+        TrustedHostsHeading.Text = settings.Language == "zh-CN" ? "宸茶浣忕殑瀹夸富" : "Remembered Hosts";
+        TrustedHostsHint.Text = settings.Language == "zh-CN"
+            ? "杩欎簺鏍囪瘑鐢卞绾歌嚜琛屽０鏄庯紝骞撮潪鍙戣鑰呴獙璇併€傚垹闄ゆ潯鐩悗锛屼笅娆¤繛鎺ラ渶閲嶆柊鎵瑰噯銆?
+            : "These IDs are self-reported and not publisher-verified. Saved entries never bypass approval for a new session; removing one also revokes active permissions.";
+        RevokeTrustButton.Content = settings.Language == "zh-CN" ? "蹇樿閫変腑瀹夸富" : "Forget selected Host";
+#endif
+        TrustedHostsHeading.Text = settings.Language == "zh-CN" ? "\u5df2\u8bb0\u4f4f\u7684\u5bbf\u4e3b" : "Remembered Hosts";
+        TrustedHostsHint.Text = settings.Language == "zh-CN"
+            ? "\u8fd9\u4e9b\u6807\u8bc6\u7531\u5bbf\u4e3b\u81ea\u884c\u58f0\u660e\uff0c\u672a\u9a8c\u8bc1\u53d1\u884c\u8005\u3002\u4fdd\u5b58\u6761\u76ee\u4e0d\u4f1a\u8df3\u8fc7\u65b0\u4f1a\u8bdd\u5ba1\u6279\uff1b\u79fb\u9664\u6761\u76ee\u4f1a\u540c\u65f6\u64a4\u9500\u6d3b\u8dc3\u6743\u9650\u3002"
+            : "These IDs are self-reported and not publisher-verified. Saved entries never bypass approval for a new session; removing one also revokes active permissions.";
+        RevokeTrustButton.Content = settings.Language == "zh-CN" ? "\u5fd8\u8bb0\u9009\u4e2d\u5bbf\u4e3b" : "Forget selected Host";
         if (settings.StartupError is not null) StartupError.Text = L("startupError", settings.StartupError);
         changingDisplayChoice = true;
         try
@@ -138,7 +191,7 @@ public partial class MainWindow : Window
         catch (Exception error)
         {
             log.Write("desktop-error", error.ToString());
-            System.Windows.MessageBox.Show(this, error.Message, "BAP Companion", MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedDialog.ShowMessage(this, "BAP Companion", error.Message, settings.Language == "zh-CN" ? "确定" : "OK");
         }
     }
 
@@ -225,11 +278,30 @@ public partial class MainWindow : Window
         if (selectedItem is not { } item) return;
         DetailPreview.Source = LoadPreview(item.PreviewPath);
         DetailTitle.Text = item.Title;
-        DetailMetadata.Text = $"{L("source")}: {L(item.SourceKind)}\n{L("status")}: {L(item.Status)}\n{L("bapId")}: {item.BapId ?? "—"}\n{L("version")}: {item.Version ?? "—"}" +
+        var creatorGeneration = ++creatorLookupGeneration;
+        var creatorText = item.WorkshopId is null ? "" : $"\n{L("creator")}: {L("creatorLoading")}";
+        DetailMetadata.Text = $"{L("source")}: {L(item.SourceKind)}\n{L("status")}: {L(item.Status)}\n{L("bapId")}: {item.BapId ?? "—"}\n{L("version")}: {item.Version ?? "—"}" + creatorText +
             (item.WorkshopId is null ? "" : $"\n{L("workshopId")}: {item.WorkshopId}");
+        if (item.WorkshopId is { } workshopId) _ = LoadCreatorNameAsync(item.Key, workshopId, creatorGeneration);
         DetailPath.Text = item.ProjectDirectory;
         HostActions.Visibility = item.Role == "host" && item.Status != "invalid" ? Visibility.Visible : Visibility.Collapsed;
         SwitchStatus.Text = "";
+    }
+
+    private async Task LoadCreatorNameAsync(string itemKey, string workshopId, int generation)
+    {
+        string? creator;
+        try { creator = await creatorLookup.GetCreatorNameAsync(workshopId); }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or System.Xml.XmlException or InvalidOperationException)
+        {
+            log.Write("workshop-metadata", $"Could not read creator for Workshop item {workshopId}: {error.Message}");
+            creator = null;
+        }
+        if (generation != creatorLookupGeneration || selectedItem?.Key != itemKey || DetailMetadata is null) return;
+        var name = string.IsNullOrWhiteSpace(creator) ? L("creatorUnavailable") : creator;
+        var metadata = DetailMetadata.Text;
+        var loadingLine = $"{L("creator")}: {L("creatorLoading")}";
+        DetailMetadata.Text = metadata.Replace(loadingLine, $"{L("creator")}: {name}", StringComparison.Ordinal);
     }
 
     private void SwitchHostButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
@@ -284,7 +356,7 @@ public partial class MainWindow : Window
             {
                 var item = items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId &&
                     (component.SourceKey is null || candidate.Key == component.SourceKey));
-                return new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}]" );
+                return new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}]");
             }).ToArray();
     }
 
@@ -319,7 +391,8 @@ public partial class MainWindow : Window
     private void DeleteButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
     {
         var preset = SelectedPreset;
-        if (preset is null || System.Windows.MessageBox.Show(this, L("deletePreset", preset.Name), "BAP Companion", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+        if (preset is null || !ThemedDialog.Confirm(this, "BAP Companion", L("deletePreset", preset.Name),
+                settings.Language == "zh-CN" ? "删除" : "Delete", settings.Language == "zh-CN" ? "取消" : "Cancel")) return;
         await SaveAsync(state with
         {
             Presets = state.Presets.Where(item => item.Id != preset.Id).ToArray(),
@@ -335,7 +408,7 @@ public partial class MainWindow : Window
         if (preset is null || item?.BapId is null) return;
         if (preset.Components.Any(component => component.ComponentId == item.BapId))
         {
-            System.Windows.MessageBox.Show(this, L("duplicateComponent"));
+            ThemedDialog.ShowMessage(this, L("presets"), L("duplicateComponent"), settings.Language == "zh-CN" ? "确定" : "OK");
             return;
         }
         await ReplacePresetAsync(preset with { Components = [.. preset.Components, new(item.BapId, item.Key)] });
@@ -373,7 +446,7 @@ public partial class MainWindow : Window
         if (SelectedPreset is not { } preset) return;
         if ((HostChoice.SelectedItem as CatalogChoice)?.Item.BapId is not { } hostId)
         {
-            System.Windows.MessageBox.Show(this, L("selectHostFirst"));
+            ThemedDialog.ShowMessage(this, L("presets"), L("selectHostFirst"), settings.Language == "zh-CN" ? "确定" : "OK");
             return;
         }
         var bindings = new Dictionary<string, string>(state.HostPresetIds) { [hostId] = preset.Id };
@@ -390,21 +463,9 @@ public partial class MainWindow : Window
 
     private string? PromptForName(string title, string value = "")
     {
-        var dialog = new Window
-        {
-            Title = title, Owner = this, Width = 390, Height = 168, MinWidth = 340,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize,
-            Background = Brushes.White, FontFamily = FontFamily, FontSize = FontSize
-        };
-        var input = new TextBox { Text = value, Margin = new Thickness(0, 0, 0, 16) };
-        var ok = new Button { Content = "OK", Width = 84, Height = 34, IsDefault = true };
-        ok.Click += (_, _) => dialog.DialogResult = true;
-        var panel = new StackPanel { Margin = new Thickness(20) };
-        panel.Children.Add(input);
-        panel.Children.Add(ok);
-        dialog.Content = panel;
-        dialog.Loaded += (_, _) => { input.Focus(); input.SelectAll(); };
-        return dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(input.Text) ? input.Text.Trim() : null;
+        return ThemedDialog.Prompt(this, title, value,
+            settings.Language == "zh-CN" ? "确定" : "OK",
+            settings.Language == "zh-CN" ? "取消" : "Cancel");
     }
 
     private void LanguageChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -418,7 +479,7 @@ public partial class MainWindow : Window
         try { settings.SetDisplayIndex(MonitorChoice.SelectedIndex); }
         catch (Exception error)
         {
-            System.Windows.MessageBox.Show(this, error.Message, L("settings"), MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedDialog.ShowMessage(this, L("settings"), error.Message, settings.Language == "zh-CN" ? "确定" : "OK");
             changingDisplayChoice = true;
             try { MonitorChoice.SelectedIndex = Math.Clamp(settings.DisplayIndex, 0, MonitorChoice.Items.Count - 1); }
             finally { changingDisplayChoice = false; }
@@ -431,7 +492,7 @@ public partial class MainWindow : Window
         try { settings.SetAutoStart(StartupCheck.IsChecked == true); StartupError.Text = ""; }
         catch (Exception error)
         {
-            System.Windows.MessageBox.Show(this, error.Message, L("settings"), MessageBoxButton.OK, MessageBoxImage.Error);
+            ThemedDialog.ShowMessage(this, L("settings"), error.Message, settings.Language == "zh-CN" ? "确定" : "OK");
             StartupCheck.IsChecked = settings.AutoStartEnabled;
         }
     }
@@ -440,6 +501,23 @@ public partial class MainWindow : Window
     private void OpenLogFolderButton_Click(object sender, RoutedEventArgs e) => OpenPath(Path.GetDirectoryName(log.Path)!);
     private static void OpenPath(string path) => Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
     private void CheckServiceButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(CheckServiceAsync);
+
+    private async Task RefreshTrustedHostsAsync()
+    {
+        if (authorizationClient is null || TrustedHostsList is null) return;
+        var selectedId = (TrustedHostsList.SelectedItem as TrustedHostChoice)?.Host.Id;
+        var hosts = await authorizationClient.GetTrustedHostsAsync();
+        TrustedHostsList.ItemsSource = hosts.Select(host => new TrustedHostChoice(host,
+            $"{host.Name}  ·  {host.Id}  ·  {string.Join(", ", host.Permissions)}")).ToArray();
+        TrustedHostsList.SelectedItem = TrustedHostsList.Items.Cast<TrustedHostChoice>().FirstOrDefault(item => item.Host.Id == selectedId);
+    }
+
+    private void RevokeTrustButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
+    {
+        if (authorizationClient is null || TrustedHostsList.SelectedItem is not TrustedHostChoice selected) return;
+        await authorizationClient.RevokeTrustAsync(selected.Host.Id);
+        await RefreshTrustedHostsAsync();
+    });
 
     private async Task CheckServiceAsync()
     {
@@ -457,4 +535,5 @@ public partial class MainWindow : Window
     private sealed record CatalogChoice(InstalledItem Item, string Label);
     private sealed record PresetChoice(ComponentPreset Preset) { public override string ToString() => Preset.Name; }
     private sealed record ComponentChoice(PresetComponent Component, string Label);
+    private sealed record TrustedHostChoice(TrustedHost Host, string Label) { public override string ToString() => Label; }
 }

@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="BAP Companion" Width="1220" Height="790" MinWidth="1100" MinHeight="640"
+        Icon="pack://application:,,,/Bap.Companion.Desktop;component/Assets/bap-companion.ico"
         WindowStartupLocation="CenterScreen" Background="#07142D" FontFamily="Segoe UI Variable, Segoe UI" FontSize="14">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="42" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -13,6 +14,9 @@
     <SolidColorBrush x:Key="Accent" Color="#22D3FF"/>
     <SolidColorBrush x:Key="Border" Color="#284572"/>
     <SolidColorBrush x:Key="NavSelected" Color="#143961"/>
+    <Style x:Key="NoFocusVisual" TargetType="Control">
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Control"><Border Width="0" Height="0"/></ControlTemplate></Setter.Value></Setter>
+    </Style>
     <LinearGradientBrush x:Key="PrimaryGradient" StartPoint="0,0" EndPoint="1,1">
       <GradientStop Color="#1A6BFF" Offset="0"/>
       <GradientStop Color="#594CE0" Offset="1"/>
@@ -39,6 +43,7 @@
       <Setter Property="Height" Value="44"/><Setter Property="Margin" Value="0,2"/><Setter Property="Padding" Value="16,0"/>
       <Setter Property="HorizontalContentAlignment" Value="Left"/><Setter Property="Foreground" Value="{StaticResource Muted}"/>
       <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="Template">
         <Setter.Value><ControlTemplate TargetType="Button">
@@ -55,6 +60,7 @@
     <Style x:Key="PrimaryButton" TargetType="Button">
       <Setter Property="Background" Value="{StaticResource PrimaryGradient}"/><Setter Property="Foreground" Value="White"/>
       <Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="17,10"/><Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
         <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}" BorderBrush="#477EFF" BorderThickness="1">
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -72,6 +78,7 @@
       <Setter Property="Width" Value="48"/><Setter Property="Height" Value="42"/>
       <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/><Setter Property="FontFamily" Value="Segoe UI Symbol"/><Setter Property="FontSize" Value="16"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
       <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
         <Border x:Name="Surface" Background="{TemplateBinding Background}">
@@ -84,6 +91,7 @@
       </ControlTemplate></Setter.Value></Setter>
     </Style>
     <Style TargetType="ComboBox" BasedOn="{StaticResource DefaultComboBoxStyle}">
+      <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
       <Setter Property="Background" Value="#132B51"/>
       <Setter Property="Foreground" Value="{StaticResource Ink}"/>
       <Setter Property="BorderBrush" Value="{StaticResource Border}"/>
@@ -93,6 +101,7 @@
     </Style>
     <Style TargetType="ComboBoxItem">
       <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
         <Border x:Name="Item" Background="Transparent" Padding="11,9" CornerRadius="6">
           <ContentPresenter/>
@@ -106,22 +115,31 @@
     <Style TargetType="CheckBox">
       <Setter Property="Foreground" Value="{StaticResource Ink}"/>
       <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
+    </Style>
+    <Style x:Key="DialogTextBox" TargetType="TextBox">
+      <Setter Property="Background" Value="#10264A"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource Border}"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CaretBrush" Value="{StaticResource Accent}"/><Setter Property="Padding" Value="10,8"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
     </Style>
     <Style x:Key="CatalogList" TargetType="ListBox">
       <Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
       <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled"/>
       <Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ListBoxItem">
         <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,0,0,10"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
         <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
           <Border x:Name="Card" Background="#12284C" BorderBrush="#2A4775" BorderThickness="1" CornerRadius="12" Padding="12">
             <ContentPresenter/>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Card" Property="BorderBrush" Value="#397CB6"/></Trigger>
-            <Trigger Property="IsSelected" Value="True"><Setter TargetName="Card" Property="Background" Value="#153763"/><Setter TargetName="Card" Property="BorderBrush" Value="#22D3FF"/></Trigger>
+            <Trigger Property="IsSelected" Value="True"><Setter TargetName="Card" Property="Background" Value="#153763"/></Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate></Setter.Value></Setter>
       </Style></Setter.Value></Setter>
@@ -142,10 +160,12 @@
     </Style>
     <Style x:Key="SelectorList" TargetType="ListBox">
       <Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ListBoxItem">
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Margin" Value="0,0,0,5"/>
         <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
         <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
           <Border x:Name="Surface" Background="Transparent" CornerRadius="8" Padding="12,10">
             <ContentPresenter HorizontalAlignment="Stretch"/>
@@ -166,7 +186,7 @@
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
           <Button x:Name="MinimizeButton" Style="{StaticResource CaptionButton}" Content="&#x2014;" Click="MinimizeButton_Click" ToolTip="Minimize"/>
           <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Content="&#x25A1;" Click="MaximizeButton_Click" ToolTip="Maximize"/>
-          <Button x:Name="CloseButton" Style="{StaticResource CaptionButton}" Content="&#x00D7;" Click="CloseButton_Click" ToolTip="Close"/>
+          <Button x:Name="CloseButton" Style="{StaticResource CaptionButton}" Content="&#x00D7;" FontSize="22" Click="CloseButton_Click" ToolTip="Close"/>
         </StackPanel>
       </Grid>
     </Border>
@@ -203,7 +223,7 @@
           <Button x:Name="RefreshButton" Grid.Column="1" Style="{StaticResource QuietButton}" Click="RefreshButton_Click" VerticalAlignment="Center"/>
         </Grid></Border>
         <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="340"/><ColumnDefinition Width="320"/></Grid.ColumnDefinitions>
-          <ScrollViewer x:Name="CatalogScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,18,0">
+          <ScrollViewer x:Name="CatalogScrollViewer" Focusable="False" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,0,18,0">
             <StackPanel>
               <TextBlock x:Name="HostsHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,12"/>
               <ListBox x:Name="HostsList" Style="{StaticResource CatalogList}" SelectionChanged="Catalog_SelectionChanged" PreviewMouseWheel="CatalogList_PreviewMouseWheel"/>
@@ -214,7 +234,7 @@
             </StackPanel>
           </ScrollViewer>
           <Border Grid.Column="1" Style="{StaticResource Panel}" Padding="19">
-            <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+            <ScrollViewer Focusable="False" VerticalScrollBarVisibility="Auto"><StackPanel>
               <TextBlock x:Name="DetailsHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,14"/>
               <TextBlock x:Name="DetailEmpty" Style="{StaticResource Hint}"/>
               <StackPanel x:Name="DetailContent" Visibility="Collapsed">
@@ -280,7 +300,7 @@
           </StackPanel></Border>
         </Grid>
       </Grid>
-      <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+      <ScrollViewer x:Name="SettingsPage" Focusable="False" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
         <StackPanel Width="680" HorizontalAlignment="Left">
           <Border Background="{StaticResource BrandGradient}" BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="16" Padding="19" Margin="0,0,0,22">
             <TextBlock x:Name="SettingsTitle" Style="{StaticResource Heading}"/>
@@ -300,6 +320,12 @@
           <Border Style="{StaticResource Panel}" Padding="22" Margin="0,0,0,14"><StackPanel>
             <CheckBox x:Name="StartupCheck" Checked="StartupCheck_Changed" Unchecked="StartupCheck_Changed"/>
             <TextBlock x:Name="StartupError" Foreground="#FF8899" TextWrapping="Wrap" Margin="0,9,0,0"/>
+          </StackPanel></Border>
+          <Border Style="{StaticResource Panel}" Padding="22" Margin="0,0,0,14"><StackPanel>
+            <TextBlock x:Name="TrustedHostsHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,8" Text="Remembered Hosts"/>
+            <TextBlock x:Name="TrustedHostsHint" Style="{StaticResource Hint}" Text="These IDs are self-reported and not publisher-verified. Saved entries never bypass approval for a new session; removing one also revokes active permissions." Margin="0,0,0,10"/>
+            <ListBox x:Name="TrustedHostsList" Style="{StaticResource SelectorList}" MaxHeight="180" Background="#0A1C3B" Foreground="#EAF3FF" BorderBrush="#284572"/>
+            <Button x:Name="RevokeTrustButton" Content="Forget selected Host" Style="{StaticResource QuietButton}" Click="RevokeTrustButton_Click" HorizontalAlignment="Left" Margin="0,10,0,0"/>
           </StackPanel></Border>
           <Border Style="{StaticResource Panel}" Padding="22"><StackPanel>
             <TextBlock x:Name="LogsHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,12"/>

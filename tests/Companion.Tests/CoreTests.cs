@@ -1,10 +1,53 @@
 using Bap.Companion.Core;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using Xunit;
 
 namespace Bap.Companion.Tests;
 
 public sealed class CoreTests
 {
+    [Fact]
+    public async Task SteamWorkshopCreatorLookupResolvesAndCachesPublicCreatorName()
+    {
+        var requests = 0;
+        using var client = new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            requests++;
+            if (request.RequestUri!.Host == "api.steampowered.com")
+                return JsonResponse("""{"response":{"publishedfiledetails":[{"creator":"76561198000000000"}]}}""");
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("<profile><steamID><![CDATA[Creator Name]]></steamID></profile>", Encoding.UTF8, "application/xml")
+            };
+        }));
+        var lookup = new SteamWorkshopCreatorLookup(client);
+
+        Assert.Equal("Creator Name", await lookup.GetCreatorNameAsync("123456"));
+        Assert.Equal("Creator Name", await lookup.GetCreatorNameAsync("123456"));
+        Assert.Equal(2, requests);
+        Assert.Null(await lookup.GetCreatorNameAsync("not-an-id"));
+        Assert.Equal(2, requests);
+    }
+
+    [Fact]
+    public async Task SteamWorkshopCreatorLookupReturnsNullWhenItemHasNoCreator()
+    {
+        using var client = new HttpClient(new StubHttpMessageHandler(_ => JsonResponse("""{"response":{"publishedfiledetails":[]}}""")));
+        var lookup = new SteamWorkshopCreatorLookup(client);
+        Assert.Null(await lookup.GetCreatorNameAsync("123456"));
+    }
+
+    private static HttpResponseMessage JsonResponse(string json) =>
+        new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+
+    private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(respond(request));
+    }
+
     [Fact]
     public async Task PresetsResolveHostOverrideAndSurviveStorage()
     {

@@ -4,7 +4,7 @@ internal static class UiStrings
 {
     private static readonly Dictionary<string, (string English, string Chinese)> Values = new()
     {
-        ["appSubtitle"] = ("Your Wallpaper Engine workspace", "Wallpaper Engine 壁纸工作台"),
+        ["appSubtitle"] = ("Wallpaper Manager", "壁纸管理器"),
         ["installed"] = ("Installed", "已安装"),
         ["presets"] = ("Presets", "预设"),
         ["settings"] = ("Settings", "设置"),
@@ -21,6 +21,9 @@ internal static class UiStrings
         ["version"] = ("Version", "版本"),
         ["bapId"] = ("BAP ID", "BAP 标识"),
         ["workshopId"] = ("Workshop ID", "创意工坊 ID"),
+        ["creator"] = ("Creator", "创作者"),
+        ["creatorLoading"] = ("Loading creator…", "正在获取创作者…"),
+        ["creatorUnavailable"] = ("Steam did not provide creator information", "Steam 未提供创作者信息"),
         ["location"] = ("Project folder", "项目目录"),
         ["monitor"] = ("Display", "显示器"),
         ["switchDisplay"] = ("Display for wallpaper switching", "切换壁纸使用的显示器"),

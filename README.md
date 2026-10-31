@@ -6,6 +6,15 @@ Open-source official Windows Companion for discovering Workshop components, vali
 
 The Companion is optional and does not replace Wallpaper Engine as the rendering host.
 
+> **Experimental / limited preview — authorization source is not verified.** Host
+> identity and installation source are self-reported and are not independently
+> authenticated by Companion. Every new Host session, including reconnects,
+> requires manual approval; saved Host records do not bypass approval. Approve
+> only when you can independently identify the active Wallpaper Engine
+> wallpaper. This preview is not a verified authorization product for
+> unrestricted use with arbitrary third-party wallpapers. Official Host
+> auto-approval is disabled.
+
 ## Desktop app and local service
 
 The current implementation uses .NET 10 and ASP.NET Core Minimal API. The service binds to loopback when hosted by the desktop entry point and exposes:
@@ -40,17 +49,36 @@ name, even if its listening URL is configured more broadly.
 
 ## End-to-end smoke test
 
-Start the server on a loopback port, then run the repeatable HTTP and WebSocket
-acceptance check:
+Start the server with a local authorization control pipe, then run the acceptance
+check from a second PowerShell window. The script confirms an unapproved token
+cannot discover components, approves its test Host through that current-user
+pipe, and continues through the HTTP and WebSocket checks.
 
 ```powershell
+$env:BAP_AUTHORIZATION_PIPE = 'Bap.Companion.E2E'
 dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
+```
+
+The Companion owns the pending Host approval deadline (300 seconds by default).
+`BAP_APPROVAL_TIMEOUT_MS` can lower it for controlled testing (valid range:
+1,000–300,000 milliseconds); Hosts must wait for the Companion's decision or
+session close rather than applying a shorter local authorization timer.
+
+In a second PowerShell window:
+
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\companion-e2e.ps1 -BaseUrl http://127.0.0.1:4311
 ```
 
 The check covers health, bearer session creation, authenticated component
 discovery, wallpaper configuration persistence, and the Host/Companion hello
-handshake with permission negotiation.
+handshake with permission negotiation. It also remembers the first approval,
+confirms that a new session with the same Host ID still requires explicit
+approval, then revokes that Host and verifies the active WebSocket closes and
+both session tokens lose access. It also checks that an approval granting only
+component discovery cannot read configuration, and that an incompatible
+protocol version is rejected before authorization. Reconnecting with the same
+session token after a normal disconnect also requires a fresh approval.
 HTTP component and configuration endpoints require both a valid Bearer token
 and the corresponding permission granted by a live WebSocket `hello` session.
 Session creation alone grants no access; closing the WebSocket clears its grants.
