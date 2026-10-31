@@ -394,7 +394,10 @@ public partial class MainWindow : Window
 
             if (item.Properties is not { Count: > 0 } definitions)
             {
-                PropertyHint.Text = settings.Language == "zh-CN" ? "此组件未声明可编辑的 WE 属性。" : "This component declares no editable WE properties.";
+                PropertyHint.Text = item.PropertyDiagnostics is { Count: > 0 }
+                    ? (settings.Language == "zh-CN" ? "没有可编辑属性；部分声明存在问题。" : "No editable properties; some declarations are invalid.")
+                    : (settings.Language == "zh-CN" ? "此组件未声明可编辑的 WE 属性。" : "This component declares no editable WE properties.");
+                AddPropertyDiagnostics(item);
                 return;
             }
 
@@ -412,7 +415,7 @@ public partial class MainWindow : Window
                 var context = new PropertyEditContext(component.InstanceId!, definition);
                 var title = new TextBlock
                 {
-                    Text = definition.Text is { Length: > 0 } text ? text : definition.Key,
+                    Text = PropertyTitle(definition),
                     Foreground = (Brush)FindResource("Ink"), FontWeight = FontWeights.SemiBold,
                     TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 7, 0, 4)
                 };
@@ -463,8 +466,29 @@ public partial class MainWindow : Window
                     InstancePropertyPanel.Children.Add(new TextBlock { Text = settings.Language == "zh-CN" ? "不支持此属性的显示条件" : "Unsupported display condition",
                         Foreground = (Brush)FindResource("Muted"), TextWrapping = TextWrapping.Wrap, FontSize = 11 });
             }
+            AddPropertyDiagnostics(item);
         }
         finally { renderingPropertyEditors = false; }
+    }
+
+    private string PropertyTitle(WallpaperPropertyDefinition definition)
+    {
+        if (definition.Text == "ui_browse_properties_scheme_color")
+            return settings.Language == "zh-CN" ? "配色" : "Color scheme";
+        if (definition.Text is { Length: > 0 } text && !text.StartsWith("ui_", StringComparison.Ordinal)) return text;
+        return System.Text.RegularExpressions.Regex.Replace(definition.Key, "([a-z0-9])([A-Z])", "$1 $2")
+            .Replace('_', ' ').Replace('-', ' ');
+    }
+
+    private void AddPropertyDiagnostics(InstalledItem item)
+    {
+        foreach (var diagnostic in item.PropertyDiagnostics ?? [])
+            InstancePropertyPanel.Children.Add(new TextBlock
+            {
+                Text = $"{(settings.Language == "zh-CN" ? "属性提示" : "Property note")}: {diagnostic}",
+                Foreground = (Brush)FindResource("Muted"), TextWrapping = TextWrapping.Wrap,
+                FontSize = 11, Margin = new Thickness(0, 6, 0, 0)
+            });
     }
 
     private void PropertyCheck_Changed(object sender, RoutedEventArgs e)

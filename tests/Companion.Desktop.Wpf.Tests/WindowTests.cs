@@ -116,7 +116,7 @@ public sealed class WindowTests
                       "enabled": { "type": "bool", "text": "Enabled", "value": true },
                       "mode": { "type": "combo", "text": "Mode", "value": "one", "options": [{ "value": "one", "text": "One" }, { "value": "two", "text": "Two" }] },
                       "label": { "type": "textinput", "text": "Label", "value": "Default" },
-                      "accent": { "type": "color", "text": "Accent", "value": "0.1 0.2 0.3" },
+                      "schemecolor": { "type": "color", "text": "ui_browse_properties_scheme_color", "value": "0.1 0.2 0.3" },
                       "opacity": { "type": "slider", "text": "Opacity", "value": 0.5, "min": 0, "max": 1 }
                     } } }
                     """);
@@ -136,6 +136,7 @@ public sealed class WindowTests
                 window.SelectedComponents.SelectedIndex = 0;
                 window.UpdateLayout();
                 Assert.Equal("Component properties", window.PropertyHeading.Text);
+                Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Color scheme");
                 Assert.Equal(5, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>().Count() +
