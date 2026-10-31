@@ -91,6 +91,11 @@ app.MapGet("/v1/hosts/{hostId}/components", async (string hostId, HttpRequest re
     await Authenticated(request, sessions, "component.discovery", async () => Results.Ok(EffectiveComponents.Resolve(
         await presets.ReadAsync(ct), hostId, await catalog.DiscoverAsync(ct)))));
 
+app.MapGet("/v1/hosts/{hostId}/composition", async (string hostId, HttpRequest request, ISessionStore sessions,
+    JsonPresetStore presets, InstalledCatalog catalog, CancellationToken ct) =>
+    await Authenticated(request, sessions, "component.discovery", async () => Results.Ok(EffectiveComponents.ResolveComposition(
+        await presets.ReadAsync(ct), hostId, await catalog.DiscoverAsync(ct)))));
+
 app.MapGet("/v1/catalog/components/{key}/resources/{**resourcePath}", async (string key, string? resourcePath,
     HttpContext context, ISessionStore sessions, InstalledCatalog catalog, CancellationToken ct) =>
 {

@@ -16,8 +16,28 @@ public sealed record EffectiveComponent(
     ComponentLayout Layout,
     Dictionary<string, JsonElement> Config);
 
+public sealed record EffectiveComposition(
+    string PresetId,
+    long Revision,
+    DateTimeOffset UpdatedAt,
+    string LayoutMode,
+    GridLayoutSettings? Grid,
+    IReadOnlyList<EffectiveComponent> Instances);
+
 public static class EffectiveComponents
 {
+    public static EffectiveComposition ResolveComposition(PresetState state, string hostId, IReadOnlyList<InstalledItem> items)
+    {
+        var preset = PresetSelection.Resolve(state, hostId);
+        return new EffectiveComposition(
+            preset?.Id ?? "implicit-default",
+            preset?.Revision ?? 0,
+            preset?.UpdatedAt ?? DateTimeOffset.UnixEpoch,
+            preset?.LayoutMode ?? "grid",
+            preset?.LayoutMode == "grid" ? preset.Grid ?? new GridLayoutSettings() : null,
+            Resolve(state, hostId, items));
+    }
+
     public static IReadOnlyList<EffectiveComponent> Resolve(PresetState state, string hostId, IReadOnlyList<InstalledItem> items)
     {
         var preset = PresetSelection.Resolve(state, hostId);

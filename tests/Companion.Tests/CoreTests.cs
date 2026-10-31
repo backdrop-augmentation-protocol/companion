@@ -233,6 +233,23 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void EffectiveCompositionIncludesPresetScopedLayoutAndRevision()
+    {
+        var preset = new ComponentPreset("work", "Work", [],
+            LayoutMode: "grid", Grid: new GridLayoutSettings(Columns: 3), Revision: 7,
+            UpdatedAt: DateTimeOffset.Parse("2026-10-31T08:00:00Z"));
+        var snapshot = EffectiveComponents.ResolveComposition(
+            new PresetState([preset], preset.Id, new Dictionary<string, string>()),
+            "org.example.host", []);
+
+        Assert.Equal("work", snapshot.PresetId);
+        Assert.Equal(7, snapshot.Revision);
+        Assert.Equal(preset.UpdatedAt, snapshot.UpdatedAt);
+        Assert.Equal(3, snapshot.Grid?.Columns);
+        Assert.Empty(snapshot.Instances);
+    }
+
+    [Fact]
     public void ManifestValidatorRejectsIncompleteManifest()
     {
         var errors = ComponentManifestValidator.Validate(new ComponentManifest(new("bap", "0.1.0", "core"), "Bad ID", "", "", "component", [], new Dictionary<string, string>(), []));
