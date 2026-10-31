@@ -226,7 +226,7 @@ internal sealed class MainForm : Form
         foreach (var component in SelectedPreset?.Components ?? [])
         {
             var item = items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId && (component.SourceKey is null || candidate.Key == component.SourceKey));
-            selectedComponents.Items.Add(new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}]"));
+            selectedComponents.Items.Add(new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}] · {component.InstanceId}"));
         }
     }
 
@@ -283,18 +283,16 @@ internal sealed class MainForm : Form
     {
         var preset = SelectedPreset; var item = (availableComponents.SelectedItem as CatalogChoice)?.Item;
         if (preset is null || item?.BapId is null) return;
-        if (preset.Components.Any(component => component.ComponentId == item.BapId))
-        {
-            MessageBox.Show(L("duplicateComponent")); return;
-        }
-        await ReplacePresetAsync(preset with { Components = [.. preset.Components, new(item.BapId, item.Key)] });
+        var order = preset.Components.Count;
+        await ReplacePresetAsync(preset with { Components = [.. preset.Components, new(item.BapId, item.Key,
+            Guid.NewGuid().ToString("N"), Layout: new ComponentLayout("automatic", Order: order, ZIndex: order))] });
     }
 
     private async Task RemoveComponentAsync()
     {
         var preset = SelectedPreset; var selected = (selectedComponents.SelectedItem as ComponentChoice)?.Component;
         if (preset is null || selected is null) return;
-        await ReplacePresetAsync(preset with { Components = preset.Components.Where(component => component.ComponentId != selected.ComponentId).ToArray() });
+        await ReplacePresetAsync(preset with { Components = preset.Components.Where(component => component.InstanceId != selected.InstanceId).ToArray() });
     }
 
     private async Task MoveComponentAsync(int offset)
@@ -303,6 +301,10 @@ internal sealed class MainForm : Form
         if (preset is null || index < 0 || index + offset < 0 || index + offset >= preset.Components.Count) return;
         var ordered = preset.Components.ToList();
         (ordered[index], ordered[index + offset]) = (ordered[index + offset], ordered[index]);
+        ordered = ordered.Select((component, order) => component with
+        {
+            Layout = component.Layout is { Mode: "automatic" } layout ? layout with { Order = order, ZIndex = order } : component.Layout
+        }).ToList();
         await ReplacePresetAsync(preset with { Components = ordered });
         selectedComponents.SelectedIndex = index + offset;
     }

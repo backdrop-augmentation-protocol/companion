@@ -356,7 +356,7 @@ public partial class MainWindow : Window
             {
                 var item = items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId &&
                     (component.SourceKey is null || candidate.Key == component.SourceKey));
-                return new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}]");
+                return new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}] · {component.InstanceId}");
             }).ToArray();
     }
 
@@ -406,12 +406,9 @@ public partial class MainWindow : Window
         var preset = SelectedPreset;
         var item = (AvailableComponents.SelectedItem as CatalogChoice)?.Item;
         if (preset is null || item?.BapId is null) return;
-        if (preset.Components.Any(component => component.ComponentId == item.BapId))
-        {
-            ThemedDialog.ShowMessage(this, L("presets"), L("duplicateComponent"), settings.Language == "zh-CN" ? "确定" : "OK");
-            return;
-        }
-        await ReplacePresetAsync(preset with { Components = [.. preset.Components, new(item.BapId, item.Key)] });
+        var order = preset.Components.Count;
+        await ReplacePresetAsync(preset with { Components = [.. preset.Components, new(item.BapId, item.Key,
+            Guid.NewGuid().ToString("N"), Layout: new ComponentLayout("automatic", Order: order, ZIndex: order))] });
     });
 
     private void RemoveComponentButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
@@ -419,7 +416,7 @@ public partial class MainWindow : Window
         var preset = SelectedPreset;
         var component = (SelectedComponents.SelectedItem as ComponentChoice)?.Component;
         if (preset is null || component is null) return;
-        await ReplacePresetAsync(preset with { Components = preset.Components.Where(item => item.ComponentId != component.ComponentId).ToArray() });
+        await ReplacePresetAsync(preset with { Components = preset.Components.Where(item => item.InstanceId != component.InstanceId).ToArray() });
     });
 
     private void MoveUpButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(() => MoveComponentAsync(-1));
@@ -432,6 +429,10 @@ public partial class MainWindow : Window
         if (preset is null || index < 0 || index + offset < 0 || index + offset >= preset.Components.Count) return;
         var ordered = preset.Components.ToList();
         (ordered[index], ordered[index + offset]) = (ordered[index + offset], ordered[index]);
+        ordered = ordered.Select((component, order) => component with
+        {
+            Layout = component.Layout is { Mode: "automatic" } layout ? layout with { Order = order, ZIndex = order } : component.Layout
+        }).ToList();
         await ReplacePresetAsync(preset with { Components = ordered });
         SelectedComponents.SelectedIndex = index + offset;
     }

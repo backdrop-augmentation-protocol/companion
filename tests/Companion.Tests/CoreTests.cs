@@ -212,6 +212,27 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void EffectiveCompositionPreservesRepeatedAndDisabledInstances()
+    {
+        var manifest = new ComponentManifest(new("bap", "0.1.0", "core"), "org.example.clock", "1.0.0", "Clock", "component", [],
+            new Dictionary<string, string> { ["default"] = "index.html", ["standalone"] = "index.html", ["embedded"] = "embedded.html" }, ["standalone", "embedded"]);
+        var items = new[] { new InstalledItem("workshop:123", "workshop", "component", "Clock", "subscribed", "123", manifest.Id, manifest.Version, null, manifest) };
+        var preset = new ComponentPreset("daily", "Daily",
+        [
+            new("org.example.clock", "workshop:123", "clock-a", Layout: new ComponentLayout("automatic", Order: 0)),
+            new("org.example.clock", "workshop:123", "clock-b", Enabled: false, Layout: new ComponentLayout("automatic", Order: 1))
+        ]);
+        var result = EffectiveComponents.Resolve(
+            new PresetState([preset], preset.Id, new Dictionary<string, string>()),
+            "org.example.host", items);
+
+        Assert.Equal(["clock-a", "clock-b"], result.Select(item => item.InstanceId));
+        Assert.Equal(["available", "disabled"], result.Select(item => item.Status));
+        Assert.All(result, item => Assert.Equal("org.example.clock", item.ComponentId));
+        Assert.Equal([0, 1], result.Select(item => item.Layout.Order));
+    }
+
+    [Fact]
     public void ManifestValidatorRejectsIncompleteManifest()
     {
         var errors = ComponentManifestValidator.Validate(new ComponentManifest(new("bap", "0.1.0", "core"), "Bad ID", "", "", "component", [], new Dictionary<string, string>(), []));
