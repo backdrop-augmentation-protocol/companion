@@ -33,11 +33,12 @@ public sealed class WindowTests
                 Assert.True(trayIcon.Width > 0);
                 var settings = new DesktopSettings(Path.Combine(directory, "desktop.json"), synchronizeStartup: false);
                 using var log = new CompanionLog(Path.Combine(directory, "companion.log"));
+                var presetStore = new JsonPresetStore(Path.Combine(directory, "presets.json"));
                 using var creatorHttpClient = new HttpClient(new StaticHttpMessageHandler(request =>
                     request.RequestUri!.Host == "api.steampowered.com"
                         ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"response\":{\"publishedfiledetails\":[{\"creator\":\"76561198000000000\"}]}}", Encoding.UTF8, "application/json") }
                         : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<profile><steamID>Creator Name</steamID></profile>", Encoding.UTF8, "application/xml") }));
-                var window = new MainWindow(log, 4312, settings, creatorLookup: new SteamWorkshopCreatorLookup(creatorHttpClient));
+                var window = new MainWindow(log, 4312, settings, creatorLookup: new SteamWorkshopCreatorLookup(creatorHttpClient), presetStore: presetStore);
                 window.Show();
                 var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(window);
                 Assert.NotNull(chrome);
@@ -110,14 +111,45 @@ public sealed class WindowTests
                 settings.SetDisplayIndex(99);
                 Assert.Equal(Math.Max(0, System.Windows.Forms.Screen.AllScreens.Length - 1), window.EffectiveDisplayIndex);
                 settings.SetDisplayIndex(0);
+                using var propertyJson = System.Text.Json.JsonDocument.Parse("""
+                    { "general": { "properties": {
+                      "enabled": { "type": "bool", "text": "Enabled", "value": true },
+                      "mode": { "type": "combo", "text": "Mode", "value": "one", "options": [{ "value": "one", "text": "One" }, { "value": "two", "text": "Two" }] },
+                      "label": { "type": "textinput", "text": "Label", "value": "Default" },
+                      "accent": { "type": "color", "text": "Accent", "value": "0.1 0.2 0.3" },
+                      "opacity": { "type": "slider", "text": "Opacity", "value": 0.5, "min": 0, "max": 1 }
+                    } } }
+                    """);
+                var componentProperties = WallpaperPropertyReader.Read(propertyJson.RootElement).Properties;
+                var firstInstance = new PresetComponent("org.example.time", "workshop:123", "instance-a");
+                var secondInstance = new PresetComponent("org.example.time", "workshop:123", "instance-b");
                 window.RenderSnapshot(
                 [
                     new InstalledItem("local:host", "local", "host", "Demo host wallpaper", "host", null, "org.example.host", "1.0.0", null, null),
-                    new InstalledItem("workshop:123", "workshop", "component", "Time widget", "component", "123", "org.example.time", "1.0.0", null, null),
+                    new InstalledItem("workshop:123", "workshop", "component", "Time widget", "component", "123", "org.example.time", "1.0.0", null, null, Properties: componentProperties),
                     new InstalledItem("local:calendar", "local", "component", "Calendar widget", "component", null, "org.example.calendar", "1.0.0", null, null)
                 ], new PresetState(
-                    [new ComponentPreset("preset-1", "Daily setup", [new PresetComponent("org.example.time", "workshop:123")])],
+                    [new ComponentPreset("preset-1", "Daily setup", [firstInstance, secondInstance])],
                     "preset-1", new Dictionary<string, string>()));
+                window.PresetsNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                window.PresetList.SelectedIndex = 0;
+                window.SelectedComponents.SelectedIndex = 0;
+                window.UpdateLayout();
+                Assert.Equal("Component properties", window.PropertyHeading.Text);
+                Assert.Equal(5, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
+                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count() +
+                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>().Count() +
+                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
+                var enabledProperty = Assert.Single(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>());
+                enabledProperty.IsChecked = false;
+                var saveFrame = new System.Windows.Threading.DispatcherFrame();
+                var saveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                saveTimer.Tick += (_, _) => { saveTimer.Stop(); saveFrame.Continue = false; };
+                saveTimer.Start();
+                System.Windows.Threading.Dispatcher.PushFrame(saveFrame);
+                var savedPreset = presetStore.ReadAsync().GetAwaiter().GetResult().Presets.Single();
+                Assert.Equal(System.Text.Json.JsonValueKind.False, savedPreset.Components[0].Config!["enabled"].ValueKind);
+                Assert.False(savedPreset.Components[1].Config?.ContainsKey("enabled") == true);
                 window.HostsList.SelectedIndex = 0;
                 window.UpdateLayout();
                 window.ComponentsList.SelectedIndex = 0;

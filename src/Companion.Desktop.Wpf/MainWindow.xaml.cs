@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using Bap.Companion.Core;
 using Bap.Companion.Desktop;
@@ -12,6 +14,8 @@ using Forms = System.Windows.Forms;
 using Button = System.Windows.Controls.Button;
 using ListBox = System.Windows.Controls.ListBox;
 using TextBox = System.Windows.Controls.TextBox;
+using CheckBox = System.Windows.Controls.CheckBox;
+using ComboBox = System.Windows.Controls.ComboBox;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 
@@ -21,7 +25,7 @@ public partial class MainWindow : Window
 {
     private readonly InstalledCatalog catalog = InstalledCatalog.FromEnvironment();
     private readonly SteamWorkshopCreatorLookup creatorLookup;
-    private readonly JsonPresetStore store = new(JsonPresetStore.DefaultPath);
+    private readonly JsonPresetStore store;
     private readonly CompanionLog log;
     private readonly int port;
     private readonly DesktopSettings settings;
@@ -35,15 +39,17 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer authorizationTimer;
     private bool showingAuthorizationPrompt;
     private int creatorLookupGeneration;
+    private bool renderingPropertyEditors;
 
     internal MainWindow(CompanionLog log, int port, DesktopSettings settings, HostAuthorizationClient? authorizationClient = null,
-        SteamWorkshopCreatorLookup? creatorLookup = null)
+        SteamWorkshopCreatorLookup? creatorLookup = null, JsonPresetStore? presetStore = null)
     {
         this.log = log;
         this.port = port;
         this.settings = settings;
         this.authorizationClient = authorizationClient;
         this.creatorLookup = creatorLookup ?? new SteamWorkshopCreatorLookup();
+        store = presetStore ?? new JsonPresetStore(JsonPresetStore.DefaultPath);
         InitializeComponent();
         StartupCheck.FocusVisualStyle = (Style)FindResource("NoFocusVisual");
         LanguageChoice.SelectedIndex = settings.Language == "zh-CN" ? 1 : 0;
@@ -118,6 +124,8 @@ public partial class MainWindow : Window
         PresetsTitle.Text = L("presets"); PresetIntro.Text = L("presetIntro");
         NewPresetButton.Content = L("newPreset"); RenameButton.Content = L("rename"); DeleteButton.Content = L("delete");
         SelectedComponentsHeading.Text = L("selectedComponents");
+        PropertyHeading.Text = settings.Language == "zh-CN" ? "组件属性" : "Component properties";
+        if (SelectedComponents is not null) RenderPropertyEditors();
         AddComponentButton.Content = L("addComponent"); RemoveComponentButton.Content = L("remove");
         MoveUpButton.Content = L("moveUp"); MoveDownButton.Content = L("moveDown");
         ScopeHeading.Text = L("scope"); SetGlobalButton.Content = L("setGlobal");
@@ -348,9 +356,12 @@ public partial class MainWindow : Window
 
     private void PresetList_SelectionChanged(object sender, SelectionChangedEventArgs e) => RenderSelectedComponents();
 
+    private void SelectedComponents_SelectionChanged(object sender, SelectionChangedEventArgs e) => RenderPropertyEditors();
+
     private void RenderSelectedComponents()
     {
         if (SelectedComponents is null) return;
+        var selectedInstanceId = (SelectedComponents.SelectedItem as ComponentChoice)?.Component.InstanceId;
         SelectedComponents.ItemsSource = (SelectedPreset?.Components ?? [])
             .Select(component =>
             {
@@ -358,6 +369,157 @@ public partial class MainWindow : Window
                     (component.SourceKey is null || candidate.Key == component.SourceKey));
                 return new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}] · {component.InstanceId}");
             }).ToArray();
+        SelectedComponents.SelectedItem = SelectedComponents.Items.Cast<ComponentChoice>()
+            .FirstOrDefault(choice => choice.Component.InstanceId == selectedInstanceId);
+        RenderPropertyEditors();
+    }
+
+    private PresetComponent? SelectedComponent => (SelectedComponents.SelectedItem as ComponentChoice)?.Component;
+
+    private void RenderPropertyEditors()
+    {
+        if (InstancePropertyPanel is null) return;
+        renderingPropertyEditors = true;
+        try
+        {
+            InstancePropertyPanel.Children.Clear();
+            var component = SelectedComponent;
+            var item = component is null ? null : items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId &&
+                (component.SourceKey is null || candidate.Key == component.SourceKey));
+            if (component is null || item is null)
+            {
+                PropertyHint.Text = settings.Language == "zh-CN" ? "选择一个组件实例以编辑其预设属性。" : "Select a component instance to edit its preset values.";
+                return;
+            }
+
+            if (item.Properties is not { Count: > 0 } definitions)
+            {
+                PropertyHint.Text = settings.Language == "zh-CN" ? "此组件未声明可编辑的 WE 属性。" : "This component declares no editable WE properties.";
+                return;
+            }
+
+            PropertyHint.Text = settings.Language == "zh-CN"
+                ? $"{item.Title} · 此实例在当前预设中的值"
+                : $"{item.Title} · values for this instance in the selected preset";
+            var effectiveValues = definitions.ToDictionary(definition => definition.Key,
+                definition => component.Config is not null && component.Config.TryGetValue(definition.Key, out var configured) &&
+                    WallpaperPropertyReader.IsValidValue(definition, configured) ? configured : definition.DefaultValue,
+                StringComparer.Ordinal);
+            foreach (var definition in definitions)
+            {
+                var value = effectiveValues[definition.Key];
+                if (definition.ConditionSupported && !WallpaperPropertyReader.IsConditionMet(definition, effectiveValues)) continue;
+                var context = new PropertyEditContext(component.InstanceId!, definition);
+                var title = new TextBlock
+                {
+                    Text = definition.Text is { Length: > 0 } text ? text : definition.Key,
+                    Foreground = (Brush)FindResource("Ink"), FontWeight = FontWeights.SemiBold,
+                    TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 7, 0, 4)
+                };
+                InstancePropertyPanel.Children.Add(title);
+                switch (definition.Type)
+                {
+                    case "bool":
+                        var check = new CheckBox { IsChecked = value.ValueKind == System.Text.Json.JsonValueKind.True, Tag = context, Margin = new Thickness(0, 0, 0, 5) };
+                        check.Checked += PropertyCheck_Changed;
+                        check.Unchecked += PropertyCheck_Changed;
+                        check.IsEnabled = definition.ConditionSupported;
+                        InstancePropertyPanel.Children.Add(check);
+                        break;
+                    case "combo":
+                        var combo = new ComboBox { Tag = context, Margin = new Thickness(0, 0, 0, 5), IsEnabled = definition.ConditionSupported };
+                        combo.ItemsSource = (definition.Options ?? []).Select(option => new PropertyOptionChoice(option)).ToArray();
+                        combo.DisplayMemberPath = nameof(PropertyOptionChoice.Label);
+                        combo.SelectedItem = combo.Items.Cast<PropertyOptionChoice>().FirstOrDefault(option =>
+                            System.Text.Json.JsonElement.DeepEquals(option.Option.Value, value));
+                        combo.SelectionChanged += PropertyCombo_Changed;
+                        InstancePropertyPanel.Children.Add(combo);
+                        break;
+                    case "textinput":
+                    case "color":
+                        var textBox = new TextBox { Text = value.GetString() ?? "", Tag = context,
+                            Style = (Style)FindResource("DialogTextBox"), IsEnabled = definition.ConditionSupported };
+                        textBox.LostKeyboardFocus += PropertyText_LostKeyboardFocus;
+                        InstancePropertyPanel.Children.Add(textBox);
+                        if (definition.Type == "color")
+                            InstancePropertyPanel.Children.Add(new TextBlock { Text = "WE RGB (0–1)", Foreground = (Brush)FindResource("Muted"), FontSize = 11 });
+                        break;
+                    case "slider":
+                        var sliderValue = value.GetDouble();
+                        var valueLabel = new TextBlock { Text = sliderValue.ToString($"F{definition.Fraction ?? 2}", CultureInfo.InvariantCulture),
+                            Foreground = (Brush)FindResource("Muted"), HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+                        InstancePropertyPanel.Children.Add(valueLabel);
+                        var slider = new Slider { Minimum = definition.Minimum!.Value, Maximum = definition.Maximum!.Value,
+                            Value = sliderValue, SmallChange = definition.Step ?? Math.Max((definition.Maximum.Value - definition.Minimum.Value) / 100, 0.001),
+                            TickFrequency = definition.Step ?? 0, IsSnapToTickEnabled = definition.Step is > 0,
+                            Tag = new SliderEditContext(context, valueLabel), IsEnabled = definition.ConditionSupported };
+                        slider.ValueChanged += PropertySlider_ValueChanged;
+                        slider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler(PropertySlider_DragCompleted));
+                        slider.KeyUp += PropertySlider_KeyUp;
+                        InstancePropertyPanel.Children.Add(slider);
+                        break;
+                }
+                if (!definition.ConditionSupported)
+                    InstancePropertyPanel.Children.Add(new TextBlock { Text = settings.Language == "zh-CN" ? "不支持此属性的显示条件" : "Unsupported display condition",
+                        Foreground = (Brush)FindResource("Muted"), TextWrapping = TextWrapping.Wrap, FontSize = 11 });
+            }
+        }
+        finally { renderingPropertyEditors = false; }
+    }
+
+    private void PropertyCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!renderingPropertyEditors && sender is CheckBox { Tag: PropertyEditContext context } check)
+            _ = RunActionAsync(() => SavePropertyValueAsync(context, System.Text.Json.JsonSerializer.SerializeToElement(check.IsChecked == true)));
+    }
+
+    private void PropertyCombo_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!renderingPropertyEditors && sender is ComboBox { Tag: PropertyEditContext context, SelectedItem: PropertyOptionChoice choice })
+            _ = RunActionAsync(() => SavePropertyValueAsync(context, choice.Option.Value));
+    }
+
+    private void PropertyText_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (renderingPropertyEditors || sender is not TextBox { Tag: PropertyEditContext context } textBox) return;
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(textBox.Text);
+        if (WallpaperPropertyReader.IsValidValue(context.Definition, json))
+            _ = RunActionAsync(() => SavePropertyValueAsync(context, json));
+        else RenderPropertyEditors();
+    }
+
+    private void PropertySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (sender is Slider { Tag: SliderEditContext context } slider)
+            context.ValueLabel.Text = slider.Value.ToString($"F{context.Edit.Definition.Fraction ?? 2}", CultureInfo.InvariantCulture);
+    }
+
+    private void PropertySlider_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (!renderingPropertyEditors && sender is Slider { Tag: SliderEditContext context } slider)
+            _ = RunActionAsync(() => SavePropertyValueAsync(context.Edit, System.Text.Json.JsonSerializer.SerializeToElement(slider.Value)));
+    }
+
+    private void PropertySlider_KeyUp(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (!renderingPropertyEditors && sender is Slider { Tag: SliderEditContext context } slider)
+            _ = RunActionAsync(() => SavePropertyValueAsync(context.Edit, System.Text.Json.JsonSerializer.SerializeToElement(slider.Value)));
+    }
+
+    private async Task SavePropertyValueAsync(PropertyEditContext context, System.Text.Json.JsonElement value)
+    {
+        var preset = SelectedPreset;
+        if (preset is null || !WallpaperPropertyReader.IsValidValue(context.Definition, value)) return;
+        var changed = preset.Components.Select(component =>
+        {
+            if (component.InstanceId != context.InstanceId) return component;
+            var config = component.Config is null
+                ? new Dictionary<string, System.Text.Json.JsonElement>(StringComparer.Ordinal)
+                : new Dictionary<string, System.Text.Json.JsonElement>(component.Config, StringComparer.Ordinal);
+            config[context.Definition.Key] = value.Clone();
+            return component with { Config = config };
+        }).ToArray();
+        await ReplacePresetAsync(preset with { Components = changed });
     }
 
     private async Task SaveAsync(PresetState next, string? selectedId = null)
@@ -536,5 +698,8 @@ public partial class MainWindow : Window
     private sealed record CatalogChoice(InstalledItem Item, string Label);
     private sealed record PresetChoice(ComponentPreset Preset) { public override string ToString() => Preset.Name; }
     private sealed record ComponentChoice(PresetComponent Component, string Label);
+    private sealed record PropertyEditContext(string InstanceId, WallpaperPropertyDefinition Definition);
+    private sealed record SliderEditContext(PropertyEditContext Edit, TextBlock ValueLabel);
+    private sealed record PropertyOptionChoice(WallpaperPropertyOption Option) { public string Label => Option.Text; }
     private sealed record TrustedHostChoice(TrustedHost Host, string Label) { public override string ToString() => Label; }
 }

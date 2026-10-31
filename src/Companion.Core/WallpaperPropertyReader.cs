@@ -83,6 +83,12 @@ public static partial class WallpaperPropertyReader
         };
     }
 
+    public static bool IsConditionMet(WallpaperPropertyDefinition definition, IReadOnlyDictionary<string, JsonElement> values)
+    {
+        if (string.IsNullOrWhiteSpace(definition.Condition)) return true;
+        return definition.ConditionSupported && PropertyCondition.Evaluate(definition.Condition, values);
+    }
+
     private static bool IsValidDefault(string type, JsonElement value) => type switch
     {
         "bool" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
@@ -141,6 +147,19 @@ public static partial class WallpaperPropertyReader
             catch (FormatException) { return false; }
         }
 
+        public static bool Evaluate(string expression, IReadOnlyDictionary<string, JsonElement> values)
+        {
+            var tokens = Tokenize(expression);
+            if (tokens is null || tokens.Count == 0) return false;
+            var index = 0;
+            try
+            {
+                var result = ParseOr(tokens, ref index, values);
+                return index == tokens.Count && result is bool boolean && boolean;
+            }
+            catch (FormatException) { return false; }
+        }
+
         private static List<string>? Tokenize(string expression)
         {
             var tokens = new List<string>();
@@ -178,6 +197,68 @@ public static partial class WallpaperPropertyReader
                 if (index >= tokens.Count || !IsValue(tokens[index++])) throw new FormatException();
             }
         }
+
+        private static object? ParseOr(IReadOnlyList<string> tokens, ref int index, IReadOnlyDictionary<string, JsonElement> values)
+        {
+            var left = ParseAnd(tokens, ref index, values);
+            while (Take(tokens, ref index, "||"))
+            {
+                var right = ParseAnd(tokens, ref index, values);
+                left = Truthy(left) || Truthy(right);
+            }
+            return left;
+        }
+
+        private static object? ParseAnd(IReadOnlyList<string> tokens, ref int index, IReadOnlyDictionary<string, JsonElement> values)
+        {
+            var left = ParseEvaluatedAtom(tokens, ref index, values);
+            while (Take(tokens, ref index, "&&"))
+            {
+                var right = ParseEvaluatedAtom(tokens, ref index, values);
+                left = Truthy(left) && Truthy(right);
+            }
+            return left;
+        }
+
+        private static object? ParseEvaluatedAtom(IReadOnlyList<string> tokens, ref int index, IReadOnlyDictionary<string, JsonElement> values)
+        {
+            if (Take(tokens, ref index, "("))
+            {
+                var nested = ParseOr(tokens, ref index, values);
+                if (!Take(tokens, ref index, ")")) throw new FormatException();
+                return nested;
+            }
+            var left = ParseValue(tokens, ref index, values);
+            if (Take(tokens, ref index, "==")) return Equals(left, ParseValue(tokens, ref index, values));
+            if (Take(tokens, ref index, "!=")) return !Equals(left, ParseValue(tokens, ref index, values));
+            return left;
+        }
+
+        private static object? ParseValue(IReadOnlyList<string> tokens, ref int index, IReadOnlyDictionary<string, JsonElement> values)
+        {
+            if (index >= tokens.Count) throw new FormatException();
+            var token = tokens[index++];
+            if (token.EndsWith(".value", StringComparison.Ordinal))
+                return values.TryGetValue(token[..^6], out var propertyValue) ? Primitive(propertyValue) : null;
+            if (token == "true") return true;
+            if (token == "false") return false;
+            if (double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)) return number;
+            if (token.Length >= 2 && token[0] == '\'' && token[^1] == '\'') return token[1..^1].Replace("\\'", "'", StringComparison.Ordinal).Replace("\\\\", "\\", StringComparison.Ordinal);
+            if (token.Length >= 2 && token[0] == '"' && token[^1] == '"') return token[1..^1].Replace("\\\"", "\"", StringComparison.Ordinal).Replace("\\\\", "\\", StringComparison.Ordinal);
+            throw new FormatException();
+        }
+
+        private static object? Primitive(JsonElement value) => value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number when value.TryGetDouble(out var number) => number,
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Null => null,
+            _ => null
+        };
+
+        private static bool Truthy(object? value) => value is bool boolean && boolean;
         private static bool Take(IReadOnlyList<string> tokens, ref int index, string token)
         {
             if (index >= tokens.Count || tokens[index] != token) return false;

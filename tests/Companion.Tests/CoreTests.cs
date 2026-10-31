@@ -204,6 +204,10 @@ public sealed class CoreTests
         Assert.DoesNotContain(read.Properties, property => property.Key == "image");
         Assert.False(read.Properties.Single(property => property.Key == "unsafe").ConditionSupported);
         Assert.True(read.Properties.Single(property => property.Key == "tint").ConditionSupported);
+        Assert.True(WallpaperPropertyReader.IsConditionMet(read.Properties.Single(property => property.Key == "tint"),
+            new Dictionary<string, JsonElement> { ["enabled"] = JsonDocument.Parse("true").RootElement }));
+        Assert.False(WallpaperPropertyReader.IsConditionMet(read.Properties.Single(property => property.Key == "tint"),
+            new Dictionary<string, JsonElement> { ["enabled"] = JsonDocument.Parse("false").RootElement }));
         Assert.Contains(read.Diagnostics, diagnostic => diagnostic.Contains("unsupported display condition", StringComparison.Ordinal));
         Assert.True(WallpaperPropertyReader.IsValidValue(read.Properties.Single(property => property.Key == "theme"), JsonDocument.Parse("\"red\"").RootElement));
         Assert.False(WallpaperPropertyReader.IsValidValue(read.Properties.Single(property => property.Key == "opacity"), JsonDocument.Parse("2").RootElement));
