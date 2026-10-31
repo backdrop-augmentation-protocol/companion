@@ -18,6 +18,8 @@ using CheckBox = System.Windows.Controls.CheckBox;
 using ComboBox = System.Windows.Controls.ComboBox;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
+using Orientation = System.Windows.Controls.Orientation;
+using Color = System.Windows.Media.Color;
 
 namespace Bap.Companion.Desktop.Wpf;
 
@@ -439,13 +441,34 @@ public partial class MainWindow : Window
                         InstancePropertyPanel.Children.Add(combo);
                         break;
                     case "textinput":
-                    case "color":
                         var textBox = new TextBox { Text = value.GetString() ?? "", Tag = context,
                             Style = (Style)FindResource("DialogTextBox"), IsEnabled = definition.ConditionSupported };
                         textBox.LostKeyboardFocus += PropertyText_LostKeyboardFocus;
                         InstancePropertyPanel.Children.Add(textBox);
-                        if (definition.Type == "color")
-                            InstancePropertyPanel.Children.Add(new TextBlock { Text = "WE RGB (0–1)", Foreground = (Brush)FindResource("Muted"), FontSize = 11 });
+                        break;
+                    case "color":
+                        var color = ColorPickerDialog.ParseWeColor(value.GetString());
+                        var colorButton = new Button
+                        {
+                            Tag = context,
+                            Name = "PropertyColorPicker",
+                            ToolTip = settings.Language == "zh-CN" ? "选择颜色" : "Choose color",
+                            Style = (Style)FindResource("QuietButton"),
+                            IsEnabled = definition.ConditionSupported,
+                            HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch,
+                            Margin = new Thickness(0, 0, 0, 3)
+                        };
+                        colorButton.Content = new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Children =
+                            {
+                                new Border { Width = 28, Height = 20, CornerRadius = new CornerRadius(4), Background = new SolidColorBrush(color), BorderBrush = new SolidColorBrush(Color.FromRgb(75, 104, 148)), BorderThickness = new Thickness(1), Margin = new Thickness(0, 0, 9, 0) },
+                                new TextBlock { Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}", VerticalAlignment = VerticalAlignment.Center, FontFamily = new System.Windows.Media.FontFamily("Consolas") }
+                            }
+                        };
+                        colorButton.Click += PropertyColor_Click;
+                        InstancePropertyPanel.Children.Add(colorButton);
                         break;
                     case "slider":
                         var sliderValue = value.GetDouble();
@@ -510,6 +533,21 @@ public partial class MainWindow : Window
         if (WallpaperPropertyReader.IsValidValue(context.Definition, json))
             _ = RunActionAsync(() => SavePropertyValueAsync(context, json));
         else RenderPropertyEditors();
+    }
+
+    private void PropertyColor_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: PropertyEditContext context }) return;
+        var current = context.Definition.DefaultValue.GetString();
+        if (SelectedComponent?.Config?.TryGetValue(context.Definition.Key, out var configured) == true && configured.ValueKind == System.Text.Json.JsonValueKind.String)
+            current = configured.GetString();
+        var initial = ColorPickerDialog.ParseWeColor(current);
+        var selected = ColorPickerDialog.Show(this, initial, settings.Language == "zh-CN");
+        if (selected is { } color)
+        {
+            var json = System.Text.Json.JsonSerializer.SerializeToElement(ColorPickerDialog.FormatWeColor(color));
+            _ = RunActionAsync(() => SavePropertyValueAsync(context, json));
+        }
     }
 
     private void PropertySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)

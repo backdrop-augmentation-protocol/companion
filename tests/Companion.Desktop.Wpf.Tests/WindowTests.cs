@@ -15,6 +15,14 @@ namespace Companion.Desktop.Wpf.Tests;
 public sealed class WindowTests
 {
     [Fact]
+    public void WeColorValuesRoundTripThroughEightBitPickerColor()
+    {
+        var original = System.Windows.Media.Color.FromRgb(42, 71, 117);
+        var serialized = ColorPickerDialog.FormatWeColor(original);
+        Assert.Equal(original, ColorPickerDialog.ParseWeColor(serialized));
+    }
+
+    [Fact]
     public void FluentWindowConstructsAndSwitchesLanguageWithoutStartingServer()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"bap-wpf-{Guid.NewGuid():N}");
@@ -136,11 +144,15 @@ public sealed class WindowTests
                 window.SelectedComponents.SelectedIndex = 0;
                 window.UpdateLayout();
                 Assert.Equal("Component properties", window.PropertyHeading.Text);
+                var rightPanelContent = Assert.IsType<System.Windows.Controls.StackPanel>(System.Windows.Media.VisualTreeHelper.GetParent(window.ScopeHeading));
+                Assert.True(rightPanelContent.Children.IndexOf(window.ScopeHeading) < rightPanelContent.Children.IndexOf(window.PropertyHeading));
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Color scheme");
+                Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>(), button => button.ToolTip?.ToString() == "Choose color");
                 Assert.Equal(5, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>().Count() +
-                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
+                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Slider>().Count() +
+                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>().Count(button => button.ToolTip?.ToString() == "Choose color"));
                 var enabledProperty = Assert.Single(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>());
                 enabledProperty.IsChecked = false;
                 var saveFrame = new System.Windows.Threading.DispatcherFrame();

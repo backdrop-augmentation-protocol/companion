@@ -290,10 +290,6 @@
           <Border Grid.Column="2" Style="{StaticResource Panel}" Padding="12">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
               <StackPanel>
-                <TextBlock x:Name="PropertyHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,4" Text="Component properties"/>
-                <TextBlock x:Name="PropertyHint" Style="{StaticResource Hint}" Margin="0,0,0,8" Text="Choose an instance to edit its preset values." TextWrapping="Wrap"/>
-                <StackPanel x:Name="InstancePropertyPanel"/>
-                <Border Height="1" Background="{StaticResource Border}" Margin="0,12,0,12"/>
                 <TextBlock x:Name="ScopeHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,12"/>
                 <Button x:Name="SetGlobalButton" Style="{StaticResource PrimaryButton}" Click="SetGlobalButton_Click"/>
                 <TextBlock x:Name="HostOverrideLabel" Style="{StaticResource Hint}" Margin="0,22,0,7"/>
@@ -303,6 +299,10 @@
                 <Button x:Name="SetHostButton" Style="{StaticResource QuietButton}" Click="SetHostButton_Click" Margin="0,0,0,8"/>
                 <Button x:Name="ClearHostButton" Style="{StaticResource QuietButton}" Click="ClearHostButton_Click"/>
                 <TextBlock x:Name="PresetStatus" Style="{StaticResource Hint}" Margin="0,23,0,0"/>
+                <Border Height="1" Background="{StaticResource Border}" Margin="0,16,0,16"/>
+                <TextBlock x:Name="PropertyHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,4" Text="Component properties"/>
+                <TextBlock x:Name="PropertyHint" Style="{StaticResource Hint}" Margin="0,0,0,8" Text="Choose an instance to edit its preset values." TextWrapping="Wrap"/>
+                <StackPanel x:Name="InstancePropertyPanel"/>
               </StackPanel>
             </ScrollViewer>
           </Border>
