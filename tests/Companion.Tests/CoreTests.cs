@@ -272,10 +272,13 @@ public sealed class CoreTests
     {
         var manifest = new ComponentManifest(new("bap", "0.1.0", "core"), "org.example.clock", "1.0.0", "Clock", "component", [],
             new Dictionary<string, string> { ["default"] = "index.html", ["standalone"] = "index.html", ["embedded"] = "embedded.html" }, ["standalone", "embedded"]);
-        var items = new[] { new InstalledItem("workshop:123", "workshop", "component", "Clock", "subscribed", "123", manifest.Id, manifest.Version, null, manifest) };
+        using var project = JsonDocument.Parse("""{ "general": { "properties": { "format": { "type": "combo", "value": "24h", "options": [{ "value": "24h", "text": "24-hour" }, { "value": "12h", "text": "12-hour" }] }, "showDate": { "type": "bool", "value": true }, "media": { "type": "file", "value": "not-imported.png" } } } }""");
+        var definitions = WallpaperPropertyReader.Read(project.RootElement).Properties;
+        var items = new[] { new InstalledItem("workshop:123", "workshop", "component", "Clock", "subscribed", "123", manifest.Id, manifest.Version, null, manifest, Properties: definitions) };
+        var overridden = new Dictionary<string, JsonElement> { ["format"] = JsonDocument.Parse("\"12h\"").RootElement, ["media"] = JsonDocument.Parse("\"C:\\\\private.png\"").RootElement };
         var preset = new ComponentPreset("daily", "Daily",
         [
-            new("org.example.clock", "workshop:123", "clock-a", Layout: new ComponentLayout("automatic", Order: 0)),
+            new("org.example.clock", "workshop:123", "clock-a", Layout: new ComponentLayout("automatic", Order: 0), Config: overridden),
             new("org.example.clock", "workshop:123", "clock-b", Enabled: false, Layout: new ComponentLayout("automatic", Order: 1))
         ]);
         var result = EffectiveComponents.Resolve(
@@ -286,6 +289,10 @@ public sealed class CoreTests
         Assert.Equal(["available", "disabled"], result.Select(item => item.Status));
         Assert.All(result, item => Assert.Equal("org.example.clock", item.ComponentId));
         Assert.Equal([0, 1], result.Select(item => item.Layout.Order));
+        Assert.Equal("12h", result[0].Config["format"].GetString());
+        Assert.True(result[0].Config["showDate"].GetBoolean());
+        Assert.DoesNotContain("media", result[0].Config.Keys);
+        Assert.Equal("24h", result[1].Config["format"].GetString());
     }
 
     [Fact]

@@ -58,8 +58,20 @@ public static class EffectiveComponents
             var embedded = item.ComponentManifest?.Entrypoints.GetValueOrDefault("embedded");
             var status = !selection.Enabled ? "disabled" : embedded is null ? "unavailable" : "available";
             return new EffectiveComponent(instanceId, selection.ComponentId, item.Key, item.Title, status, embedded,
-                selection.Enabled, selection.UserVisible, layout, config);
+                selection.Enabled, selection.UserVisible, layout, ResolveConfig(item, selection.Config));
         }).ToArray();
+    }
+
+    private static Dictionary<string, JsonElement> ResolveConfig(InstalledItem item, Dictionary<string, JsonElement>? overrides)
+    {
+        var effective = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var definition in item.Properties ?? [])
+        {
+            var value = overrides is not null && overrides.TryGetValue(definition.Key, out var configured) &&
+                WallpaperPropertyReader.IsValidValue(definition, configured) ? configured : definition.DefaultValue;
+            effective[definition.Key] = value.Clone();
+        }
+        return effective;
     }
 
     private static IReadOnlyList<PresetComponent> DefaultSelections(IReadOnlyList<InstalledItem> items) => items
