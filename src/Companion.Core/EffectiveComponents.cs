@@ -14,7 +14,8 @@ public sealed record EffectiveComponent(
     bool Enabled,
     bool UserVisible,
     ComponentLayout Layout,
-    Dictionary<string, JsonElement> Config);
+    Dictionary<string, JsonElement> Config,
+    long ConfigRevision = 0);
 
 public sealed record EffectiveComposition(
     string PresetId,
@@ -47,6 +48,7 @@ public static class EffectiveComponents
             var instanceId = selection.InstanceId ?? DefaultInstanceId(selection.ComponentId, selection.SourceKey);
             var layout = selection.Layout ?? new ComponentLayout("automatic", Order: index, ZIndex: index);
             var config = selection.Config ?? [];
+            var configRevision = preset?.Revision ?? 0;
             var matches = items.Where(item => item.Role == "component" && item.BapId == selection.ComponentId).ToArray();
             var item = selection.SourceKey is not null
                 ? matches.FirstOrDefault(candidate => candidate.Key == selection.SourceKey)
@@ -54,11 +56,11 @@ public static class EffectiveComponents
                     .ThenBy(candidate => candidate.SourceKind == "workshop" ? 0 : 1)
                     .ThenBy(candidate => candidate.Key, StringComparer.Ordinal).FirstOrDefault();
             if (item is null) return new EffectiveComponent(instanceId, selection.ComponentId, selection.SourceKey, selection.ComponentId,
-                selection.Enabled ? "missing" : "disabled", null, selection.Enabled, selection.UserVisible, layout, config);
+                selection.Enabled ? "missing" : "disabled", null, selection.Enabled, selection.UserVisible, layout, config, configRevision);
             var embedded = item.ComponentManifest?.Entrypoints.GetValueOrDefault("embedded");
             var status = !selection.Enabled ? "disabled" : embedded is null ? "unavailable" : "available";
             return new EffectiveComponent(instanceId, selection.ComponentId, item.Key, item.Title, status, embedded,
-                selection.Enabled, selection.UserVisible, layout, ResolveConfig(item, selection.Config));
+                selection.Enabled, selection.UserVisible, layout, ResolveConfig(item, selection.Config), configRevision);
         }).ToArray();
     }
 

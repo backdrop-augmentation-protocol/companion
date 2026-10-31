@@ -280,7 +280,7 @@ public sealed class CoreTests
         [
             new("org.example.clock", "workshop:123", "clock-a", Layout: new ComponentLayout("automatic", Order: 0), Config: overridden),
             new("org.example.clock", "workshop:123", "clock-b", Enabled: false, Layout: new ComponentLayout("automatic", Order: 1))
-        ]);
+        ], Revision: 4);
         var result = EffectiveComponents.Resolve(
             new PresetState([preset], preset.Id, new Dictionary<string, string>()),
             "org.example.host", items);
@@ -290,6 +290,7 @@ public sealed class CoreTests
         Assert.All(result, item => Assert.Equal("org.example.clock", item.ComponentId));
         Assert.Equal([0, 1], result.Select(item => item.Layout.Order));
         Assert.Equal("12h", result[0].Config["format"].GetString());
+        Assert.Equal(4, result[0].ConfigRevision);
         Assert.True(result[0].Config["showDate"].GetBoolean());
         Assert.DoesNotContain("media", result[0].Config.Keys);
         Assert.Equal("24h", result[1].Config["format"].GetString());
