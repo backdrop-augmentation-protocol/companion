@@ -134,7 +134,7 @@ public partial class MainWindow : Window
         if (SelectedComponents is not null) RenderPropertyEditors();
         ComponentsModeButton.Content = L("presetComponentsTab"); HostsModeButton.Content = L("presetHostsTab");
         AddComponentButton.Content = L("addComponent"); AddHostButton.Content = L("addHost");
-        RemoveComponentButton.Content = L("remove"); RemoveHostButton.Content = L("removeHost");
+        RemoveComponentButton.Content = L("remove"); RemovePresetButton.Content = L("removePreset");
         MoveUpButton.Content = L("moveUp"); MoveDownButton.Content = L("moveDown");
         SetGlobalButton.Content = L("setGlobal");
         ComponentsEmpty.Text = L("noComponentsInPreset"); HostsEmpty.Text = L("noHostsUsePreset");
@@ -372,7 +372,7 @@ public partial class MainWindow : Window
         ComponentsEmpty.Visibility = !hosts && SelectedComponents.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         HostsEmpty.Visibility = hosts && PresetHostsList.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ComponentActions.Visibility = hosts ? Visibility.Collapsed : Visibility.Visible;
-        RemoveHostButton.Visibility = hosts ? Visibility.Visible : Visibility.Collapsed;
+        RemovePresetButton.Visibility = hosts ? Visibility.Visible : Visibility.Collapsed;
         SelectedComponentsHeading.Text = L(hosts ? "hostsUsingPreset" : "selectedComponents");
         ComponentsModeButton.Style = (Style)FindResource(hosts ? "QuietButton" : "PrimaryButton");
         HostsModeButton.Style = (Style)FindResource(hosts ? "PrimaryButton" : "QuietButton");
@@ -449,10 +449,11 @@ public partial class MainWindow : Window
                 }).ToArray();
         }
         PresetHostsList.ItemsSource = hosts;
-        PresetHostsList.SelectedItem = hosts.FirstOrDefault(host => host.HostId == selectedHostId);
+        PresetHostsList.SelectedItem = hosts.FirstOrDefault(host => host.IsGlobal)
+            ?? hosts.FirstOrDefault(host => host.HostId == selectedHostId);
         HostsEmpty.Visibility = hosts.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        AddHostButton.IsEnabled = preset is not null && state.GlobalPresetId != preset.Id;
-        AddHostButton.Visibility = showingPresetHosts && preset is not null && state.GlobalPresetId != preset.Id ? Visibility.Visible : Visibility.Collapsed;
+        AddHostButton.IsEnabled = preset is not null && state.GlobalPresetId != preset.Id && GetAvailableHostCandidates(preset).Count > 0;
+        AddHostButton.Visibility = showingPresetHosts && preset is not null ? Visibility.Visible : Visibility.Collapsed;
         SetGlobalButton.IsEnabled = preset is not null;
         SetGlobalButton.Content = L(preset is not null && state.GlobalPresetId == preset.Id ? "globalPreset" : "setGlobal");
         SetGlobalButton.Style = (Style)FindResource(preset is not null && state.GlobalPresetId == preset.Id ? "PrimaryButton" : "QuietButton");
@@ -464,9 +465,10 @@ public partial class MainWindow : Window
 
     private void UpdateHostActions()
     {
-        var canRemove = PresetHostsList.SelectedItem is PresetHostChoice { IsGlobal: false, HostId: not null };
-        RemoveHostButton.IsEnabled = canRemove;
-        RemoveHostButton.Visibility = showingPresetHosts && canRemove ? Visibility.Visible : Visibility.Collapsed;
+        var canRemove = PresetHostsList.SelectedItem is PresetHostChoice { IsGlobal: true }
+            or PresetHostChoice { IsGlobal: false, HostId: not null };
+        RemovePresetButton.IsEnabled = canRemove;
+        RemovePresetButton.Visibility = showingPresetHosts ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private InstalledItem? FindHost(string bapId) => items.FirstOrDefault(item => item.Role == "host" && item.BapId == bapId && item.Status != "invalid");
@@ -476,6 +478,10 @@ public partial class MainWindow : Window
         .GroupBy(item => item.BapId!, StringComparer.Ordinal)
         .Select(group => group.OrderBy(item => item.Status == "valid" ? 0 : 1)
             .ThenBy(item => item.SourceKind == "workshop" ? 0 : 1).ThenBy(item => item.Key, StringComparer.Ordinal).First())
+        .ToArray();
+
+    private IReadOnlyList<InstalledItem> GetAvailableHostCandidates(ComponentPreset preset) => GetHostCandidates()
+        .Where(item => !state.HostPresetIds.TryGetValue(item.BapId!, out var assignedId) || assignedId != preset.Id)
         .ToArray();
 
     private PresetComponent? SelectedComponent => (SelectedComponents.SelectedItem as ComponentChoice)?.Component;
@@ -746,8 +752,7 @@ public partial class MainWindow : Window
     {
         var preset = SelectedPreset;
         if (preset is null || state.GlobalPresetId == preset.Id) return;
-        var choices = GetHostCandidates()
-            .Where(item => !state.HostPresetIds.TryGetValue(item.BapId!, out var assignedId) || assignedId != preset.Id)
+        var choices = GetAvailableHostCandidates(preset)
             .Select(item =>
             {
                 var assignedName = state.HostPresetIds.TryGetValue(item.BapId!, out var assignedId)
@@ -779,9 +784,15 @@ public partial class MainWindow : Window
     private void MoveUpButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(() => MoveComponentAsync(-1));
     private void MoveDownButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(() => MoveComponentAsync(1));
 
-    private void RemoveHostButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
+    private void RemovePresetButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
     {
-        var hostId = (PresetHostsList.SelectedItem as PresetHostChoice)?.HostId;
+        if (PresetHostsList.SelectedItem is not PresetHostChoice choice) return;
+        if (choice.IsGlobal)
+        {
+            await SaveAsync(state with { GlobalPresetId = null });
+            return;
+        }
+        var hostId = choice.HostId;
         if (hostId is null) return;
         var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal);
         bindings.Remove(hostId);
@@ -805,7 +816,13 @@ public partial class MainWindow : Window
 
     private void SetGlobalButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
     {
-        if (SelectedPreset is { } preset) await SaveAsync(state with { GlobalPresetId = preset.Id }, preset.Id);
+        if (SelectedPreset is { } preset)
+        {
+            var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal);
+            foreach (var hostId in bindings.Where(binding => binding.Value == preset.Id).Select(binding => binding.Key).ToArray())
+                bindings.Remove(hostId);
+            await SaveAsync(state with { GlobalPresetId = preset.Id, HostPresetIds = bindings }, preset.Id);
+        }
     });
 
     private string? PromptForName(string title, string value = "")

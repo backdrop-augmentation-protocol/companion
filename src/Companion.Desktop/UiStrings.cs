@@ -50,6 +50,7 @@ internal static class UiStrings
         ["notAssigned"] = ("No preset override", "未指定专用预设"),
         ["currentlyAssigned"] = ("Currently uses: {0}", "当前使用：{0}"),
         ["removeHost"] = ("Remove host", "移除宿主"),
+        ["removePreset"] = ("Remove preset", "移除预设"),
         ["chooseComponent"] = ("Choose a component", "选择组件"),
         ["chooseHost"] = ("Choose a host wallpaper", "选择宿主壁纸"),
         ["searchCatalog"] = ("Search installed items", "搜索已安装项目"),

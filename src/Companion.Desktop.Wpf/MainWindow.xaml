@@ -158,6 +158,34 @@
         </Grid>
       </DataTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="PresetHostList" TargetType="ListBox" BasedOn="{StaticResource CatalogList}">
+      <Setter Property="ItemTemplate"><Setter.Value><DataTemplate>
+        <Grid Height="92"><Grid.ColumnDefinitions><ColumnDefinition Width="148"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border x:Name="PreviewBox" Background="#0A1C3B" CornerRadius="8" ClipToBounds="True">
+            <Grid><Image Source="{Binding Preview}" Stretch="UniformToFill"/>
+              <TextBlock Text="{Binding NoPreview}" Foreground="#9AB0D0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+          <StackPanel x:Name="HostDetails" Grid.Column="1" Margin="16,5,0,0">
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="#EAF3FF" TextTrimming="CharacterEllipsis" FontSize="15"/>
+            <TextBlock Text="{Binding Source}" Foreground="#9AB0D0" Margin="0,7,0,0"/>
+            <TextBlock Text="{Binding Summary}" Foreground="#36D8FF" Margin="0,5,0,0"/>
+          </StackPanel>
+          <StackPanel x:Name="GlobalHostDetails" Grid.ColumnSpan="2" Margin="0,5,0,0" Visibility="Collapsed">
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="#EAF3FF" TextTrimming="CharacterEllipsis" FontSize="15"/>
+            <TextBlock Text="{Binding Source}" Foreground="#9AB0D0" Margin="0,7,0,0"/>
+            <TextBlock Text="{Binding Summary}" Foreground="#36D8FF" Margin="0,5,0,0"/>
+          </StackPanel>
+        </Grid>
+        <DataTemplate.Triggers>
+          <DataTrigger Binding="{Binding IsGlobal}" Value="True">
+            <Setter TargetName="PreviewBox" Property="Visibility" Value="Collapsed"/>
+            <Setter TargetName="HostDetails" Property="Visibility" Value="Collapsed"/>
+            <Setter TargetName="GlobalHostDetails" Property="Visibility" Value="Visible"/>
+          </DataTrigger>
+        </DataTemplate.Triggers>
+      </DataTemplate></Setter.Value></Setter>
+    </Style>
     <Style x:Key="SelectorList" TargetType="ListBox">
       <Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/>
       <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
@@ -286,13 +314,13 @@
                 <Button x:Name="MoveUpButton" Grid.Column="1" Style="{StaticResource QuietButton}" Click="MoveUpButton_Click" Margin="4,0"/>
                 <Button x:Name="MoveDownButton" Grid.Column="2" Style="{StaticResource QuietButton}" Click="MoveDownButton_Click" Margin="4,0,0,0"/>
               </Grid>
-              <Button x:Name="RemoveHostButton" Style="{StaticResource QuietButton}" Click="RemoveHostButton_Click" Margin="0,8,0,0" Visibility="Collapsed"/>
+              <Button x:Name="RemovePresetButton" Style="{StaticResource QuietButton}" Click="RemovePresetButton_Click" Margin="0,8,0,0" Visibility="Collapsed"/>
               <TextBlock x:Name="PresetStatus" Style="{StaticResource Hint}" Margin="0,10,0,0"/>
             </StackPanel>
             <Grid>
               <ListBox x:Name="SelectedComponents" Style="{StaticResource CatalogList}" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionChanged="SelectedComponents_SelectionChanged"/>
               <TextBlock x:Name="ComponentsEmpty" Style="{StaticResource Hint}" Text="Add components to this preset." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" IsHitTestVisible="False" Visibility="Collapsed"/>
-              <ListBox x:Name="PresetHostsList" Style="{StaticResource CatalogList}" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionChanged="PresetHostsList_SelectionChanged" Visibility="Collapsed"/>
+              <ListBox x:Name="PresetHostsList" Style="{StaticResource PresetHostList}" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionChanged="PresetHostsList_SelectionChanged" Visibility="Collapsed"/>
               <TextBlock x:Name="HostsEmpty" Style="{StaticResource Hint}" Text="No hosts use this preset yet." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" IsHitTestVisible="False" Visibility="Collapsed"/>
             </Grid>
           </DockPanel></Border>

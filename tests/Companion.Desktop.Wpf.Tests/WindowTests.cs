@@ -143,6 +143,7 @@ public sealed class WindowTests
                 InstalledItem[] presetTestItems =
                 [
                     new InstalledItem("local:host", "local", "host", "Demo host wallpaper", "host", null, "org.example.host", "1.0.0", null, null),
+                    new InstalledItem("workshop:host-2", "workshop", "host", "Second demo host wallpaper", "host", "222", "org.example.host-two", "1.0.0", null, null),
                     new InstalledItem("workshop:123", "workshop", "component", "Time widget", "component", "123", "org.example.time", "1.0.0", null, null, Properties: componentProperties),
                     new InstalledItem("local:calendar", "local", "component", "Calendar widget", "component", null, "org.example.calendar", "1.0.0", null, null)
                 ];
@@ -160,13 +161,24 @@ public sealed class WindowTests
                 Assert.Equal(Visibility.Collapsed, window.SelectedComponents.Visibility);
                 Assert.Equal(Visibility.Visible, window.PresetHostsList.Visibility);
                 Assert.Single(window.PresetHostsList.Items);
+                window.RenderSnapshot(presetTestItems, initialPresetState with
+                {
+                    HostPresetIds = new Dictionary<string, string>
+                    {
+                        ["org.example.host"] = "preset-1",
+                        ["org.example.host-two"] = "preset-1"
+                    }
+                });
+                Assert.False(window.AddHostButton.IsEnabled);
+                window.RenderSnapshot(presetTestItems, initialPresetState);
                 var hostsModeGrid = Assert.IsType<System.Windows.Controls.Grid>(System.Windows.Media.VisualTreeHelper.GetParent(window.HostsModeButton));
                 var presetContentPanel = Assert.IsType<System.Windows.Controls.StackPanel>(System.Windows.Media.VisualTreeHelper.GetParent(hostsModeGrid));
                 var presetContentDock = Assert.IsType<System.Windows.Controls.DockPanel>(System.Windows.Media.VisualTreeHelper.GetParent(presetContentPanel));
                 var presetContentBorder = Assert.IsType<System.Windows.Controls.Border>(System.Windows.Media.VisualTreeHelper.GetParent(presetContentDock));
                 Assert.Equal(1, System.Windows.Controls.Grid.GetColumn(presetContentBorder));
                 window.PresetHostsList.SelectedIndex = 0;
-                Assert.True(window.RemoveHostButton.IsEnabled);
+                Assert.True(window.RemovePresetButton.IsEnabled);
+                Assert.True(window.AddHostButton.IsEnabled);
                 window.SetGlobalButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 var globalFrame = new System.Windows.Threading.DispatcherFrame();
                 var globalTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
@@ -175,9 +187,32 @@ public sealed class WindowTests
                 System.Windows.Threading.Dispatcher.PushFrame(globalFrame);
                 Assert.Single(window.PresetHostsList.Items);
                 Assert.Equal("[All hosts]", window.PresetHostsList.Items[0].GetType().GetProperty("Title")?.GetValue(window.PresetHostsList.Items[0]));
-                Assert.False(window.RemoveHostButton.IsEnabled);
+                Assert.Equal(Visibility.Visible, window.AddHostButton.Visibility);
+                Assert.False(window.AddHostButton.IsEnabled);
+                Assert.True(window.RemovePresetButton.IsEnabled);
                 var savedGlobalState = presetStore.ReadAsync().GetAwaiter().GetResult();
                 Assert.Equal("preset-1", savedGlobalState.GlobalPresetId);
+                Assert.Empty(savedGlobalState.HostPresetIds);
+                var globalHost = Assert.Single(window.PresetHostsList.Items);
+                Assert.NotNull(globalHost);
+                Assert.Null(globalHost!.GetType().GetProperty("Preview")?.GetValue(globalHost));
+                Assert.Equal("", globalHost.GetType().GetProperty("NoPreview")?.GetValue(globalHost));
+                window.RemovePresetButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                var removeGlobalFrame = new System.Windows.Threading.DispatcherFrame();
+                var removeGlobalTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                removeGlobalTimer.Tick += (_, _) => { removeGlobalTimer.Stop(); removeGlobalFrame.Continue = false; };
+                removeGlobalTimer.Start();
+                System.Windows.Threading.Dispatcher.PushFrame(removeGlobalFrame);
+                Assert.Null(presetStore.ReadAsync().GetAwaiter().GetResult().GlobalPresetId);
+                window.RenderSnapshot(presetTestItems, initialPresetState);
+                window.PresetHostsList.SelectedIndex = 0;
+                window.RemovePresetButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                var removeHostFrame = new System.Windows.Threading.DispatcherFrame();
+                var removeHostTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                removeHostTimer.Tick += (_, _) => { removeHostTimer.Stop(); removeHostFrame.Continue = false; };
+                removeHostTimer.Start();
+                System.Windows.Threading.Dispatcher.PushFrame(removeHostFrame);
+                Assert.Empty(presetStore.ReadAsync().GetAwaiter().GetResult().HostPresetIds);
                 window.RenderSnapshot(presetTestItems, savedGlobalState);
                 window.ComponentsModeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 window.UpdateLayout();
@@ -284,6 +319,7 @@ public sealed class WindowTests
         try { Assert.Null(failure); }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
+
 
     private sealed class StaticHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
