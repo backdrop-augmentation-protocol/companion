@@ -789,7 +789,7 @@ public partial class MainWindow : Window
     }
 
     private static string FormatLayoutValue(double value, bool integer) =>
-        value.ToString(integer ? "0" : "0.##", CultureInfo.InvariantCulture);
+        value.ToString(integer ? "0" : "0.###", CultureInfo.InvariantCulture);
 
     private void LayoutSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
