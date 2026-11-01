@@ -130,15 +130,17 @@ public sealed class WindowTests
                 settings.SetDisplayIndex(0);
                 using var propertyJson = System.Text.Json.JsonDocument.Parse("""
                     { "general": { "properties": {
-                      "enabled": { "type": "bool", "text": "Enabled", "value": true, "order": 0 },
-                      "mode": { "type": "combo", "text": "Mode", "value": "one", "order": 1, "options": [{ "value": "one", "label": "One" }, { "value": "two", "label": "Two" }] },
+                      "mode": { "type": "combo", "text": "Display", "value": "one", "order": 0, "options": [{ "value": "one", "label": "One" }, { "value": "two", "label": "Two" }] },
+                      "enabled": { "type": "bool", "text": "Enabled", "value": true, "order": 1 },
                       "label": { "type": "textinput", "text": "Label", "value": "Default", "order": 2, "condition": "mode.value == 'two'" },
-                      "schemecolor": { "type": "color", "text": "ui_browse_properties_scheme_color", "value": "0.1 0.2 0.3", "order": 10 },
-                      "opacity": { "type": "slider", "text": "Opacity", "value": 0.5, "min": 0, "max": 1, "order": 11 }
+                      "appearance": { "type": "combo", "text": "Appearance", "value": "custom", "order": 10, "options": [{ "value": "standard", "text": "Standard" }, { "value": "custom", "text": "Custom" }] },
+                      "schemecolor": { "type": "color", "text": "ui_browse_properties_scheme_color", "value": "0.1 0.2 0.3", "order": 11, "condition": "appearance.value == 'custom'" },
+                      "opacity": { "type": "slider", "text": "Opacity", "value": 0.5, "min": 0, "max": 1, "order": 12, "condition": "appearance.value == 'custom'" }
                     } } }
                     """);
                 var componentProperties = WallpaperPropertyReader.Read(propertyJson.RootElement).Properties;
-                var firstInstance = new PresetComponent("org.example.time", "workshop:123", "instance-a");
+                var firstInstance = new PresetComponent("org.example.time", "workshop:123", "instance-a",
+                    Layout: new ComponentLayout("manual", "center", 0.5, 0.5, 0.25, 0.15, Scale: 1, Rotation: 0, Opacity: 1, ZIndex: 0, Locked: true));
                 var secondInstance = new PresetComponent("org.example.time", "workshop:123", "instance-b");
                 InstalledItem[] presetTestItems =
                 [
@@ -157,6 +159,10 @@ public sealed class WindowTests
                 window.SelectedComponents.SelectedIndex = 0;
                 window.UpdateLayout();
                 Assert.Equal("Component properties", window.PropertyHeading.Text);
+                Assert.Contains(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBlock>(), header => Equals(header.Tag, "TransformGroupHeader"));
+                Assert.Equal(2, window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count());
+                Assert.Equal(8, window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>().Count());
+                Assert.True(Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.CheckBox>()).IsChecked);
                 Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
                 window.RenderSnapshot(presetTestItems, initialPresetState with { HostPresetIds = new Dictionary<string, string>() });
                 Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
@@ -230,8 +236,9 @@ public sealed class WindowTests
                 Assert.True(window.InstancePropertyPanel.Children.Count > 0, window.PropertyHint.Text);
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Color scheme");
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>(), button => button.ToolTip?.ToString() == "Choose color");
-                Assert.Equal(2, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>().Count(textBlock => Equals(textBlock.Tag, "PropertyGroupHeader")));
-                Assert.Equal(4, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
+                Assert.Equal(new[] { "Display", "Appearance" }, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>()
+                    .Where(textBlock => Equals(textBlock.Tag, "PropertyGroupHeader")).Select(textBlock => textBlock.Text));
+                Assert.Equal(5, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Slider>().Count() +
@@ -247,7 +254,7 @@ public sealed class WindowTests
                 window.RenderSnapshot(presetTestItems, initialPresetState with { Presets = [customPreset] });
                 window.SelectedComponents.SelectedIndex = 0;
                 Assert.Single(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>());
-                Assert.Equal(5, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
+                Assert.Equal(6, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Slider>().Count() +

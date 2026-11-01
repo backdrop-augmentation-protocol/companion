@@ -333,6 +333,7 @@
                   <Button x:Name="PropertyRefreshButton" Grid.Column="1" Style="{StaticResource QuietButton}" Click="PropertyRefreshButton_Click" Padding="9,5"/>
                 </Grid>
                 <TextBlock x:Name="PropertyHint" Style="{StaticResource Hint}" Margin="0,0,0,8" Text="Choose an instance to edit its preset values." TextWrapping="Wrap"/>
+                <StackPanel x:Name="TransformPanel"/>
                 <StackPanel x:Name="InstancePropertyPanel"/>
               </StackPanel>
             </ScrollViewer>

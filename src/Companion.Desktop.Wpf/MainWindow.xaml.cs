@@ -510,8 +510,11 @@ public partial class MainWindow : Window
         renderingPropertyEditors = true;
         try
         {
+            TransformPanel.Children.Clear();
             InstancePropertyPanel.Children.Clear();
             var component = SelectedComponent;
+            var preset = SelectedPreset;
+            if (component is not null && preset is not null) RenderLayoutEditors(component, preset);
             var item = component is null ? null : items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId &&
                 (component.SourceKey is null || candidate.Key == component.SourceKey));
             if (component is null || item is null)
@@ -541,7 +544,7 @@ public partial class MainWindow : Window
             {
                 var value = effectiveValues[definition.Key];
                 if (definition.ConditionSupported && !WallpaperPropertyReader.IsConditionMet(definition, effectiveValues)) continue;
-                // WE projects in the BA collection use each order decade as a settings section.
+                // BA projects use an order decade per capability group, with its leading property naming the group.
                 var propertyGroup = Math.Max(0, definition.Order) / 10;
                 var isGroupLead = previousPropertyGroup != propertyGroup;
                 if (isGroupLead)
@@ -557,7 +560,7 @@ public partial class MainWindow : Window
                     previousPropertyGroup = propertyGroup;
                 }
                 var context = new PropertyEditContext(component.InstanceId!, definition);
-                if (!isGroupLead)
+                if (!isGroupLead && definition.Type != "bool")
                 {
                     var title = new TextBlock
                     {
@@ -570,7 +573,12 @@ public partial class MainWindow : Window
                 switch (definition.Type)
                 {
                     case "bool":
-                        var check = new CheckBox { IsChecked = value.ValueKind == System.Text.Json.JsonValueKind.True, Tag = context, Margin = new Thickness(0, 0, 0, 5) };
+                        var check = new CheckBox
+                        {
+                            Content = isGroupLead ? null : PropertyTitle(definition),
+                            IsChecked = value.ValueKind == System.Text.Json.JsonValueKind.True,
+                            Tag = context, Margin = new Thickness(0, 0, 0, 5)
+                        };
                         check.Checked += PropertyCheck_Changed;
                         check.Unchecked += PropertyCheck_Changed;
                         check.IsEnabled = definition.ConditionSupported;
@@ -637,6 +645,157 @@ public partial class MainWindow : Window
             AddPropertyDiagnostics(item);
         }
         finally { renderingPropertyEditors = false; }
+    }
+
+    private void RenderLayoutEditors(PresetComponent component, ComponentPreset preset)
+    {
+        var layout = component.Layout ?? new ComponentLayout("automatic", Order: 0, ZIndex: 0);
+        TransformPanel.Children.Add(new TextBlock
+        {
+            Text = L("transform"), Foreground = (Brush)FindResource("Muted"),
+            FontWeight = FontWeights.SemiBold, FontSize = 11, Margin = new Thickness(0, 4, 0, 6),
+            Tag = "TransformGroupHeader"
+        });
+
+        var mode = new ComboBox { Tag = new LayoutEditContext(component.InstanceId!, "mode"), Margin = new Thickness(0, 0, 0, 7) };
+        mode.ItemsSource = new[]
+        {
+            new LayoutChoice("automatic", L("automatic")),
+            new LayoutChoice("manual", L("manual"))
+        };
+        mode.DisplayMemberPath = nameof(LayoutChoice.Label);
+        mode.SelectedItem = mode.Items.Cast<LayoutChoice>().First(choice => choice.Value == layout.Mode);
+        mode.IsEnabled = preset.LayoutMode != "manual";
+        mode.SelectionChanged += LayoutMode_Changed;
+        AddLayoutField(L("placement"), mode);
+
+        if (layout.Mode == "manual")
+        {
+            var anchor = new ComboBox { Tag = new LayoutEditContext(component.InstanceId!, "anchor"), Margin = new Thickness(0, 0, 0, 7) };
+            anchor.ItemsSource = new[]
+            {
+                new LayoutChoice("top-left", "Top left"), new LayoutChoice("top", "Top"), new LayoutChoice("top-right", "Top right"),
+                new LayoutChoice("left", "Left"), new LayoutChoice("center", "Center"), new LayoutChoice("right", "Right"),
+                new LayoutChoice("bottom-left", "Bottom left"), new LayoutChoice("bottom", "Bottom"), new LayoutChoice("bottom-right", "Bottom right")
+            };
+            anchor.DisplayMemberPath = nameof(LayoutChoice.Label);
+            anchor.SelectedItem = anchor.Items.Cast<LayoutChoice>().FirstOrDefault(choice => choice.Value == layout.Anchor);
+            anchor.SelectionChanged += LayoutAnchor_Changed;
+            AddLayoutField(L("anchor"), anchor);
+            AddLayoutNumber(component.InstanceId!, "x", layout.X, -2, 2);
+            AddLayoutNumber(component.InstanceId!, "y", layout.Y, -2, 2);
+            AddLayoutNumber(component.InstanceId!, "width", layout.Width, 0.001, 2);
+            AddLayoutNumber(component.InstanceId!, "height", layout.Height, 0.001, 2);
+        }
+        else AddLayoutNumber(component.InstanceId!, "order", layout.Order ?? 0, 0, 10000, integer: true);
+        AddLayoutNumber(component.InstanceId!, "scale", layout.Scale, 0.1, 5);
+        AddLayoutNumber(component.InstanceId!, "rotation", layout.Rotation, -360, 360);
+        AddLayoutNumber(component.InstanceId!, "opacity", layout.Opacity, 0, 1);
+        AddLayoutNumber(component.InstanceId!, "zIndex", layout.ZIndex, -100000, 100000, integer: true);
+        if (layout.Mode == "manual" && preset.LayoutMode == "grid")
+        {
+            var locked = new CheckBox
+            {
+                Content = L("locked"), IsChecked = layout.Locked, IsEnabled = false,
+                Tag = new LayoutEditContext(component.InstanceId!, "locked"), Margin = new Thickness(0, 2, 0, 9)
+            };
+            TransformPanel.Children.Add(locked);
+        }
+        TransformPanel.Children.Add(new Border { Height = 1, Background = (Brush)FindResource("Border"), Margin = new Thickness(0, 4, 0, 10) });
+    }
+
+    private void AddLayoutField(string label, System.Windows.Controls.Control control)
+    {
+        TransformPanel.Children.Add(new TextBlock
+        {
+            Text = label, Foreground = (Brush)FindResource("Ink"), FontWeight = FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 4)
+        });
+        TransformPanel.Children.Add(control);
+    }
+
+    private void AddLayoutNumber(string instanceId, string key, double? value, double minimum, double maximum, bool integer = false)
+    {
+        var field = new TextBox
+        {
+            Text = value?.ToString(integer ? "0" : "0.###", CultureInfo.InvariantCulture) ?? "",
+            Tag = new LayoutEditContext(instanceId, key), Style = (Style)FindResource("DialogTextBox"),
+            ToolTip = $"{minimum.ToString(CultureInfo.InvariantCulture)} – {maximum.ToString(CultureInfo.InvariantCulture)}",
+            Margin = new Thickness(0, 0, 0, 7)
+        };
+        field.LostKeyboardFocus += LayoutNumber_LostKeyboardFocus;
+        AddLayoutField(L(key), field);
+    }
+
+    private void LayoutMode_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (renderingPropertyEditors || sender is not ComboBox { Tag: LayoutEditContext context, SelectedItem: LayoutChoice choice } || SelectedPreset is not { } preset) return;
+        var component = preset.Components.FirstOrDefault(item => item.InstanceId == context.InstanceId);
+        if (component is null) return;
+        var current = GetLayout(component, preset);
+        var next = choice.Value == "manual"
+            ? current with { Mode = "manual", Anchor = "center", X = 0.5, Y = 0.5, Width = 0.25, Height = 0.15, Locked = preset.LayoutMode == "grid" }
+            : current with { Mode = "automatic", Anchor = null, X = null, Y = null, Width = null, Height = null, Locked = false, Order = current.Order ?? Math.Max(0, SelectedComponents.SelectedIndex) };
+        _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, next));
+    }
+
+    private void LayoutAnchor_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!renderingPropertyEditors && sender is ComboBox { Tag: LayoutEditContext context, SelectedItem: LayoutChoice choice } && SelectedPreset is { } preset)
+        {
+            var component = preset.Components.FirstOrDefault(item => item.InstanceId == context.InstanceId);
+            if (component is not null && GetLayout(component, preset) is { Mode: "manual" } layout)
+                _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, layout with { Anchor = choice.Value }));
+        }
+    }
+
+    private void LayoutNumber_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (renderingPropertyEditors || sender is not TextBox { Tag: LayoutEditContext context } field || SelectedPreset is not { } preset) return;
+        var component = preset.Components.FirstOrDefault(item => item.InstanceId == context.InstanceId);
+        var layout = component is null ? null : GetLayout(component, preset);
+        if (layout is null || !double.TryParse(field.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !double.IsFinite(value))
+        {
+            RenderPropertyEditors();
+            return;
+        }
+        var next = context.Field switch
+        {
+            "x" => layout with { X = value },
+            "y" => layout with { Y = value },
+            "width" => layout with { Width = value },
+            "height" => layout with { Height = value },
+            "scale" => layout with { Scale = value },
+            "rotation" => layout with { Rotation = value },
+            "opacity" => layout with { Opacity = value },
+            "zIndex" when value == Math.Truncate(value) && value is >= int.MinValue and <= int.MaxValue => layout with { ZIndex = (int)value },
+            "order" when value == Math.Truncate(value) && value is >= int.MinValue and <= int.MaxValue => layout with { Order = (int)value },
+            _ => null
+        };
+        if (next is null)
+        {
+            RenderPropertyEditors();
+            return;
+        }
+        _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, next));
+    }
+
+    private async Task SaveComponentLayoutAsync(string instanceId, ComponentLayout layout)
+    {
+        var preset = SelectedPreset;
+        if (preset is null) return;
+        var components = preset.Components.Select(component => component.InstanceId == instanceId ? component with { Layout = layout } : component).ToArray();
+        var nextPreset = preset with { Components = components };
+        var nextState = state with { Presets = state.Presets.Select(item => item.Id == preset.Id ? nextPreset : item).ToArray() };
+        var errors = PresetSelection.Validate(nextState);
+        if (errors.Count > 0) throw new InvalidDataException(string.Join("; ", errors));
+        await SaveAsync(nextState, preset.Id);
+    }
+
+    private static ComponentLayout GetLayout(PresetComponent component, ComponentPreset preset)
+    {
+        var index = preset.Components.ToList().FindIndex(item => item.InstanceId == component.InstanceId);
+        return component.Layout ?? new ComponentLayout("automatic", Order: Math.Max(0, index), ZIndex: Math.Max(0, index));
     }
 
     private string PropertyTitle(WallpaperPropertyDefinition definition)
@@ -941,6 +1100,8 @@ public partial class MainWindow : Window
     private static bool IsUnverifiedHost(InstalledItem item) => item.BapId is null || item.Status != "valid";
     private sealed record PresetHostChoice(string? HostKey, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal);
     private sealed record PropertyEditContext(string InstanceId, WallpaperPropertyDefinition Definition);
+    private sealed record LayoutEditContext(string InstanceId, string Field);
+    private sealed record LayoutChoice(string Value, string Label);
     private sealed record SliderEditContext(PropertyEditContext Edit, TextBlock ValueLabel);
     private sealed record PropertyOptionChoice(WallpaperPropertyOption Option) { public string Label => Option.Text; }
     private sealed record TrustedHostChoice(TrustedHost Host, string Label) { public override string ToString() => Label; }
