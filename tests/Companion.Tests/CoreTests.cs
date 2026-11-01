@@ -245,6 +245,22 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task InstalledCatalogDoesNotTreatManifestOnlyDirectoryAsWallpaperHost()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-manifest-only-host-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(root);
+            await File.WriteAllTextAsync(Path.Combine(root, "manifest.json"), """
+                { "role": "host", "id": "org.example.host", "version": "1.0.0" }
+                """);
+
+            Assert.Empty(await new InstalledCatalog([], [root]).DiscoverAsync());
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void WallpaperPropertiesReadSupportedProjectMetadataWithoutLocalMediaOrCodeEvaluation()
     {
         using var document = JsonDocument.Parse("""

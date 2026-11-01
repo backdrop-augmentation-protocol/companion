@@ -126,6 +126,7 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
                 catch (JsonException) { status = "invalid"; }
             }
             if (project is null && !File.Exists(manifestFile)) return null;
+            if (project is null && roleName == "host") return null;
             var title = project is not null && project.Value.TryGetProperty("title", out var titleValue)
                 ? titleValue.GetString() : manifest?.Name;
             var preview = project is not null && project.Value.TryGetProperty("preview", out var previewValue)

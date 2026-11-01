@@ -100,7 +100,15 @@ for a normal Steam installation.
 The catalog also reads local WE projects from each discovered Steam library's
 `wallpaper_engine/projects/myprojects` directory. `BAP_LOCAL_ROOTS` can add
 other development package roots. Local and subscribed items can be combined
-freely; an explicit source selection in a preset disambiguates matching BAP IDs.
+freely. Preset host bindings use the installed project key, so local and
+Workshop copies of the same BAP wallpaper remain independently selectable;
+the running wallpaper's `projectUrl` lets the Companion resolve the matching
+installed copy.
+
+Any installed Web wallpaper can be selected as a preset host. The Companion
+warns before binding a wallpaper without a valid BAP host manifest; it will
+not display BAP components on that wallpaper, and component behavior is not
+verified for it.
 
 For local development, set `BAP_WORKSHOP_ROOTS` to one or more component
 directories separated by the platform path separator. Explicit roots replace
