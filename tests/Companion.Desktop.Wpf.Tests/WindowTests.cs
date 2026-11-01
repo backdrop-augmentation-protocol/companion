@@ -167,8 +167,12 @@ public sealed class WindowTests
                     .SelectMany(grid => grid.Children.OfType<System.Windows.Controls.StackPanel>())
                     .SelectMany(panel => panel.Children.OfType<System.Windows.Controls.Button>()).Count());
                 Assert.True(Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.CheckBox>()).IsChecked);
+                window.PropertyScrollViewer.ScrollToEnd();
+                window.UpdateLayout();
+                Assert.True(window.PropertyScrollViewer.VerticalOffset > 0);
                 window.SelectedComponents.SelectedIndex = 1;
                 window.UpdateLayout();
+                Assert.Equal(0, window.PropertyScrollViewer.VerticalOffset);
                 Assert.Contains(window.TransformPanel.Children.OfType<System.Windows.Controls.Grid>()
                     .SelectMany(grid => grid.Children.OfType<System.Windows.Controls.TextBlock>()), label => label.Text == "Order");
                 Assert.Empty(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>());
@@ -209,7 +213,7 @@ public sealed class WindowTests
                 Assert.True(window.AddHostButton.IsEnabled);
                 window.SetGlobalButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 var globalFrame = new System.Windows.Threading.DispatcherFrame();
-                var globalTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                var globalTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
                 globalTimer.Tick += (_, _) => { globalTimer.Stop(); globalFrame.Continue = false; };
                 globalTimer.Start();
                 System.Windows.Threading.Dispatcher.PushFrame(globalFrame);

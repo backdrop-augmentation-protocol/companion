@@ -401,6 +401,7 @@ public partial class MainWindow : Window
     {
         if (renderingComponentChoices) return;
         selectedComponentInstanceId = (SelectedComponents.SelectedItem as ComponentChoice)?.Component.InstanceId;
+        PropertyScrollViewer.ScrollToTop();
         UpdateComponentActions();
         RenderPropertyEditors();
     }
@@ -408,6 +409,7 @@ public partial class MainWindow : Window
     private void RenderSelectedComponents()
     {
         if (SelectedComponents is null) return;
+        var previousInstanceId = selectedComponentInstanceId;
         var selectedInstanceId = (SelectedComponents.SelectedItem as ComponentChoice)?.Component.InstanceId ?? selectedComponentInstanceId;
         renderingComponentChoices = true;
         try
@@ -430,6 +432,7 @@ public partial class MainWindow : Window
             selectedComponentInstanceId = (SelectedComponents.SelectedItem as ComponentChoice)?.Component.InstanceId;
         }
         finally { renderingComponentChoices = false; }
+        if (previousInstanceId != selectedComponentInstanceId) PropertyScrollViewer.ScrollToTop();
         AddComponentButton.IsEnabled = SelectedPreset is not null;
         UpdateComponentActions();
         RenderPropertyEditors();

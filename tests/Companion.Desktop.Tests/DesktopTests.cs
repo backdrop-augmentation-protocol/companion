@@ -121,6 +121,8 @@ public sealed class DesktopTests
         Assert.Equal("时间与日期", UiStrings.PropertyText("Clock & Date", "zh-CN"));
         Assert.Equal("24 小时制", UiStrings.PropertyText("24-hour", "zh-CN"));
         Assert.Equal("Clock & Date", UiStrings.PropertyText("Clock & Date", "en"));
+        Assert.Equal("文字缩放", UiStrings.PropertyText("Widget size", "zh-CN"));
+        Assert.Equal("Text scale", UiStrings.PropertyText("Widget size", "en"));
         Assert.Equal("设置", UiStrings.Get("settings", "zh-CN"));
     }
 

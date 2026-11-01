@@ -54,7 +54,7 @@ internal static class UiStrings
         ["propertyLong"] = ("Long", "完整格式"),
         ["propertyShort"] = ("Short", "简短格式"),
         ["propertyWidgetLabel"] = ("Widget label", "挂件标题"),
-        ["propertyWidgetSize"] = ("Widget size", "挂件大小"),
+        ["propertyWidgetSize"] = ("Text scale", "文字缩放"),
         ["propertyFirstDay"] = ("First day of week", "每周起始日"),
         ["propertyMonday"] = ("Monday", "星期一"),
         ["propertySunday"] = ("Sunday", "星期日"),
