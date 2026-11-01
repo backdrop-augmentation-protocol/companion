@@ -682,15 +682,15 @@ public partial class MainWindow : Window
             anchor.SelectedItem = anchor.Items.Cast<LayoutChoice>().FirstOrDefault(choice => choice.Value == layout.Anchor);
             anchor.SelectionChanged += LayoutAnchor_Changed;
             AddLayoutField(L("anchor"), anchor);
-            AddLayoutNumber(component.InstanceId!, "x", layout.X, -2, 2);
-            AddLayoutNumber(component.InstanceId!, "y", layout.Y, -2, 2);
-            AddLayoutNumber(component.InstanceId!, "width", layout.Width, 0.001, 2);
-            AddLayoutNumber(component.InstanceId!, "height", layout.Height, 0.001, 2);
+            AddLayoutSlider(component.InstanceId!, "x", layout.X ?? 0.5, -2, 2, 0.01);
+            AddLayoutSlider(component.InstanceId!, "y", layout.Y ?? 0.5, -2, 2, 0.01);
+            AddLayoutSlider(component.InstanceId!, "width", layout.Width ?? 0.25, 0.01, 2, 0.01);
+            AddLayoutSlider(component.InstanceId!, "height", layout.Height ?? 0.35, 0.01, 2, 0.01);
         }
         else AddLayoutNumber(component.InstanceId!, "order", layout.Order ?? 0, 0, 10000, integer: true);
-        AddLayoutNumber(component.InstanceId!, "scale", layout.Scale, 0.1, 5);
-        AddLayoutNumber(component.InstanceId!, "rotation", layout.Rotation, -360, 360);
-        AddLayoutNumber(component.InstanceId!, "opacity", layout.Opacity, 0, 1);
+        AddLayoutSlider(component.InstanceId!, "scale", layout.Scale, 0.1, 5, 0.05);
+        AddLayoutSlider(component.InstanceId!, "rotation", layout.Rotation, -360, 360, 1, integer: true);
+        AddLayoutSlider(component.InstanceId!, "opacity", layout.Opacity, 0, 1, 0.01);
         AddLayoutNumber(component.InstanceId!, "zIndex", layout.ZIndex, -100000, 100000, integer: true);
         if (layout.Mode == "manual" && preset.LayoutMode == "grid")
         {
@@ -727,6 +727,79 @@ public partial class MainWindow : Window
         AddLayoutField(L(key), field);
     }
 
+    private void AddLayoutSlider(string instanceId, string key, double value, double minimum, double maximum, double step, bool integer = false)
+    {
+        var valueText = new TextBlock
+        {
+            Text = FormatLayoutValue(value, integer), Foreground = (Brush)FindResource("Muted"),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11
+        };
+        var heading = new Grid { Margin = new Thickness(0, 3, 0, 0) };
+        heading.Children.Add(new TextBlock
+        {
+            Text = L(key), Foreground = (Brush)FindResource("Ink"), FontWeight = FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 48, 0)
+        });
+        heading.Children.Add(valueText);
+        TransformPanel.Children.Add(heading);
+
+        var slider = new Slider
+        {
+            Minimum = minimum, Maximum = maximum, Value = Math.Clamp(value, minimum, maximum),
+            TickFrequency = step, IsSnapToTickEnabled = false, IsMoveToPointEnabled = true,
+            Height = 28, Margin = new Thickness(0, 0, 0, 5),
+            Style = (Style)FindResource("TransformSlider"),
+            Tag = new LayoutSliderEditContext(instanceId, key, valueText, integer)
+        };
+        slider.ValueChanged += LayoutSlider_ValueChanged;
+        slider.LostKeyboardFocus += LayoutSlider_LostKeyboardFocus;
+        slider.AddHandler(UIElement.MouseLeftButtonUpEvent, new MouseButtonEventHandler(LayoutSlider_MouseLeftButtonUp), true);
+        TransformPanel.Children.Add(slider);
+    }
+
+    private static string FormatLayoutValue(double value, bool integer) =>
+        value.ToString(integer ? "0" : "0.##", CultureInfo.InvariantCulture);
+
+    private void LayoutSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (sender is Slider { Tag: LayoutSliderEditContext context })
+            context.ValueText.Text = FormatLayoutValue(e.NewValue, context.Integer);
+    }
+
+    private void LayoutSlider_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is Slider { Tag: LayoutSliderEditContext context } slider)
+            SaveLayoutSlider(context, slider.Value);
+    }
+
+    private void LayoutSlider_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Slider { Tag: LayoutSliderEditContext context } slider)
+            SaveLayoutSlider(context, slider.Value);
+    }
+
+    private void SaveLayoutSlider(LayoutSliderEditContext context, double value)
+    {
+        if (renderingPropertyEditors || SelectedPreset is not { } preset) return;
+        var component = preset.Components.FirstOrDefault(item => item.InstanceId == context.InstanceId);
+        if (component is null) return;
+        var layout = GetLayout(component, preset);
+        value = context.Integer ? Math.Round(value) : Math.Round(value, 3);
+        var next = context.Field switch
+        {
+            "x" => layout with { X = value },
+            "y" => layout with { Y = value },
+            "width" => layout with { Width = value },
+            "height" => layout with { Height = value },
+            "scale" => layout with { Scale = value },
+            "rotation" => layout with { Rotation = value },
+            "opacity" => layout with { Opacity = value },
+            _ => null
+        };
+        if (next is not null) _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, next));
+    }
+
     private void LayoutMode_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (renderingPropertyEditors || sender is not ComboBox { Tag: LayoutEditContext context, SelectedItem: LayoutChoice choice } || SelectedPreset is not { } preset) return;
@@ -734,7 +807,7 @@ public partial class MainWindow : Window
         if (component is null) return;
         var current = GetLayout(component, preset);
         var next = choice.Value == "manual"
-            ? current with { Mode = "manual", Anchor = "center", X = 0.5, Y = 0.5, Width = 0.25, Height = 0.15, Locked = preset.LayoutMode == "grid" }
+            ? current with { Mode = "manual", Anchor = "center", X = 0.5, Y = 0.5, Width = 0.25, Height = 0.38, Locked = preset.LayoutMode == "grid" }
             : current with { Mode = "automatic", Anchor = null, X = null, Y = null, Width = null, Height = null, Locked = false, Order = current.Order ?? Math.Max(0, SelectedComponents.SelectedIndex) };
         _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, next));
     }
@@ -1101,6 +1174,7 @@ public partial class MainWindow : Window
     private sealed record PresetHostChoice(string? HostKey, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal);
     private sealed record PropertyEditContext(string InstanceId, WallpaperPropertyDefinition Definition);
     private sealed record LayoutEditContext(string InstanceId, string Field);
+    private sealed record LayoutSliderEditContext(string InstanceId, string Field, TextBlock ValueText, bool Integer);
     private sealed record LayoutChoice(string Value, string Label);
     private sealed record SliderEditContext(PropertyEditContext Edit, TextBlock ValueLabel);
     private sealed record PropertyOptionChoice(WallpaperPropertyOption Option) { public string Label => Option.Text; }
