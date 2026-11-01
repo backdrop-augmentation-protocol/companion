@@ -340,7 +340,7 @@ public sealed class CoreTests
         Assert.Equal("missing", effective[0].Status);
         Assert.Equal("local:abc", effective[1].SourceKey);
         Assert.Equal("embedded.html", effective[1].EmbeddedPath);
-        Assert.Equal("workshop:123", EffectiveComponents.Resolve(new([], null, new Dictionary<string, string>()), "host", items)[0].SourceKey);
+        Assert.Empty(EffectiveComponents.Resolve(new([], null, new Dictionary<string, string>()), "host", items));
     }
 
     [Fact]

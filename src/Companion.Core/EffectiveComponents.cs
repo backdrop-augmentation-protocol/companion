@@ -31,7 +31,7 @@ public static class EffectiveComponents
     {
         var preset = PresetSelection.Resolve(state, hostId);
         return new EffectiveComposition(
-            preset?.Id ?? "implicit-default",
+            preset?.Id ?? "unassigned",
             preset?.Revision ?? 0,
             preset?.UpdatedAt ?? DateTimeOffset.UnixEpoch,
             preset?.LayoutMode ?? "grid",
@@ -42,7 +42,7 @@ public static class EffectiveComponents
     public static IReadOnlyList<EffectiveComponent> Resolve(PresetState state, string hostId, IReadOnlyList<InstalledItem> items)
     {
         var preset = PresetSelection.Resolve(state, hostId);
-        var selections = preset?.Components ?? DefaultSelections(items);
+        var selections = preset?.Components ?? Array.Empty<PresetComponent>();
         return selections.Select((selection, index) =>
         {
             var instanceId = selection.InstanceId ?? DefaultInstanceId(selection.ComponentId, selection.SourceKey);
@@ -75,18 +75,6 @@ public static class EffectiveComponents
         }
         return effective;
     }
-
-    private static IReadOnlyList<PresetComponent> DefaultSelections(IReadOnlyList<InstalledItem> items) => items
-        .Where(item => item.Role == "component" && item.BapId is not null)
-        .GroupBy(item => item.BapId!, StringComparer.Ordinal)
-        .Select((group, index) =>
-        {
-            var selected = group.OrderBy(candidate => candidate.Status == "valid" ? 0 : 1)
-                .ThenBy(candidate => candidate.SourceKind == "workshop" ? 0 : 1)
-                .ThenBy(candidate => candidate.Key, StringComparer.Ordinal).First();
-            return new PresetComponent(group.Key, selected.Key, DefaultInstanceId(group.Key, selected.Key),
-                Layout: new ComponentLayout("automatic", Order: index, ZIndex: index), Config: []);
-        }).ToArray();
 
     private static string DefaultInstanceId(string componentId, string? sourceKey)
     {

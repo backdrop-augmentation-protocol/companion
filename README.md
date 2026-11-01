@@ -34,9 +34,9 @@ component selections with explicit source keys, and host assignments are scoped
 to an installed project key so local and subscribed copies can be configured
 independently. Non-BAP wallpapers can be assigned after a warning, but they do
 not gain BAP component rendering. A host-specific preset overrides the global
-selection; missing components remain in the preset. Without an active preset,
-discovered components are shown by default, preferring a subscribed copy when
-the same BAP ID also exists locally.
+selection; missing components remain in the preset. A wallpaper with neither a
+host-specific nor a global preset receives no components. Components are added
+to a wallpaper only through an explicit preset assignment.
 
 The WPF desktop window edits presets and displays installed hosts and components as
 preview cards. Select a card to see its source, BAP ID, version, status, and
