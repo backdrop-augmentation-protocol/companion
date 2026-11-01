@@ -122,6 +122,7 @@ public partial class MainWindow : Window
         AppSubtitle.Text = L("appSubtitle");
         InstalledNav.Content = L("installed"); PresetsNav.Content = L("presets"); SettingsNav.Content = L("settings");
         InstalledTitle.Text = L("installed"); CatalogHint.Text = L("catalogHint"); RefreshButton.Content = L("refresh");
+        PropertyRefreshButton.Content = L("refreshProperties");
         HostsHeading.Text = L("hosts"); ComponentsHeading.Text = L("components");
         NoHosts.Text = L("noHosts"); NoComponents.Text = L("noComponents");
         DetailsHeading.Text = L("details"); DetailEmpty.Text = L("selectItem");
@@ -201,6 +202,7 @@ public partial class MainWindow : Window
     private void PresetsNav_Click(object sender, RoutedEventArgs e) => SelectPage(PresetsPage, PresetsNav);
     private void SettingsNav_Click(object sender, RoutedEventArgs e) => SelectPage(SettingsPage, SettingsNav);
     private void RefreshButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(RefreshAsync);
+    private void PropertyRefreshButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(RefreshAsync);
 
     private async Task RunActionAsync(Func<Task> action)
     {
@@ -214,6 +216,7 @@ public partial class MainWindow : Window
 
     private async Task RefreshAsync()
     {
+        if (authorizationClient is not null) await authorizationClient.RefreshCatalogAsync();
         var discovered = await catalog.DiscoverAsync(force: true);
         var presets = await store.ReadAsync();
         var migrated = PresetSelection.MigrateInstalledHostBindings(presets, discovered);

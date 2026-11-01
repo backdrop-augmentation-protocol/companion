@@ -62,6 +62,30 @@ public sealed class DesktopTests
     }
 
     [Fact]
+    public async Task AuthorizationClientRequestsInstalledCatalogRefreshOverNamedPipe()
+    {
+        var name = $"Bap.Companion.Test.{Guid.NewGuid():N}";
+        var client = new HostAuthorizationClient(name);
+        var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var exchange = Task.Run(async () =>
+        {
+            await using (server)
+            {
+                await server.WaitForConnectionAsync();
+                using var reader = new StreamReader(server, leaveOpen: true);
+                await using var writer = new StreamWriter(server) { AutoFlush = true };
+                using var request = JsonDocument.Parse(await reader.ReadLineAsync() ?? "{}");
+                Assert.Equal("refresh-catalog", request.RootElement.GetProperty("operation").GetString());
+                await writer.WriteLineAsync("{\"success\":true,\"requests\":[]}");
+            }
+        });
+
+        await client.RefreshCatalogAsync();
+        await exchange;
+    }
+
+    [Fact]
     public void PreferencesPreserveExplicitStartupOptOutAndChinese()
     {
         var path = Path.Combine(Path.GetTempPath(), $"bap-desktop-{Guid.NewGuid():N}.json");

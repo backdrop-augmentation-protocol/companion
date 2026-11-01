@@ -7,6 +7,7 @@ namespace Bap.Companion.Server;
 internal sealed class AuthorizationPipeServer(
     HostAuthorizationQueue authorizations,
     ISessionStore sessions,
+    InstalledCatalog catalog,
     ILogger<AuthorizationPipeServer> logger) : BackgroundService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -33,7 +34,7 @@ internal sealed class AuthorizationPipeServer(
                 await using var writer = new StreamWriter(pipe) { AutoFlush = true };
                 var line = await reader.ReadLineAsync(stoppingToken);
                 var request = line is null ? null : JsonSerializer.Deserialize<AuthorizationControlRequest>(line, Json);
-                var response = Handle(request);
+                var response = await HandleAsync(request, stoppingToken);
                 await writer.WriteLineAsync(JsonSerializer.Serialize(response, Json).AsMemory(), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
@@ -42,9 +43,15 @@ internal sealed class AuthorizationPipeServer(
         }
     }
 
-    private AuthorizationControlResponse Handle(AuthorizationControlRequest? request)
+    private async Task<AuthorizationControlResponse> HandleAsync(AuthorizationControlRequest? request, CancellationToken cancellationToken)
     {
         if (request is null) return new(false, [], "invalid request");
+        if (request.Operation == "refresh-catalog")
+        {
+            var items = await catalog.DiscoverAsync(cancellationToken, force: true);
+            logger.LogInformation("Installed catalog refreshed from Companion UI; discovered {ItemCount} items", items.Count);
+            return new(true, []);
+        }
         return request.Operation switch
         {
             "snapshot" => new(true, authorizations.Snapshot()),

@@ -12,6 +12,7 @@ internal static class UiStrings
         ["components"] = ("Components", "组件"),
         ["catalogHint"] = ("Local projects and Workshop subscriptions can be used together.", "本地项目与创意工坊订阅内容可以混合使用。"),
         ["refresh"] = ("Refresh library", "刷新内容库"),
+        ["refreshProperties"] = ("Refresh", "刷新属性"),
         ["details"] = ("Details", "详情"),
         ["selectItem"] = ("Select an item to view its details.", "选择一个项目以查看详情。"),
         ["source"] = ("Source", "来源"),

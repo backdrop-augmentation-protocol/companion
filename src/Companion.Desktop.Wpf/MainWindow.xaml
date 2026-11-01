@@ -327,7 +327,11 @@
           <Border Grid.Column="2" Style="{StaticResource Panel}" Padding="12">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
               <StackPanel>
-                <TextBlock x:Name="PropertyHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,4" Text="Component properties"/>
+                <Grid Margin="0,0,0,4">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <TextBlock x:Name="PropertyHeading" Style="{StaticResource SectionHeading}" VerticalAlignment="Center" Text="Component properties"/>
+                  <Button x:Name="PropertyRefreshButton" Grid.Column="1" Style="{StaticResource QuietButton}" Click="PropertyRefreshButton_Click" Padding="9,5"/>
+                </Grid>
                 <TextBlock x:Name="PropertyHint" Style="{StaticResource Hint}" Margin="0,0,0,8" Text="Choose an instance to edit its preset values." TextWrapping="Wrap"/>
                 <StackPanel x:Name="InstancePropertyPanel"/>
               </StackPanel>

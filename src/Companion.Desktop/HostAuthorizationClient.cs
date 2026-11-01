@@ -14,6 +14,12 @@ public sealed class HostAuthorizationClient(string pipeName)
     public async Task<IReadOnlyList<TrustedHost>> GetTrustedHostsAsync(CancellationToken cancellationToken = default) =>
         (await SendAsync(new("trusted"), cancellationToken)).TrustedHosts ?? [];
 
+    public async Task RefreshCatalogAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await SendAsync(new("refresh-catalog"), cancellationToken);
+        if (!response.Success) throw new IOException(response.Error ?? "Companion could not refresh the installed catalog.");
+    }
+
     public async Task<bool> RevokeTrustAsync(string id, CancellationToken cancellationToken = default) =>
         (await SendAsync(new("revoke", id), cancellationToken)).Success;
 
