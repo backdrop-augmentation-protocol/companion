@@ -37,11 +37,15 @@ public partial class MainWindow : Window
     private bool uiReady;
     private bool changingCatalogSelection;
     private bool changingDisplayChoice;
+    private bool showingPresetHosts;
     private readonly HostAuthorizationClient? authorizationClient;
     private readonly DispatcherTimer authorizationTimer;
     private bool showingAuthorizationPrompt;
     private int creatorLookupGeneration;
     private bool renderingPropertyEditors;
+    private bool renderingComponentChoices;
+    private bool renderingPresets;
+    private string? selectedComponentInstanceId;
 
     internal MainWindow(CompanionLog log, int port, DesktopSettings settings, HostAuthorizationClient? authorizationClient = null,
         SteamWorkshopCreatorLookup? creatorLookup = null, JsonPresetStore? presetStore = null)
@@ -125,13 +129,17 @@ public partial class MainWindow : Window
         SwitchHostButton.Content = L("switchHost");
         PresetsTitle.Text = L("presets"); PresetIntro.Text = L("presetIntro");
         NewPresetButton.Content = L("newPreset"); RenameButton.Content = L("rename"); DeleteButton.Content = L("delete");
-        SelectedComponentsHeading.Text = L("selectedComponents");
+        SelectedComponentsHeading.Text = L(showingPresetHosts ? "hostsUsingPreset" : "selectedComponents");
         PropertyHeading.Text = settings.Language == "zh-CN" ? "组件属性" : "Component properties";
         if (SelectedComponents is not null) RenderPropertyEditors();
-        AddComponentButton.Content = L("addComponent"); RemoveComponentButton.Content = L("remove");
+        ComponentsModeButton.Content = L("presetComponentsTab"); HostsModeButton.Content = L("presetHostsTab");
+        AddComponentButton.Content = L("addComponent"); AddHostButton.Content = L("addHost");
+        RemoveComponentButton.Content = L("remove"); RemoveHostButton.Content = L("removeHost");
         MoveUpButton.Content = L("moveUp"); MoveDownButton.Content = L("moveDown");
-        ScopeHeading.Text = L("scope"); SetGlobalButton.Content = L("setGlobal");
-        HostOverrideLabel.Text = L("hostOverride"); SetHostButton.Content = L("setHost"); ClearHostButton.Content = L("clearHost");
+        SetGlobalButton.Content = L("setGlobal");
+        ComponentsEmpty.Text = L("noComponentsInPreset"); HostsEmpty.Text = L("noHostsUsePreset");
+        SetPresetListMode(showingPresetHosts);
+        if (PresetList is not null) RenderPresets();
         SettingsTitle.Text = L("settings"); LanguageHeading.Text = L("language"); LanguageHint.Text = L("languageHint");
         StartupCheck.Content = L("startup"); LogsHeading.Text = L("logs");
         OpenLogButton.Content = L("openLog"); OpenLogFolderButton.Content = L("openLogFolder");
@@ -158,7 +166,6 @@ public partial class MainWindow : Window
         }
         finally { changingDisplayChoice = false; }
         RenderCatalog();
-        RenderChoices();
         RenderPresets();
         RenderDetails();
     }
@@ -219,7 +226,6 @@ public partial class MainWindow : Window
         state = presets;
         selectedItem = items.FirstOrDefault(item => item.Key == selectedItem?.Key);
         RenderCatalog();
-        RenderChoices();
         RenderPresets();
         RenderDetails();
     }
@@ -328,53 +334,149 @@ public partial class MainWindow : Window
 
     internal int EffectiveDisplayIndex => Math.Clamp(settings.DisplayIndex, 0, Math.Max(0, Forms.Screen.AllScreens.Length - 1));
 
-    private void RenderChoices()
-    {
-        if (AvailableComponents is null) return;
-        var componentKey = (AvailableComponents.SelectedItem as CatalogChoice)?.Item.Key;
-        var hostKey = (HostChoice.SelectedItem as CatalogChoice)?.Item.Key;
-        AvailableComponents.ItemsSource = items.Where(item => item.Role == "component" && item.Status == "valid")
-            .Select(item => new CatalogChoice(item, $"{item.Title} [{L(item.SourceKind)}]")).ToArray();
-        HostChoice.ItemsSource = items.Where(item => item.Role == "host" && item.BapId is not null && item.Status != "invalid")
-            .Select(item => new CatalogChoice(item, $"{item.Title} [{L(item.SourceKind)}]")).ToArray();
-        AvailableComponents.SelectedItem = AvailableComponents.Items.Cast<CatalogChoice>().FirstOrDefault(choice => choice.Item.Key == componentKey)
-            ?? AvailableComponents.Items.Cast<CatalogChoice>().FirstOrDefault();
-        HostChoice.SelectedItem = HostChoice.Items.Cast<CatalogChoice>().FirstOrDefault(choice => choice.Item.Key == hostKey)
-            ?? HostChoice.Items.Cast<CatalogChoice>().FirstOrDefault();
-    }
-
     private ComponentPreset? SelectedPreset => (PresetList.SelectedItem as PresetChoice)?.Preset;
 
     private void RenderPresets(string? selectId = null)
     {
         if (PresetList is null) return;
         selectId ??= SelectedPreset?.Id;
-        PresetList.ItemsSource = state.Presets.Select(preset => new PresetChoice(preset)).ToArray();
-        PresetList.SelectedItem = PresetList.Items.Cast<PresetChoice>().FirstOrDefault(choice => choice.Preset.Id == selectId);
+        renderingPresets = true;
+        try
+        {
+            PresetList.ItemsSource = state.Presets.Select(preset => new PresetChoice(preset)).ToArray();
+            PresetList.SelectedItem = PresetList.Items.Cast<PresetChoice>().FirstOrDefault(choice => choice.Preset.Id == selectId);
+        }
+        finally { renderingPresets = false; }
         RenderSelectedComponents();
-        var global = state.Presets.FirstOrDefault(preset => preset.Id == state.GlobalPresetId)?.Name ?? L("allInstalled");
-        PresetStatus.Text = $"{L("global")}: {global}\n{L("overrides")}: {state.HostPresetIds.Count}";
+        RenderPresetHosts();
     }
 
-    private void PresetList_SelectionChanged(object sender, SelectionChangedEventArgs e) => RenderSelectedComponents();
+    private void PresetList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (renderingPresets) return;
+        RenderSelectedComponents();
+        RenderPresetHosts();
+    }
 
-    private void SelectedComponents_SelectionChanged(object sender, SelectionChangedEventArgs e) => RenderPropertyEditors();
+    private void ComponentsModeButton_Click(object sender, RoutedEventArgs e) => SetPresetListMode(false);
+    private void HostsModeButton_Click(object sender, RoutedEventArgs e) => SetPresetListMode(true);
+
+    private void SetPresetListMode(bool hosts)
+    {
+        showingPresetHosts = hosts;
+        SelectedComponents.Visibility = hosts ? Visibility.Collapsed : Visibility.Visible;
+        PresetHostsList.Visibility = hosts ? Visibility.Visible : Visibility.Collapsed;
+        AddComponentButton.Visibility = hosts ? Visibility.Collapsed : Visibility.Visible;
+        AddHostButton.Visibility = hosts ? Visibility.Visible : Visibility.Collapsed;
+        SetGlobalButton.Visibility = hosts ? Visibility.Visible : Visibility.Collapsed;
+        ComponentsEmpty.Visibility = !hosts && SelectedComponents.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        HostsEmpty.Visibility = hosts && PresetHostsList.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ComponentActions.Visibility = hosts ? Visibility.Collapsed : Visibility.Visible;
+        RemoveHostButton.Visibility = hosts ? Visibility.Visible : Visibility.Collapsed;
+        SelectedComponentsHeading.Text = L(hosts ? "hostsUsingPreset" : "selectedComponents");
+        ComponentsModeButton.Style = (Style)FindResource(hosts ? "QuietButton" : "PrimaryButton");
+        HostsModeButton.Style = (Style)FindResource(hosts ? "PrimaryButton" : "QuietButton");
+        if (!hosts) RenderSelectedComponents();
+        RenderPresetHosts();
+    }
+
+    private void SelectedComponents_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (renderingComponentChoices) return;
+        selectedComponentInstanceId = (SelectedComponents.SelectedItem as ComponentChoice)?.Component.InstanceId;
+        UpdateComponentActions();
+        RenderPropertyEditors();
+    }
 
     private void RenderSelectedComponents()
     {
         if (SelectedComponents is null) return;
-        var selectedInstanceId = (SelectedComponents.SelectedItem as ComponentChoice)?.Component.InstanceId;
-        SelectedComponents.ItemsSource = (SelectedPreset?.Components ?? [])
-            .Select(component =>
-            {
-                var item = items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId &&
-                    (component.SourceKey is null || candidate.Key == component.SourceKey));
-                return new ComponentChoice(component, $"{item?.Title ?? component.ComponentId} [{L(item?.SourceKind ?? "missing")}] · {component.InstanceId}");
-            }).ToArray();
-        SelectedComponents.SelectedItem = SelectedComponents.Items.Cast<ComponentChoice>()
-            .FirstOrDefault(choice => choice.Component.InstanceId == selectedInstanceId);
+        var selectedInstanceId = (SelectedComponents.SelectedItem as ComponentChoice)?.Component.InstanceId ?? selectedComponentInstanceId;
+        renderingComponentChoices = true;
+        try
+        {
+            SelectedComponents.ItemsSource = (SelectedPreset?.Components ?? [])
+                .Select(component =>
+                {
+                    var item = items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId &&
+                        (component.SourceKey is null || candidate.Key == component.SourceKey));
+                    return new ComponentChoice(component,
+                        item?.Title ?? component.ComponentId,
+                        item is null ? L("missing") : L(item.SourceKind),
+                        $"{(item is null ? L("missing") : L(item.Status))} · {L("instance")}: {component.InstanceId}",
+                        LoadPreview(item?.PreviewPath), item?.PreviewPath is null ? L("noPreview") : "");
+                }).ToArray();
+            SelectedComponents.SelectedItem = SelectedComponents.Items.Cast<ComponentChoice>()
+                .FirstOrDefault(choice => choice.Component.InstanceId == selectedInstanceId);
+            ComponentsEmpty.Visibility = SelectedComponents.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            selectedComponentInstanceId = (SelectedComponents.SelectedItem as ComponentChoice)?.Component.InstanceId;
+        }
+        finally { renderingComponentChoices = false; }
+        AddComponentButton.IsEnabled = SelectedPreset is not null;
+        UpdateComponentActions();
         RenderPropertyEditors();
     }
+
+    private void UpdateComponentActions()
+    {
+        var selected = SelectedComponent is not null;
+        RemoveComponentButton.IsEnabled = selected;
+        MoveUpButton.IsEnabled = selected && SelectedComponents.SelectedIndex > 0;
+        MoveDownButton.IsEnabled = selected && SelectedPreset is { } preset && SelectedComponents.SelectedIndex < preset.Components.Count - 1;
+    }
+
+    private void RenderPresetHosts()
+    {
+        if (PresetHostsList is null) return;
+        var preset = SelectedPreset;
+        var selectedHostId = (PresetHostsList.SelectedItem as PresetHostChoice)?.HostId;
+        PresetHostChoice[] hosts;
+        if (preset is null) hosts = [];
+        else if (state.GlobalPresetId == preset.Id)
+        {
+            hosts = [new PresetHostChoice(null, L("allHosts"), L("globalPreset"), preset.Name, null, "", true)];
+        }
+        else
+        {
+            hosts = state.HostPresetIds.Where(binding => binding.Value == preset.Id)
+                .Select(binding =>
+                {
+                    var item = FindHost(binding.Key);
+                    return new PresetHostChoice(binding.Key, item?.Title ?? binding.Key,
+                        item is null ? L("missing") : L(item.SourceKind),
+                        item is null ? binding.Key : $"{L(item.Status)} · {item.Version ?? "—"}",
+                        LoadPreview(item?.PreviewPath), item?.PreviewPath is null ? L("noPreview") : "", false);
+                }).ToArray();
+        }
+        PresetHostsList.ItemsSource = hosts;
+        PresetHostsList.SelectedItem = hosts.FirstOrDefault(host => host.HostId == selectedHostId);
+        HostsEmpty.Visibility = hosts.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        AddHostButton.IsEnabled = preset is not null && state.GlobalPresetId != preset.Id;
+        AddHostButton.Visibility = showingPresetHosts && preset is not null && state.GlobalPresetId != preset.Id ? Visibility.Visible : Visibility.Collapsed;
+        SetGlobalButton.IsEnabled = preset is not null;
+        SetGlobalButton.Content = L(preset is not null && state.GlobalPresetId == preset.Id ? "globalPreset" : "setGlobal");
+        SetGlobalButton.Style = (Style)FindResource(preset is not null && state.GlobalPresetId == preset.Id ? "PrimaryButton" : "QuietButton");
+        PresetStatus.Text = $"{L("global")}: {state.Presets.FirstOrDefault(entry => entry.Id == state.GlobalPresetId)?.Name ?? L("allInstalled")}\n{L("overrides")}: {state.HostPresetIds.Count}";
+        UpdateHostActions();
+    }
+
+    private void PresetHostsList_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateHostActions();
+
+    private void UpdateHostActions()
+    {
+        var canRemove = PresetHostsList.SelectedItem is PresetHostChoice { IsGlobal: false, HostId: not null };
+        RemoveHostButton.IsEnabled = canRemove;
+        RemoveHostButton.Visibility = showingPresetHosts && canRemove ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private InstalledItem? FindHost(string bapId) => items.FirstOrDefault(item => item.Role == "host" && item.BapId == bapId && item.Status != "invalid");
+
+    private IReadOnlyList<InstalledItem> GetHostCandidates() => items
+        .Where(item => item.Role == "host" && item.BapId is not null && item.Status != "invalid")
+        .GroupBy(item => item.BapId!, StringComparer.Ordinal)
+        .Select(group => group.OrderBy(item => item.Status == "valid" ? 0 : 1)
+            .ThenBy(item => item.SourceKind == "workshop" ? 0 : 1).ThenBy(item => item.Key, StringComparer.Ordinal).First())
+        .ToArray();
 
     private PresetComponent? SelectedComponent => (SelectedComponents.SelectedItem as ComponentChoice)?.Component;
 
@@ -628,11 +730,42 @@ public partial class MainWindow : Window
     private void AddComponentButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
     {
         var preset = SelectedPreset;
-        var item = (AvailableComponents.SelectedItem as CatalogChoice)?.Item;
-        if (preset is null || item?.BapId is null) return;
+        if (preset is null) return;
+        var choices = items.Where(item => item.Role == "component" && item.Status == "valid" && item.BapId is not null)
+            .Select(item => new CatalogPickerItem(item, item.Title, L(item.SourceKind),
+                $"{L(item.Status)} · {item.Version ?? "—"}", LoadPreview(item.PreviewPath), item.PreviewPath is null ? L("noPreview") : ""))
+            .ToArray();
+        var selected = CatalogSelectionDialog.Show(this, L("chooseComponent"), choices, settings.Language);
+        if (selected?.Value is not InstalledItem item || item.BapId is null) return;
         var order = preset.Components.Count;
         await ReplacePresetAsync(preset with { Components = [.. preset.Components, new(item.BapId, item.Key,
             Guid.NewGuid().ToString("N"), Layout: new ComponentLayout("automatic", Order: order, ZIndex: order))] });
+    });
+
+    private void AddHostButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
+    {
+        var preset = SelectedPreset;
+        if (preset is null || state.GlobalPresetId == preset.Id) return;
+        var choices = GetHostCandidates()
+            .Where(item => !state.HostPresetIds.TryGetValue(item.BapId!, out var assignedId) || assignedId != preset.Id)
+            .Select(item =>
+            {
+                var assignedName = state.HostPresetIds.TryGetValue(item.BapId!, out var assignedId)
+                    ? state.Presets.FirstOrDefault(candidate => candidate.Id == assignedId)?.Name ?? assignedId
+                    : L("notAssigned");
+                return new CatalogPickerItem(item, item.Title, L(item.SourceKind),
+                    $"{L(item.Status)} · {L("currentlyAssigned", assignedName)}", LoadPreview(item.PreviewPath), item.PreviewPath is null ? L("noPreview") : "");
+            }).ToArray();
+        var selected = CatalogSelectionDialog.Show(this, L("chooseHost"), choices, settings.Language);
+        if (selected?.Value is not InstalledItem item || item.BapId is null) return;
+        if (state.HostPresetIds.TryGetValue(item.BapId, out var currentPresetId) && currentPresetId != preset.Id)
+        {
+            var currentName = state.Presets.FirstOrDefault(candidate => candidate.Id == currentPresetId)?.Name ?? currentPresetId;
+            if (!ThemedDialog.Confirm(this, L("presets"), L("replaceHostPreset", currentName, preset.Name),
+                    settings.Language == "zh-CN" ? "继续" : "Continue", settings.Language == "zh-CN" ? "取消" : "Cancel")) return;
+        }
+        var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal) { [item.BapId] = preset.Id };
+        await SaveAsync(state with { HostPresetIds = bindings }, preset.Id);
     });
 
     private void RemoveComponentButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
@@ -645,6 +778,15 @@ public partial class MainWindow : Window
 
     private void MoveUpButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(() => MoveComponentAsync(-1));
     private void MoveDownButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(() => MoveComponentAsync(1));
+
+    private void RemoveHostButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
+    {
+        var hostId = (PresetHostsList.SelectedItem as PresetHostChoice)?.HostId;
+        if (hostId is null) return;
+        var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal);
+        bindings.Remove(hostId);
+        await SaveAsync(state with { HostPresetIds = bindings }, SelectedPreset?.Id);
+    });
 
     private async Task MoveComponentAsync(int offset)
     {
@@ -664,26 +806,6 @@ public partial class MainWindow : Window
     private void SetGlobalButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
     {
         if (SelectedPreset is { } preset) await SaveAsync(state with { GlobalPresetId = preset.Id }, preset.Id);
-    });
-
-    private void SetHostButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
-    {
-        if (SelectedPreset is not { } preset) return;
-        if ((HostChoice.SelectedItem as CatalogChoice)?.Item.BapId is not { } hostId)
-        {
-            ThemedDialog.ShowMessage(this, L("presets"), L("selectHostFirst"), settings.Language == "zh-CN" ? "确定" : "OK");
-            return;
-        }
-        var bindings = new Dictionary<string, string>(state.HostPresetIds) { [hostId] = preset.Id };
-        await SaveAsync(state with { HostPresetIds = bindings }, preset.Id);
-    });
-
-    private void ClearHostButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
-    {
-        if ((HostChoice.SelectedItem as CatalogChoice)?.Item.BapId is not { } hostId) return;
-        var bindings = new Dictionary<string, string>(state.HostPresetIds);
-        bindings.Remove(hostId);
-        await SaveAsync(state with { HostPresetIds = bindings });
     });
 
     private string? PromptForName(string title, string value = "")
@@ -757,9 +879,9 @@ public partial class MainWindow : Window
     }
 
     private sealed record CatalogEntry(InstalledItem Item, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
-    private sealed record CatalogChoice(InstalledItem Item, string Label);
     private sealed record PresetChoice(ComponentPreset Preset) { public override string ToString() => Preset.Name; }
-    private sealed record ComponentChoice(PresetComponent Component, string Label);
+    private sealed record ComponentChoice(PresetComponent Component, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
+    private sealed record PresetHostChoice(string? HostId, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal);
     private sealed record PropertyEditContext(string InstanceId, WallpaperPropertyDefinition Definition);
     private sealed record SliderEditContext(PropertyEditContext Edit, TextBlock ValueLabel);
     private sealed record PropertyOptionChoice(WallpaperPropertyOption Option) { public string Label => Option.Text; }

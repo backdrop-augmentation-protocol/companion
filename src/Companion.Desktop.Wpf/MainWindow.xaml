@@ -266,36 +266,35 @@
                 <Button x:Name="RenameButton" Style="{StaticResource QuietButton}" Click="RenameButton_Click" Margin="0,0,4,0"/>
                 <Button x:Name="DeleteButton" Grid.Column="1" Style="{StaticResource QuietButton}" Click="DeleteButton_Click" Margin="4,0,0,0"/>
               </Grid>
-              <Border Height="1" Background="{StaticResource Border}" Margin="0,14,0,12"/>
-              <TextBlock x:Name="ScopeHeading" Style="{StaticResource SectionHeading}" Margin="0,0,0,10"/>
-              <Button x:Name="SetGlobalButton" Style="{StaticResource PrimaryButton}" Click="SetGlobalButton_Click"/>
-              <TextBlock x:Name="HostOverrideLabel" Style="{StaticResource Hint}" Margin="0,14,0,6"/>
-              <ComboBox x:Name="HostChoice" Margin="0,0,0,7">
-                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" MaxWidth="175"/></DataTemplate></ComboBox.ItemTemplate>
-              </ComboBox>
-              <Button x:Name="SetHostButton" Style="{StaticResource QuietButton}" Click="SetHostButton_Click" Margin="0,0,0,7"/>
-              <Button x:Name="ClearHostButton" Style="{StaticResource QuietButton}" Click="ClearHostButton_Click"/>
-              <TextBlock x:Name="PresetStatus" Style="{StaticResource Hint}" Margin="0,12,0,0"/>
             </StackPanel>
             <ListBox x:Name="PresetList" Style="{StaticResource SelectorList}" SelectionChanged="PresetList_SelectionChanged"/>
           </DockPanel></Border>
           <Border Grid.Column="1" Style="{StaticResource Panel}" Padding="15" Margin="0,0,12,0"><DockPanel>
-            <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-              <ComboBox x:Name="AvailableComponents" Margin="0,0,0,8">
-                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
-              </ComboBox>
-              <Button x:Name="AddComponentButton" Style="{StaticResource PrimaryButton}" Click="AddComponentButton_Click"/>
+            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+              <TextBlock x:Name="SelectedComponentsHeading" Style="{StaticResource SectionHeading}" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,10"/>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Button x:Name="ComponentsModeButton" Style="{StaticResource PrimaryButton}" Click="ComponentsModeButton_Click" Margin="0,0,4,0"/>
+                <Button x:Name="HostsModeButton" Grid.Column="1" Style="{StaticResource QuietButton}" Click="HostsModeButton_Click" Margin="4,0,0,0"/>
+              </Grid>
             </StackPanel>
-            <StackPanel><TextBlock x:Name="SelectedComponentsHeading" Style="{StaticResource SectionHeading}" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,12"/>
-              <ListBox x:Name="SelectedComponents" Style="{StaticResource SelectorList}" Height="300" SelectionChanged="SelectedComponents_SelectionChanged">
-                <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextWrapping="Wrap"/></DataTemplate></ListBox.ItemTemplate>
-              </ListBox>
-              <Grid Margin="0,10,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+              <Button x:Name="AddComponentButton" Style="{StaticResource PrimaryButton}" Click="AddComponentButton_Click"/>
+              <Button x:Name="AddHostButton" Style="{StaticResource PrimaryButton}" Click="AddHostButton_Click" Visibility="Collapsed"/>
+              <Button x:Name="SetGlobalButton" Style="{StaticResource QuietButton}" Click="SetGlobalButton_Click" Margin="0,7,0,0" Visibility="Collapsed"/>
+              <Grid x:Name="ComponentActions" Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <Button x:Name="RemoveComponentButton" Style="{StaticResource QuietButton}" Click="RemoveComponentButton_Click" Margin="0,0,4,0"/>
                 <Button x:Name="MoveUpButton" Grid.Column="1" Style="{StaticResource QuietButton}" Click="MoveUpButton_Click" Margin="4,0"/>
                 <Button x:Name="MoveDownButton" Grid.Column="2" Style="{StaticResource QuietButton}" Click="MoveDownButton_Click" Margin="4,0,0,0"/>
               </Grid>
+              <Button x:Name="RemoveHostButton" Style="{StaticResource QuietButton}" Click="RemoveHostButton_Click" Margin="0,8,0,0" Visibility="Collapsed"/>
+              <TextBlock x:Name="PresetStatus" Style="{StaticResource Hint}" Margin="0,10,0,0"/>
             </StackPanel>
+            <Grid>
+              <ListBox x:Name="SelectedComponents" Style="{StaticResource CatalogList}" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionChanged="SelectedComponents_SelectionChanged"/>
+              <TextBlock x:Name="ComponentsEmpty" Style="{StaticResource Hint}" Text="Add components to this preset." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" IsHitTestVisible="False" Visibility="Collapsed"/>
+              <ListBox x:Name="PresetHostsList" Style="{StaticResource CatalogList}" ScrollViewer.VerticalScrollBarVisibility="Auto" SelectionChanged="PresetHostsList_SelectionChanged" Visibility="Collapsed"/>
+              <TextBlock x:Name="HostsEmpty" Style="{StaticResource Hint}" Text="No hosts use this preset yet." HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" IsHitTestVisible="False" Visibility="Collapsed"/>
+            </Grid>
           </DockPanel></Border>
           <Border Grid.Column="2" Style="{StaticResource Panel}" Padding="12">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

@@ -140,23 +140,50 @@ public sealed class WindowTests
                 var componentProperties = WallpaperPropertyReader.Read(propertyJson.RootElement).Properties;
                 var firstInstance = new PresetComponent("org.example.time", "workshop:123", "instance-a");
                 var secondInstance = new PresetComponent("org.example.time", "workshop:123", "instance-b");
-                window.RenderSnapshot(
+                InstalledItem[] presetTestItems =
                 [
                     new InstalledItem("local:host", "local", "host", "Demo host wallpaper", "host", null, "org.example.host", "1.0.0", null, null),
                     new InstalledItem("workshop:123", "workshop", "component", "Time widget", "component", "123", "org.example.time", "1.0.0", null, null, Properties: componentProperties),
                     new InstalledItem("local:calendar", "local", "component", "Calendar widget", "component", null, "org.example.calendar", "1.0.0", null, null)
-                ], new PresetState(
+                ];
+                var initialPresetState = new PresetState(
                     [new ComponentPreset("preset-1", "Daily setup", [firstInstance, secondInstance])],
-                    "preset-1", new Dictionary<string, string>()));
+                    null, new Dictionary<string, string> { ["org.example.host"] = "preset-1" });
+                window.RenderSnapshot(presetTestItems, initialPresetState);
                 window.PresetsNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 window.PresetList.SelectedIndex = 0;
                 window.SelectedComponents.SelectedIndex = 0;
                 window.UpdateLayout();
                 Assert.Equal("Component properties", window.PropertyHeading.Text);
-                var applyPresetPanel = Assert.IsType<System.Windows.Controls.StackPanel>(System.Windows.Media.VisualTreeHelper.GetParent(window.ScopeHeading));
-                var presetListDock = Assert.IsType<System.Windows.Controls.DockPanel>(System.Windows.Media.VisualTreeHelper.GetParent(applyPresetPanel));
-                var presetListBorder = Assert.IsType<System.Windows.Controls.Border>(System.Windows.Media.VisualTreeHelper.GetParent(presetListDock));
-                Assert.Equal(0, System.Windows.Controls.Grid.GetColumn(presetListBorder));
+                window.HostsModeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Collapsed, window.SelectedComponents.Visibility);
+                Assert.Equal(Visibility.Visible, window.PresetHostsList.Visibility);
+                Assert.Single(window.PresetHostsList.Items);
+                var hostsModeGrid = Assert.IsType<System.Windows.Controls.Grid>(System.Windows.Media.VisualTreeHelper.GetParent(window.HostsModeButton));
+                var presetContentPanel = Assert.IsType<System.Windows.Controls.StackPanel>(System.Windows.Media.VisualTreeHelper.GetParent(hostsModeGrid));
+                var presetContentDock = Assert.IsType<System.Windows.Controls.DockPanel>(System.Windows.Media.VisualTreeHelper.GetParent(presetContentPanel));
+                var presetContentBorder = Assert.IsType<System.Windows.Controls.Border>(System.Windows.Media.VisualTreeHelper.GetParent(presetContentDock));
+                Assert.Equal(1, System.Windows.Controls.Grid.GetColumn(presetContentBorder));
+                window.PresetHostsList.SelectedIndex = 0;
+                Assert.True(window.RemoveHostButton.IsEnabled);
+                window.SetGlobalButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                var globalFrame = new System.Windows.Threading.DispatcherFrame();
+                var globalTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                globalTimer.Tick += (_, _) => { globalTimer.Stop(); globalFrame.Continue = false; };
+                globalTimer.Start();
+                System.Windows.Threading.Dispatcher.PushFrame(globalFrame);
+                Assert.Single(window.PresetHostsList.Items);
+                Assert.Equal("[All hosts]", window.PresetHostsList.Items[0].GetType().GetProperty("Title")?.GetValue(window.PresetHostsList.Items[0]));
+                Assert.False(window.RemoveHostButton.IsEnabled);
+                var savedGlobalState = presetStore.ReadAsync().GetAwaiter().GetResult();
+                Assert.Equal("preset-1", savedGlobalState.GlobalPresetId);
+                window.RenderSnapshot(presetTestItems, savedGlobalState);
+                window.ComponentsModeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                window.UpdateLayout();
+                Assert.Equal(2, window.SelectedComponents.Items.Count);
+                Assert.Equal(0, window.SelectedComponents.SelectedIndex);
+                Assert.True(window.InstancePropertyPanel.Children.Count > 0, window.PropertyHint.Text);
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Color scheme");
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>(), button => button.ToolTip?.ToString() == "Choose color");
                 Assert.Equal(5, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
@@ -207,6 +234,8 @@ public sealed class WindowTests
                     window.PresetsNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     window.PresetList.SelectedIndex = 0;
                     SavePage("presets");
+                    window.HostsModeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    SavePage("presets-hosts");
                     window.SettingsNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                     SavePage("settings");
                 }
