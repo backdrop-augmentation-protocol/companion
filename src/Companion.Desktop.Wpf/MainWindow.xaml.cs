@@ -414,7 +414,7 @@ public partial class MainWindow : Window
                 }).ToArray();
             SelectedComponents.SelectedItem = SelectedComponents.Items.Cast<ComponentChoice>()
                 .FirstOrDefault(choice => choice.Component.InstanceId == selectedInstanceId);
-            ComponentsEmpty.Visibility = SelectedComponents.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            ComponentsEmpty.Visibility = !showingPresetHosts && SelectedComponents.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             selectedComponentInstanceId = (SelectedComponents.SelectedItem as ComponentChoice)?.Component.InstanceId;
         }
         finally { renderingComponentChoices = false; }
@@ -457,10 +457,10 @@ public partial class MainWindow : Window
         PresetHostsList.ItemsSource = hosts;
         PresetHostsList.SelectedItem = hosts.FirstOrDefault(host => host.IsGlobal)
             ?? hosts.FirstOrDefault(host => host.HostKey == selectedHostKey);
-        HostsEmpty.Visibility = hosts.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        HostsEmpty.Visibility = showingPresetHosts && hosts.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         AddHostButton.IsEnabled = preset is not null && state.GlobalPresetId != preset.Id && GetAvailableHostCandidates(preset).Count > 0;
         AddHostButton.Visibility = showingPresetHosts && preset is not null ? Visibility.Visible : Visibility.Collapsed;
-        SetGlobalButton.IsEnabled = preset is not null;
+        SetGlobalButton.IsEnabled = preset is not null && state.GlobalPresetId != preset.Id;
         SetGlobalButton.Content = L(preset is not null && state.GlobalPresetId == preset.Id ? "globalPreset" : "setGlobal");
         SetGlobalButton.Style = (Style)FindResource(preset is not null && state.GlobalPresetId == preset.Id ? "PrimaryButton" : "QuietButton");
         PresetStatus.Text = $"{L("global")}: {state.Presets.FirstOrDefault(entry => entry.Id == state.GlobalPresetId)?.Name ?? L("allInstalled")}\n{L("overrides")}: {state.HostPresetIds.Count}";

@@ -157,6 +157,11 @@ public sealed class WindowTests
                 window.SelectedComponents.SelectedIndex = 0;
                 window.UpdateLayout();
                 Assert.Equal("Component properties", window.PropertyHeading.Text);
+                Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
+                window.RenderSnapshot(presetTestItems, initialPresetState with { HostPresetIds = new Dictionary<string, string>() });
+                Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.ComponentsEmpty.Visibility);
+                window.RenderSnapshot(presetTestItems, initialPresetState);
                 window.HostsModeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 window.UpdateLayout();
                 Assert.Equal(Visibility.Collapsed, window.SelectedComponents.Visibility);
@@ -180,6 +185,7 @@ public sealed class WindowTests
                 Assert.Equal(1, System.Windows.Controls.Grid.GetColumn(presetContentBorder));
                 window.PresetHostsList.SelectedIndex = 0;
                 Assert.True(window.RemovePresetButton.IsEnabled);
+                Assert.True(window.SetGlobalButton.IsEnabled);
                 Assert.True(window.AddHostButton.IsEnabled);
                 window.SetGlobalButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 var globalFrame = new System.Windows.Threading.DispatcherFrame();
@@ -187,6 +193,7 @@ public sealed class WindowTests
                 globalTimer.Tick += (_, _) => { globalTimer.Stop(); globalFrame.Continue = false; };
                 globalTimer.Start();
                 System.Windows.Threading.Dispatcher.PushFrame(globalFrame);
+                Assert.False(window.SetGlobalButton.IsEnabled);
                 Assert.Single(window.PresetHostsList.Items);
                 Assert.Equal("[All hosts]", window.PresetHostsList.Items[0].GetType().GetProperty("Title")?.GetValue(window.PresetHostsList.Items[0]));
                 Assert.Equal(Visibility.Visible, window.AddHostButton.Visibility);
