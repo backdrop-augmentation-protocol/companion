@@ -155,7 +155,7 @@ internal static class ColorPickerDialog
         return true;
     }
 
-    private sealed class ScreenSampler
+    internal sealed class ScreenSampler
     {
         [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr window);
         [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr window, IntPtr dc);
@@ -165,6 +165,7 @@ internal static class ColorPickerDialog
         public static Color? Pick(Window owner, bool chinese)
         {
             Color? result = null;
+            const byte hitTestAlpha = 1;
             var overlay = new Window
             {
                 WindowStyle = WindowStyle.None,
@@ -177,7 +178,10 @@ internal static class ColorPickerDialog
                 Topmost = true,
                 ShowInTaskbar = false,
                 AllowsTransparency = true,
-                Background = Brushes.Transparent,
+                // A fully transparent layered window is mouse-transparent on Windows.
+                // One alpha unit keeps the entire virtual desktop hit-testable while
+                // remaining visually imperceptible; the sampled channel is corrected below.
+                Background = new SolidColorBrush(Color.FromArgb(hitTestAlpha, 0, 0, 0)),
                 Cursor = Cursors.Cross
             };
             var hint = new Border
@@ -198,31 +202,35 @@ internal static class ColorPickerDialog
                     FontSize = 15
                 }
             };
-            overlay.Content = new Grid { Children = { hint } };
+            var overlayRoot = new Grid { Background = new SolidColorBrush(Color.FromArgb(hitTestAlpha, 0, 0, 0)) };
+            overlayRoot.Children.Add(hint);
+            overlay.Content = overlayRoot;
             overlay.PreviewKeyDown += (_, args) =>
             {
                 if (args.Key == Key.Escape) overlay.Close();
             };
             overlay.MouseLeftButtonDown += async (_, args) =>
             {
+                args.Handled = true;
                 var point = Forms.Cursor.Position;
-                overlay.Hide();
-                await Task.Delay(100);
+                hint.Visibility = Visibility.Collapsed;
+                await Task.Delay(60);
                 var dc = GetDC(IntPtr.Zero);
                 if (dc == IntPtr.Zero) { overlay.Close(); return; }
                 try
                 {
                     var pixel = GetPixel(dc, point.X, point.Y);
                     if (pixel != InvalidPixel)
-                        result = Color.FromRgb((byte)(pixel & 0xFF), (byte)((pixel >> 8) & 0xFF), (byte)((pixel >> 16) & 0xFF));
+                        result = Color.FromRgb(CorrectChannel((byte)(pixel & 0xFF)), CorrectChannel((byte)((pixel >> 8) & 0xFF)), CorrectChannel((byte)((pixel >> 16) & 0xFF)));
                 }
                 finally { ReleaseDC(IntPtr.Zero, dc); }
                 overlay.Close();
-                args.Handled = true;
             };
             overlay.ShowDialog();
             owner.Activate();
             return result;
         }
+
+        internal static byte CorrectChannel(byte sampled) => (byte)Math.Min(255, (sampled * 255 + 127) / 254);
     }
 }

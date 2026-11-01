@@ -22,6 +22,15 @@ public sealed class WindowTests
         Assert.Equal(original, ColorPickerDialog.ParseWeColor(serialized));
     }
 
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(127, 128)]
+    [InlineData(254, 255)]
+    [InlineData(255, 255)]
+    public void ScreenPickerCorrectsNearlyTransparentHitTestOverlay(byte sampled, byte expected) =>
+        Assert.Equal(expected, ColorPickerDialog.ScreenSampler.CorrectChannel(sampled));
+
     [Fact]
     public void FluentWindowConstructsAndSwitchesLanguageWithoutStartingServer()
     {
@@ -144,8 +153,10 @@ public sealed class WindowTests
                 window.SelectedComponents.SelectedIndex = 0;
                 window.UpdateLayout();
                 Assert.Equal("Component properties", window.PropertyHeading.Text);
-                var rightPanelContent = Assert.IsType<System.Windows.Controls.StackPanel>(System.Windows.Media.VisualTreeHelper.GetParent(window.ScopeHeading));
-                Assert.True(rightPanelContent.Children.IndexOf(window.ScopeHeading) < rightPanelContent.Children.IndexOf(window.PropertyHeading));
+                var applyPresetPanel = Assert.IsType<System.Windows.Controls.StackPanel>(System.Windows.Media.VisualTreeHelper.GetParent(window.ScopeHeading));
+                var presetListDock = Assert.IsType<System.Windows.Controls.DockPanel>(System.Windows.Media.VisualTreeHelper.GetParent(applyPresetPanel));
+                var presetListBorder = Assert.IsType<System.Windows.Controls.Border>(System.Windows.Media.VisualTreeHelper.GetParent(presetListDock));
+                Assert.Equal(0, System.Windows.Controls.Grid.GetColumn(presetListBorder));
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Color scheme");
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>(), button => button.ToolTip?.ToString() == "Choose color");
                 Assert.Equal(5, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
