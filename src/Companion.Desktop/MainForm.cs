@@ -128,9 +128,10 @@ internal sealed class MainForm : Form
         right.Controls.Add(hostBinding);
         right.Controls.Add(Labelled(Button("", async () =>
         {
-            var hostId = (hostBinding.SelectedItem as CatalogChoice)?.Item.BapId;
-            if (hostId is null) { MessageBox.Show(L("selectHostFirst")); return; }
-            await SetBindingAsync(hostId);
+            var host = (hostBinding.SelectedItem as CatalogChoice)?.Item;
+            if (host is null) { MessageBox.Show(L("selectHostFirst")); return; }
+            if ((host.BapId is null || host.Status != "valid") && MessageBox.Show(L("unverifiedHostWarning", host.Title), L("chooseHost"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            await SetBindingAsync(host.Key);
         }), "setHost"));
         right.Controls.Add(Labelled(Button("", async () => await ClearBindingAsync()), "clearHost"));
         right.Controls.Add(presetStatus);
@@ -187,6 +188,12 @@ internal sealed class MainForm : Form
     {
         items = await catalog.DiscoverAsync(force: true);
         state = await store.ReadAsync();
+        var migrated = PresetSelection.MigrateInstalledHostBindings(state, items);
+        if (!state.HostPresetIds.OrderBy(pair => pair.Key).SequenceEqual(migrated.HostPresetIds.OrderBy(pair => pair.Key)))
+        {
+            await store.WriteAsync(migrated);
+            state = migrated;
+        }
         catalogView.SetItems(items);
         RenderChoices();
         RenderPresets();
@@ -199,7 +206,7 @@ internal sealed class MainForm : Form
         var selectedHostKey = (hostBinding.SelectedItem as CatalogChoice)?.Item.Key;
         availableComponents.Items.Clear(); hostBinding.Items.Clear();
         foreach (var item in items.Where(item => item.Role == "component" && item.Status == "valid")) availableComponents.Items.Add(new CatalogChoice(item, L(item.SourceKind)));
-        foreach (var item in items.Where(item => item.Role == "host" && item.BapId is not null && item.Status != "invalid")) hostBinding.Items.Add(new CatalogChoice(item, L(item.SourceKind)));
+        foreach (var item in items.Where(item => item.Role == "host")) hostBinding.Items.Add(new CatalogChoice(item, L(item.SourceKind)));
         if (availableComponents.Items.Count > 0)
             availableComponents.SelectedIndex = Math.Max(0, availableComponents.Items.Cast<CatalogChoice>().ToList().FindIndex(choice => choice.Item.Key == selectedComponentKey));
         if (hostBinding.Items.Count > 0)
@@ -313,7 +320,11 @@ internal sealed class MainForm : Form
     {
         var preset = SelectedPreset;
         if (preset is null) return;
-        if (hostId is null) await SaveAsync(state with { GlobalPresetId = preset.Id }, preset.Id);
+        if (hostId is null)
+        {
+            var bindings = state.HostPresetIds.Where(pair => pair.Value != preset.Id).ToDictionary(pair => pair.Key, pair => pair.Value);
+            await SaveAsync(state with { GlobalPresetId = preset.Id, HostPresetIds = bindings }, preset.Id);
+        }
         else
         {
             var bindings = new Dictionary<string, string>(state.HostPresetIds) { [hostId] = preset.Id };
@@ -323,7 +334,7 @@ internal sealed class MainForm : Form
 
     private async Task ClearBindingAsync()
     {
-        var hostId = (hostBinding.SelectedItem as CatalogChoice)?.Item.BapId;
+        var hostId = (hostBinding.SelectedItem as CatalogChoice)?.Item.Key;
         if (hostId is null) return;
         var bindings = new Dictionary<string, string>(state.HostPresetIds);
         bindings.Remove(hostId);

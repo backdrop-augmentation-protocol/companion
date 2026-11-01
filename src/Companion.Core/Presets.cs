@@ -40,11 +40,28 @@ public sealed record PresetState(
 
 public static class PresetSelection
 {
-    public static ComponentPreset? Resolve(PresetState state, string hostId)
+    public static ComponentPreset? Resolve(PresetState state, string hostKey)
     {
-        var selected = state.HostPresetIds.TryGetValue(hostId, out var hostPresetId)
+        var selected = state.HostPresetIds.TryGetValue(hostKey, out var hostPresetId)
             ? hostPresetId : state.GlobalPresetId;
         return state.Presets.FirstOrDefault(preset => preset.Id == selected);
+    }
+
+    public static PresetState MigrateInstalledHostBindings(PresetState state, IReadOnlyList<InstalledItem> items)
+    {
+        var bindings = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, presetId) in state.HostPresetIds)
+        {
+            if (items.Any(item => item.Role == "host" && item.Key == key))
+            {
+                bindings[key] = presetId;
+                continue;
+            }
+            var matches = items.Where(item => item.Role == "host" && item.BapId == key).ToArray();
+            if (matches.Length == 0) bindings[key] = presetId;
+            else foreach (var item in matches) bindings[item.Key] = presetId;
+        }
+        return state with { HostPresetIds = bindings };
     }
 
     public static IReadOnlyList<string> Validate(PresetState state)

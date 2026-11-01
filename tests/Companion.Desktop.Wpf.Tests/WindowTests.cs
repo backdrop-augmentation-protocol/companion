@@ -144,12 +144,13 @@ public sealed class WindowTests
                 [
                     new InstalledItem("local:host", "local", "host", "Demo host wallpaper", "host", null, "org.example.host", "1.0.0", null, null),
                     new InstalledItem("workshop:host-2", "workshop", "host", "Second demo host wallpaper", "host", "222", "org.example.host-two", "1.0.0", null, null),
+                    new InstalledItem("local:non-bap-host", "local", "host", "Regular Web wallpaper", "host", null, null, null, null, null, "unverified"),
                     new InstalledItem("workshop:123", "workshop", "component", "Time widget", "component", "123", "org.example.time", "1.0.0", null, null, Properties: componentProperties),
                     new InstalledItem("local:calendar", "local", "component", "Calendar widget", "component", null, "org.example.calendar", "1.0.0", null, null)
                 ];
                 var initialPresetState = new PresetState(
                     [new ComponentPreset("preset-1", "Daily setup", [firstInstance, secondInstance])],
-                    null, new Dictionary<string, string> { ["org.example.host"] = "preset-1" });
+                    null, new Dictionary<string, string> { ["local:host"] = "preset-1" });
                 window.RenderSnapshot(presetTestItems, initialPresetState);
                 window.PresetsNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 window.PresetList.SelectedIndex = 0;
@@ -165,8 +166,9 @@ public sealed class WindowTests
                 {
                     HostPresetIds = new Dictionary<string, string>
                     {
-                        ["org.example.host"] = "preset-1",
-                        ["org.example.host-two"] = "preset-1"
+                        ["local:host"] = "preset-1",
+                        ["workshop:host-2"] = "preset-1",
+                        ["local:non-bap-host"] = "preset-1"
                     }
                 });
                 Assert.False(window.AddHostButton.IsEnabled);

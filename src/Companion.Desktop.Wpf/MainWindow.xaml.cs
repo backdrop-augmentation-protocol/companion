@@ -216,6 +216,12 @@ public partial class MainWindow : Window
     {
         var discovered = await catalog.DiscoverAsync(force: true);
         var presets = await store.ReadAsync();
+        var migrated = PresetSelection.MigrateInstalledHostBindings(presets, discovered);
+        if (!presets.HostPresetIds.OrderBy(pair => pair.Key).SequenceEqual(migrated.HostPresetIds.OrderBy(pair => pair.Key)))
+        {
+            await store.WriteAsync(migrated);
+            presets = migrated;
+        }
         RenderSnapshot(discovered, presets);
         await CheckServiceAsync();
     }
@@ -429,7 +435,7 @@ public partial class MainWindow : Window
     {
         if (PresetHostsList is null) return;
         var preset = SelectedPreset;
-        var selectedHostId = (PresetHostsList.SelectedItem as PresetHostChoice)?.HostId;
+        var selectedHostKey = (PresetHostsList.SelectedItem as PresetHostChoice)?.HostKey;
         PresetHostChoice[] hosts;
         if (preset is null) hosts = [];
         else if (state.GlobalPresetId == preset.Id)
@@ -450,7 +456,7 @@ public partial class MainWindow : Window
         }
         PresetHostsList.ItemsSource = hosts;
         PresetHostsList.SelectedItem = hosts.FirstOrDefault(host => host.IsGlobal)
-            ?? hosts.FirstOrDefault(host => host.HostId == selectedHostId);
+            ?? hosts.FirstOrDefault(host => host.HostKey == selectedHostKey);
         HostsEmpty.Visibility = hosts.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         AddHostButton.IsEnabled = preset is not null && state.GlobalPresetId != preset.Id && GetAvailableHostCandidates(preset).Count > 0;
         AddHostButton.Visibility = showingPresetHosts && preset is not null ? Visibility.Visible : Visibility.Collapsed;
@@ -466,22 +472,22 @@ public partial class MainWindow : Window
     private void UpdateHostActions()
     {
         var canRemove = PresetHostsList.SelectedItem is PresetHostChoice { IsGlobal: true }
-            or PresetHostChoice { IsGlobal: false, HostId: not null };
+            or PresetHostChoice { IsGlobal: false, HostKey: not null };
         RemovePresetButton.IsEnabled = canRemove;
         RemovePresetButton.Visibility = showingPresetHosts ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private InstalledItem? FindHost(string bapId) => items.FirstOrDefault(item => item.Role == "host" && item.BapId == bapId && item.Status != "invalid");
+    private InstalledItem? FindHost(string hostKey) => items.FirstOrDefault(item => item.Role == "host" && item.Key == hostKey);
 
     private IReadOnlyList<InstalledItem> GetHostCandidates() => items
-        .Where(item => item.Role == "host" && item.BapId is not null && item.Status != "invalid")
-        .GroupBy(item => item.BapId!, StringComparer.Ordinal)
-        .Select(group => group.OrderBy(item => item.Status == "valid" ? 0 : 1)
-            .ThenBy(item => item.SourceKind == "workshop" ? 0 : 1).ThenBy(item => item.Key, StringComparer.Ordinal).First())
+        .Where(item => item.Role == "host")
+        .OrderBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
+        .ThenBy(item => item.SourceKind, StringComparer.Ordinal)
+        .ThenBy(item => item.Key, StringComparer.Ordinal)
         .ToArray();
 
     private IReadOnlyList<InstalledItem> GetAvailableHostCandidates(ComponentPreset preset) => GetHostCandidates()
-        .Where(item => !state.HostPresetIds.TryGetValue(item.BapId!, out var assignedId) || assignedId != preset.Id)
+        .Where(item => !state.HostPresetIds.TryGetValue(item.Key, out var assignedId) || assignedId != preset.Id)
         .ToArray();
 
     private PresetComponent? SelectedComponent => (SelectedComponents.SelectedItem as ComponentChoice)?.Component;
@@ -755,21 +761,24 @@ public partial class MainWindow : Window
         var choices = GetAvailableHostCandidates(preset)
             .Select(item =>
             {
-                var assignedName = state.HostPresetIds.TryGetValue(item.BapId!, out var assignedId)
+                var assignedName = state.HostPresetIds.TryGetValue(item.Key, out var assignedId)
                     ? state.Presets.FirstOrDefault(candidate => candidate.Id == assignedId)?.Name ?? assignedId
                     : L("notAssigned");
                 return new CatalogPickerItem(item, item.Title, L(item.SourceKind),
-                    $"{L(item.Status)} · {L("currentlyAssigned", assignedName)}", LoadPreview(item.PreviewPath), item.PreviewPath is null ? L("noPreview") : "");
+                    $"{L(item.Status)} · {L("currentlyAssigned", assignedName)}" + (IsUnverifiedHost(item) ? $" · {L("notBapVerifiedShort")}" : ""),
+                    LoadPreview(item.PreviewPath), item.PreviewPath is null ? L("noPreview") : "");
             }).ToArray();
         var selected = CatalogSelectionDialog.Show(this, L("chooseHost"), choices, settings.Language);
-        if (selected?.Value is not InstalledItem item || item.BapId is null) return;
-        if (state.HostPresetIds.TryGetValue(item.BapId, out var currentPresetId) && currentPresetId != preset.Id)
+        if (selected?.Value is not InstalledItem item) return;
+        if (IsUnverifiedHost(item) && !ThemedDialog.Confirm(this, L("chooseHost"), L("unverifiedHostWarning", item.Title),
+                L("continue"), L("cancel"))) return;
+        if (state.HostPresetIds.TryGetValue(item.Key, out var currentPresetId) && currentPresetId != preset.Id)
         {
             var currentName = state.Presets.FirstOrDefault(candidate => candidate.Id == currentPresetId)?.Name ?? currentPresetId;
             if (!ThemedDialog.Confirm(this, L("presets"), L("replaceHostPreset", currentName, preset.Name),
                     settings.Language == "zh-CN" ? "继续" : "Continue", settings.Language == "zh-CN" ? "取消" : "Cancel")) return;
         }
-        var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal) { [item.BapId] = preset.Id };
+        var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal) { [item.Key] = preset.Id };
         await SaveAsync(state with { HostPresetIds = bindings }, preset.Id);
     });
 
@@ -792,10 +801,10 @@ public partial class MainWindow : Window
             await SaveAsync(state with { GlobalPresetId = null });
             return;
         }
-        var hostId = choice.HostId;
-        if (hostId is null) return;
+        var hostKey = choice.HostKey;
+        if (hostKey is null) return;
         var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal);
-        bindings.Remove(hostId);
+        bindings.Remove(hostKey);
         await SaveAsync(state with { HostPresetIds = bindings }, SelectedPreset?.Id);
     });
 
@@ -898,7 +907,8 @@ public partial class MainWindow : Window
     private sealed record CatalogEntry(InstalledItem Item, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
     private sealed record PresetChoice(ComponentPreset Preset) { public override string ToString() => Preset.Name; }
     private sealed record ComponentChoice(PresetComponent Component, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
-    private sealed record PresetHostChoice(string? HostId, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal);
+    private static bool IsUnverifiedHost(InstalledItem item) => item.BapId is null || item.Status != "valid";
+    private sealed record PresetHostChoice(string? HostKey, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal);
     private sealed record PropertyEditContext(string InstanceId, WallpaperPropertyDefinition Definition);
     private sealed record SliderEditContext(PropertyEditContext Edit, TextBlock ValueLabel);
     private sealed record PropertyOptionChoice(WallpaperPropertyOption Option) { public string Label => Option.Text; }

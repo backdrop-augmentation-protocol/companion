@@ -71,6 +71,43 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void LegacyBapHostBindingsMigrateToEveryInstalledProjectCopy()
+    {
+        var state = new PresetState([new("daily", "Daily", [])], null,
+            new Dictionary<string, string> { ["org.example.host"] = "daily" });
+        InstalledItem[] installed =
+        [
+            new("local:abc", "local", "host", "Local host", "host", null, "org.example.host", null, null, null),
+            new("workshop:123", "workshop", "host", "Subscribed host", "host", "123", "org.example.host", null, null, null),
+            new("workshop:unrelated", "workshop", "host", "Other host", "host", "456", "org.example.other", null, null, null)
+        ];
+
+        var migrated = PresetSelection.MigrateInstalledHostBindings(state, installed);
+
+        Assert.Equal("daily", migrated.HostPresetIds["local:abc"]);
+        Assert.Equal("daily", migrated.HostPresetIds["workshop:123"]);
+        Assert.DoesNotContain("org.example.host", migrated.HostPresetIds.Keys);
+        Assert.Equal("daily", PresetSelection.Resolve(migrated, "local:abc")?.Id);
+        Assert.Equal("daily", PresetSelection.Resolve(migrated, "workshop:123")?.Id);
+    }
+
+    [Fact]
+    public void HostProjectUrlResolvesTheSpecificInstalledCopyWithoutChangingBapIdentity()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "bap-host-source-test");
+        InstalledItem[] items =
+        [
+            new("local:abc", "local", "host", "Local host", root + "\\local", null, "org.example.host", null, null, null),
+            new("workshop:123", "workshop", "host", "Workshop host", root + "\\workshop", "123", "org.example.host", null, null, null)
+        ];
+        var sourceUrl = new Uri(Path.Combine(root, "workshop", "index.html")).AbsoluteUri;
+
+        Assert.Equal("workshop:123", InstalledCatalog.MatchHostKey(sourceUrl, "org.example.host", items));
+        Assert.Null(InstalledCatalog.MatchHostKey("https://example.com/index.html", "org.example.host", items));
+        Assert.Null(InstalledCatalog.MatchHostKey(sourceUrl, "org.example.other", items));
+    }
+
+    [Fact]
     public async Task LegacyPresetMigratesOnceWithBackupAndAllowsRepeatedComponentInstances()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"bap-preset-migration-{Guid.NewGuid():N}");
@@ -180,6 +217,29 @@ public sealed class CoreTests
             Assert.Equal("host", item.Role);
             Assert.Equal("org.bap.examples.host-wallpaper", item.BapId);
             Assert.Equal("legacy", item.Status);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task InstalledCatalogDiscoversNonBapWebWallpaperAsUnverifiedHost()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-non-bap-host-{Guid.NewGuid():N}");
+        var directory = Path.Combine(root, "wallpaper");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "project.json"), """
+                { "type": "web", "file": "index.html", "title": "Ordinary Web Wallpaper" }
+                """);
+            var catalog = new InstalledCatalog([], [root]);
+
+            var item = Assert.Single(await catalog.DiscoverAsync());
+
+            Assert.Equal("host", item.Role);
+            Assert.Null(item.BapId);
+            Assert.Equal("unverified", item.Status);
+            Assert.Equal("Ordinary Web Wallpaper", item.Title);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

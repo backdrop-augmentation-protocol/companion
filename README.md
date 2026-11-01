@@ -23,15 +23,20 @@ The current implementation uses .NET 10 and ASP.NET Core Minimal API. The servic
 - authenticated component discovery and manifest validation endpoints;
 - authenticated global and wallpaper-scoped JSON configuration endpoints;
 - authenticated `/v1/ws` for a versioned Host hello/Companion hello handshake;
-- `GET /v1/hosts/{hostId}/components` for the effective ordered preset, and
+- `GET /v1/hosts/{hostId}/components` for the effective ordered preset; callers
+  should include the current Web wallpaper's `projectUrl` query parameter so
+  local and subscribed copies can resolve independently, and
   source-keyed resources under `/v1/catalog/components/{key}/resources/{path}`.
 
-The desktop app lists installed Web wallpaper hosts and BAP components from
-both Workshop subscriptions and local WE projects. Presets hold ordered
-component selections with explicit source keys. A host-specific preset overrides
-the global selection; missing components remain in the preset. Without an active
-preset, discovered components are shown by default, preferring a subscribed
-copy when the same BAP ID also exists locally.
+The desktop app lists every installed Web wallpaper project and BAP components
+from both Workshop subscriptions and local WE projects. Presets hold ordered
+component selections with explicit source keys, and host assignments are scoped
+to an installed project key so local and subscribed copies can be configured
+independently. Non-BAP wallpapers can be assigned after a warning, but they do
+not gain BAP component rendering. A host-specific preset overrides the global
+selection; missing components remain in the preset. Without an active preset,
+discovered components are shown by default, preferring a subscribed copy when
+the same BAP ID also exists locally.
 
 The WPF desktop window edits presets and displays installed hosts and components as
 preview cards. Select a card to see its source, BAP ID, version, status, and
