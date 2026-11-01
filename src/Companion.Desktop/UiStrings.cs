@@ -22,6 +22,7 @@ internal static class UiStrings
         ["y"] = ("Y position", "Y 位置"),
         ["width"] = ("Width", "宽度"),
         ["height"] = ("Height", "高度"),
+        ["order"] = ("Order", "顺序"),
         ["scale"] = ("Scale", "缩放"),
         ["rotation"] = ("Rotation", "旋转"),
         ["opacity"] = ("Opacity", "不透明度"),

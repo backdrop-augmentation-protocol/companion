@@ -163,6 +163,11 @@ public sealed class WindowTests
                 Assert.Equal(2, window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count());
                 Assert.Equal(8, window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>().Count());
                 Assert.True(Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.CheckBox>()).IsChecked);
+                window.SelectedComponents.SelectedIndex = 1;
+                window.UpdateLayout();
+                Assert.Contains(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Order");
+                Assert.Equal(5, window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>().Count());
+                window.SelectedComponents.SelectedIndex = 0;
                 Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
                 window.RenderSnapshot(presetTestItems, initialPresetState with { HostPresetIds = new Dictionary<string, string>() });
                 Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
