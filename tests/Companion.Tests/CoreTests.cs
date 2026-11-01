@@ -373,6 +373,18 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void UnassignedHostReceivesEmptyGridComposition()
+    {
+        var composition = EffectiveComponents.ResolveComposition(
+            new PresetState([], null, new Dictionary<string, string>()), "host", []);
+
+        Assert.Equal("unassigned", composition.PresetId);
+        Assert.Equal("grid", composition.LayoutMode);
+        Assert.Equal(new GridLayoutSettings(), composition.Grid);
+        Assert.Empty(composition.Instances);
+    }
+
+    [Fact]
     public void EffectiveCompositionIncludesPresetScopedLayoutAndRevision()
     {
         var preset = new ComponentPreset("work", "Work", [],

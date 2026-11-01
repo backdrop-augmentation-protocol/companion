@@ -35,7 +35,7 @@ public static class EffectiveComponents
             preset?.Revision ?? 0,
             preset?.UpdatedAt ?? DateTimeOffset.UnixEpoch,
             preset?.LayoutMode ?? "grid",
-            preset?.LayoutMode == "grid" ? preset.Grid ?? new GridLayoutSettings() : null,
+            preset is null || preset.LayoutMode == "grid" ? preset?.Grid ?? new GridLayoutSettings() : null,
             Resolve(state, hostId, items));
     }
 
