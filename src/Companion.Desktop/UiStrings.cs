@@ -28,6 +28,40 @@ internal static class UiStrings
         ["opacity"] = ("Opacity", "不透明度"),
         ["zIndex"] = ("Layer order", "层级"),
         ["locked"] = ("Lock position in grid", "在网格中锁定位置"),
+        ["anchorTopLeft"] = ("Top left", "左上"),
+        ["anchorTop"] = ("Top", "上方"),
+        ["anchorTopRight"] = ("Top right", "右上"),
+        ["anchorLeft"] = ("Left", "左侧"),
+        ["anchorCenter"] = ("Center", "居中"),
+        ["anchorRight"] = ("Right", "右侧"),
+        ["anchorBottomLeft"] = ("Bottom left", "左下"),
+        ["anchorBottom"] = ("Bottom", "下方"),
+        ["anchorBottomRight"] = ("Bottom right", "右下"),
+        ["adjustLess"] = ("Decrease slightly", "微调减少"),
+        ["adjustMore"] = ("Increase slightly", "微调增加"),
+        ["propertyClockDate"] = ("Clock & Date", "时间与日期"),
+        ["propertyCalendar"] = ("Calendar", "日历"),
+        ["propertyAppearance"] = ("Appearance", "外观"),
+        ["propertyStandard"] = ("Standard", "标准"),
+        ["propertyCustom"] = ("Custom", "自定义"),
+        ["propertyTimeFormat"] = ("Time format", "时间格式"),
+        ["property24Hour"] = ("24-hour", "24 小时制"),
+        ["property12Hour"] = ("12-hour", "12 小时制"),
+        ["propertySystemLocale"] = ("System locale", "跟随系统区域设置"),
+        ["propertyShowSeconds"] = ("Show seconds", "显示秒"),
+        ["propertyShowDate"] = ("Show date", "显示日期"),
+        ["propertyDateFormat"] = ("Date format", "日期格式"),
+        ["propertyLong"] = ("Long", "完整格式"),
+        ["propertyShort"] = ("Short", "简短格式"),
+        ["propertyWidgetLabel"] = ("Widget label", "挂件标题"),
+        ["propertyWidgetSize"] = ("Widget size", "挂件大小"),
+        ["propertyFirstDay"] = ("First day of week", "每周起始日"),
+        ["propertyMonday"] = ("Monday", "星期一"),
+        ["propertySunday"] = ("Sunday", "星期日"),
+        ["propertyAdjacentDates"] = ("Show adjacent month dates", "显示相邻月份日期"),
+        ["propertyShowYear"] = ("Show year", "显示年份"),
+        ["propertyCalendarLabel"] = ("Calendar label", "日历标题"),
+        ["propertyColorScheme"] = ("Color scheme", "配色"),
         ["details"] = ("Details", "详情"),
         ["selectItem"] = ("Select an item to view its details.", "选择一个项目以查看详情。"),
         ["source"] = ("Source", "来源"),
@@ -113,6 +147,21 @@ internal static class UiStrings
         ["legacy"] = ("Legacy", "旧版"),
         ["missing"] = ("Missing", "缺失")
     };
+
+    private static readonly Dictionary<string, string> PropertyTextKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Clock & Date"] = "propertyClockDate", ["Calendar"] = "propertyCalendar", ["Appearance"] = "propertyAppearance",
+        ["Standard"] = "propertyStandard", ["Custom"] = "propertyCustom", ["Time format"] = "propertyTimeFormat",
+        ["24-hour"] = "property24Hour", ["12-hour"] = "property12Hour", ["System locale"] = "propertySystemLocale",
+        ["Show seconds"] = "propertyShowSeconds", ["Show date"] = "propertyShowDate", ["Date format"] = "propertyDateFormat",
+        ["Long"] = "propertyLong", ["Short"] = "propertyShort", ["Widget label"] = "propertyWidgetLabel",
+        ["Widget size"] = "propertyWidgetSize", ["First day of week"] = "propertyFirstDay", ["Monday"] = "propertyMonday",
+        ["Sunday"] = "propertySunday", ["Show adjacent month dates"] = "propertyAdjacentDates", ["Show year"] = "propertyShowYear",
+        ["Calendar label"] = "propertyCalendarLabel", ["ui_browse_properties_scheme_color"] = "propertyColorScheme"
+    };
+
+    public static string PropertyText(string text, string language) =>
+        PropertyTextKeys.TryGetValue(text, out var key) ? Get(key, language) : text;
 
     public static string Get(string key, string language, params object[] args)
     {

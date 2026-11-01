@@ -586,7 +586,8 @@ public partial class MainWindow : Window
                         break;
                     case "combo":
                         var combo = new ComboBox { Tag = context, Margin = new Thickness(0, 0, 0, 5), IsEnabled = definition.ConditionSupported };
-                        combo.ItemsSource = (definition.Options ?? []).Select(option => new PropertyOptionChoice(option)).ToArray();
+                        combo.ItemsSource = (definition.Options ?? []).Select(option => new PropertyOptionChoice(
+                            option, UiStrings.PropertyText(option.Text, settings.Language))).ToArray();
                         combo.DisplayMemberPath = nameof(PropertyOptionChoice.Label);
                         combo.SelectedItem = combo.Items.Cast<PropertyOptionChoice>().FirstOrDefault(option =>
                             System.Text.Json.JsonElement.DeepEquals(option.Option.Value, value));
@@ -674,24 +675,24 @@ public partial class MainWindow : Window
             var anchor = new ComboBox { Tag = new LayoutEditContext(component.InstanceId!, "anchor"), Margin = new Thickness(0, 0, 0, 7) };
             anchor.ItemsSource = new[]
             {
-                new LayoutChoice("top-left", "Top left"), new LayoutChoice("top", "Top"), new LayoutChoice("top-right", "Top right"),
-                new LayoutChoice("left", "Left"), new LayoutChoice("center", "Center"), new LayoutChoice("right", "Right"),
-                new LayoutChoice("bottom-left", "Bottom left"), new LayoutChoice("bottom", "Bottom"), new LayoutChoice("bottom-right", "Bottom right")
+                new LayoutChoice("top-left", L("anchorTopLeft")), new LayoutChoice("top", L("anchorTop")), new LayoutChoice("top-right", L("anchorTopRight")),
+                new LayoutChoice("left", L("anchorLeft")), new LayoutChoice("center", L("anchorCenter")), new LayoutChoice("right", L("anchorRight")),
+                new LayoutChoice("bottom-left", L("anchorBottomLeft")), new LayoutChoice("bottom", L("anchorBottom")), new LayoutChoice("bottom-right", L("anchorBottomRight"))
             };
             anchor.DisplayMemberPath = nameof(LayoutChoice.Label);
             anchor.SelectedItem = anchor.Items.Cast<LayoutChoice>().FirstOrDefault(choice => choice.Value == layout.Anchor);
             anchor.SelectionChanged += LayoutAnchor_Changed;
             AddLayoutField(L("anchor"), anchor);
-            AddLayoutSlider(component.InstanceId!, "x", layout.X ?? 0.5, -2, 2, 0.01);
-            AddLayoutSlider(component.InstanceId!, "y", layout.Y ?? 0.5, -2, 2, 0.01);
-            AddLayoutSlider(component.InstanceId!, "width", layout.Width ?? 0.25, 0.01, 2, 0.01);
-            AddLayoutSlider(component.InstanceId!, "height", layout.Height ?? 0.35, 0.01, 2, 0.01);
+            AddFocusedLayoutSlider(component.InstanceId!, "x", layout.X ?? 0.5, -2, 2, 0.001, 0.5);
+            AddFocusedLayoutSlider(component.InstanceId!, "y", layout.Y ?? 0.5, -2, 2, 0.001, 0.5);
+            AddFocusedLayoutSlider(component.InstanceId!, "width", layout.Width ?? 0.25, 0.01, 2, 0.001, 0.5);
+            AddFocusedLayoutSlider(component.InstanceId!, "height", layout.Height ?? 0.35, 0.01, 2, 0.001, 0.5);
         }
-        else AddLayoutNumber(component.InstanceId!, "order", layout.Order ?? 0, 0, 10000, integer: true);
-        AddLayoutSlider(component.InstanceId!, "scale", layout.Scale, 0.1, 5, 0.05);
-        AddLayoutSlider(component.InstanceId!, "rotation", layout.Rotation, -360, 360, 1, integer: true);
-        AddLayoutSlider(component.InstanceId!, "opacity", layout.Opacity, 0, 1, 0.01);
-        AddLayoutNumber(component.InstanceId!, "zIndex", layout.ZIndex, -100000, 100000, integer: true);
+        else AddFocusedLayoutSlider(component.InstanceId!, "order", layout.Order ?? 0, 0, 10000, 1, 20, integer: true);
+        AddFocusedLayoutSlider(component.InstanceId!, "scale", layout.Scale, 0.1, 5, 0.005, 0.5);
+        AddFocusedLayoutSlider(component.InstanceId!, "rotation", layout.Rotation, -360, 360, 0.1, 45);
+        AddFocusedLayoutSlider(component.InstanceId!, "opacity", layout.Opacity, 0, 1, 0.005, 0.25);
+        AddFocusedLayoutSlider(component.InstanceId!, "zIndex", layout.ZIndex, -100000, 100000, 1, 20, integer: true);
         if (layout.Mode == "manual" && preset.LayoutMode == "grid")
         {
             var locked = new CheckBox
@@ -727,6 +728,19 @@ public partial class MainWindow : Window
         AddLayoutField(L(key), field);
     }
 
+    private void AddFocusedLayoutSlider(string instanceId, string key, double value, double minimum, double maximum,
+        double fineStep, double window, bool integer = false)
+    {
+        var effectiveMinimum = Math.Max(minimum, value - window);
+        var effectiveMaximum = Math.Min(maximum, value + window);
+        if (effectiveMaximum - effectiveMinimum < fineStep)
+        {
+            effectiveMinimum = minimum;
+            effectiveMaximum = maximum;
+        }
+        AddLayoutSlider(instanceId, key, value, effectiveMinimum, effectiveMaximum, fineStep, integer);
+    }
+
     private void AddLayoutSlider(string instanceId, string key, double value, double minimum, double maximum, double step, bool integer = false)
     {
         var valueText = new TextBlock
@@ -736,22 +750,38 @@ public partial class MainWindow : Window
             FontSize = 11
         };
         var heading = new Grid { Margin = new Thickness(0, 3, 0, 0) };
+        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         heading.Children.Add(new TextBlock
         {
             Text = L(key), Foreground = (Brush)FindResource("Ink"), FontWeight = FontWeights.SemiBold,
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 48, 0)
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center
         });
-        heading.Children.Add(valueText);
-        TransformPanel.Children.Add(heading);
-
         var slider = new Slider
         {
             Minimum = minimum, Maximum = maximum, Value = Math.Clamp(value, minimum, maximum),
-            TickFrequency = step, IsSnapToTickEnabled = false, IsMoveToPointEnabled = true,
+            SmallChange = step, LargeChange = step * 5,
+            TickFrequency = step, IsSnapToTickEnabled = false, IsMoveToPointEnabled = false,
             Height = 28, Margin = new Thickness(0, 0, 0, 5),
             Style = (Style)FindResource("TransformSlider"),
-            Tag = new LayoutSliderEditContext(instanceId, key, valueText, integer)
+            Tag = new LayoutSliderEditContext(instanceId, key, valueText, integer, step)
         };
+        var controls = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var (glyph, direction, tooltip) in new[] { ("−", -1d, "adjustLess"), ("+", 1d, "adjustMore") })
+        {
+            var button = new Button
+            {
+                Content = glyph, Width = 25, Height = 23, Padding = new Thickness(0),
+                Margin = new Thickness(0, 0, 4, 0), Style = (Style)FindResource("QuietButton"),
+                ToolTip = L(tooltip), Tag = new LayoutNudgeContext(slider, direction)
+            };
+            button.Click += LayoutNudge_Click;
+            controls.Children.Add(button);
+        }
+        controls.Children.Add(valueText);
+        Grid.SetColumn(controls, 1);
+        heading.Children.Add(controls);
+        TransformPanel.Children.Add(heading);
         slider.ValueChanged += LayoutSlider_ValueChanged;
         slider.LostKeyboardFocus += LayoutSlider_LostKeyboardFocus;
         slider.AddHandler(UIElement.MouseLeftButtonUpEvent, new MouseButtonEventHandler(LayoutSlider_MouseLeftButtonUp), true);
@@ -765,6 +795,15 @@ public partial class MainWindow : Window
     {
         if (sender is Slider { Tag: LayoutSliderEditContext context })
             context.ValueText.Text = FormatLayoutValue(e.NewValue, context.Integer);
+    }
+
+    private void LayoutNudge_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: LayoutNudgeContext context } || context.Slider.Tag is not LayoutSliderEditContext edit) return;
+        var next = Math.Clamp(context.Slider.Value + context.Direction * edit.FineStep, context.Slider.Minimum, context.Slider.Maximum);
+        if (Math.Abs(next - context.Slider.Value) < double.Epsilon) return;
+        context.Slider.Value = next;
+        SaveLayoutSlider(edit, next);
     }
 
     private void LayoutSlider_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -786,6 +825,20 @@ public partial class MainWindow : Window
         if (component is null) return;
         var layout = GetLayout(component, preset);
         value = context.Integer ? Math.Round(value) : Math.Round(value, 3);
+        var currentValue = context.Field switch
+        {
+            "x" => layout.X,
+            "y" => layout.Y,
+            "width" => layout.Width,
+            "height" => layout.Height,
+            "scale" => layout.Scale,
+            "rotation" => layout.Rotation,
+            "opacity" => layout.Opacity,
+            "order" => layout.Order,
+            "zIndex" => layout.ZIndex,
+            _ => null
+        };
+        if (currentValue is { } current && Math.Abs(current - value) < 0.0005) return;
         var next = context.Field switch
         {
             "x" => layout with { X = value },
@@ -795,6 +848,8 @@ public partial class MainWindow : Window
             "scale" => layout with { Scale = value },
             "rotation" => layout with { Rotation = value },
             "opacity" => layout with { Opacity = value },
+            "order" => layout with { Order = (int)Math.Round(value) },
+            "zIndex" => layout with { ZIndex = (int)Math.Round(value) },
             _ => null
         };
         if (next is not null) _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, next));
@@ -875,9 +930,10 @@ public partial class MainWindow : Window
     {
         if (definition.Text == "ui_browse_properties_scheme_color")
             return settings.Language == "zh-CN" ? "配色" : "Color scheme";
-        if (definition.Text is { Length: > 0 } text && !text.StartsWith("ui_", StringComparison.Ordinal)) return text;
-        return System.Text.RegularExpressions.Regex.Replace(definition.Key, "([a-z0-9])([A-Z])", "$1 $2")
-            .Replace('_', ' ').Replace('-', ' ');
+        var text = definition.Text is { Length: > 0 } label && !label.StartsWith("ui_", StringComparison.Ordinal)
+            ? label
+            : System.Text.RegularExpressions.Regex.Replace(definition.Key, "([a-z0-9])([A-Z])", "$1 $2").Replace('_', ' ').Replace('-', ' ');
+        return UiStrings.PropertyText(text, settings.Language);
     }
 
     private void AddPropertyDiagnostics(InstalledItem item)
@@ -1174,9 +1230,10 @@ public partial class MainWindow : Window
     private sealed record PresetHostChoice(string? HostKey, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal);
     private sealed record PropertyEditContext(string InstanceId, WallpaperPropertyDefinition Definition);
     private sealed record LayoutEditContext(string InstanceId, string Field);
-    private sealed record LayoutSliderEditContext(string InstanceId, string Field, TextBlock ValueText, bool Integer);
+    private sealed record LayoutSliderEditContext(string InstanceId, string Field, TextBlock ValueText, bool Integer, double FineStep);
+    private sealed record LayoutNudgeContext(Slider Slider, double Direction);
     private sealed record LayoutChoice(string Value, string Label);
     private sealed record SliderEditContext(PropertyEditContext Edit, TextBlock ValueLabel);
-    private sealed record PropertyOptionChoice(WallpaperPropertyOption Option) { public string Label => Option.Text; }
+    private sealed record PropertyOptionChoice(WallpaperPropertyOption Option, string Label);
     private sealed record TrustedHostChoice(TrustedHost Host, string Label) { public override string ToString() => Label; }
 }

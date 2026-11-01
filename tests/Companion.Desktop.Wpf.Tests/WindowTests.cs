@@ -161,14 +161,21 @@ public sealed class WindowTests
                 Assert.Equal("Component properties", window.PropertyHeading.Text);
                 Assert.Contains(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBlock>(), header => Equals(header.Tag, "TransformGroupHeader"));
                 Assert.Equal(2, window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count());
-                Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>());
-                Assert.Equal(7, window.TransformPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
+                Assert.Empty(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>());
+                Assert.Equal(8, window.TransformPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
+                Assert.Equal(16, window.TransformPanel.Children.OfType<System.Windows.Controls.Grid>()
+                    .SelectMany(grid => grid.Children.OfType<System.Windows.Controls.StackPanel>())
+                    .SelectMany(panel => panel.Children.OfType<System.Windows.Controls.Button>()).Count());
                 Assert.True(Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.CheckBox>()).IsChecked);
                 window.SelectedComponents.SelectedIndex = 1;
                 window.UpdateLayout();
-                Assert.Contains(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Order");
-                Assert.Equal(2, window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>().Count());
-                Assert.Equal(3, window.TransformPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
+                Assert.Contains(window.TransformPanel.Children.OfType<System.Windows.Controls.Grid>()
+                    .SelectMany(grid => grid.Children.OfType<System.Windows.Controls.TextBlock>()), label => label.Text == "Order");
+                Assert.Empty(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>());
+                Assert.Equal(5, window.TransformPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
+                Assert.Equal(10, window.TransformPanel.Children.OfType<System.Windows.Controls.Grid>()
+                    .SelectMany(grid => grid.Children.OfType<System.Windows.Controls.StackPanel>())
+                    .SelectMany(panel => panel.Children.OfType<System.Windows.Controls.Button>()).Count());
                 window.SelectedComponents.SelectedIndex = 0;
                 Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
                 window.RenderSnapshot(presetTestItems, initialPresetState with { HostPresetIds = new Dictionary<string, string>() });
