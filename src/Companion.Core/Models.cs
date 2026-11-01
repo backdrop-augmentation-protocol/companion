@@ -52,7 +52,8 @@ public sealed record WallpaperPropertyDefinition(
     int? Fraction = null,
     IReadOnlyList<WallpaperPropertyOption>? Options = null,
     string? Condition = null,
-    bool ConditionSupported = true);
+    bool ConditionSupported = true,
+    int Order = 0);
 
 public sealed record CompanionConfig(
     Dictionary<string, object?> Global,

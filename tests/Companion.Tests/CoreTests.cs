@@ -266,7 +266,7 @@ public sealed class CoreTests
         using var document = JsonDocument.Parse("""
             { "general": { "properties": {
               "enabled": { "type": "bool", "text": "Enabled", "value": true, "order": 2 },
-              "theme": { "type": "combo", "value": "blue", "options": [{ "value": "blue", "text": "Blue" }, { "value": "red", "text": "Red" }] },
+              "theme": { "type": "combo", "value": "blue", "order": 10, "options": [{ "value": "blue", "label": "Blue" }, { "value": "red", "text": "Red" }] },
               "opacity": { "type": "slider", "value": 0.5, "min": 0, "max": 1, "step": 0.1 },
               "caption": { "type": "textinput", "value": "Hello" },
               "tint": { "type": "color", "value": "0.1 0.2 0.3", "condition": "enabled.value == true" },
@@ -276,7 +276,9 @@ public sealed class CoreTests
             """);
 
         var read = WallpaperPropertyReader.Read(document.RootElement);
-        Assert.Equal(["caption", "opacity", "theme", "tint", "unsafe", "enabled"], read.Properties.Select(property => property.Key));
+        Assert.Equal(["caption", "opacity", "tint", "unsafe", "enabled", "theme"], read.Properties.Select(property => property.Key));
+        Assert.Equal(10, read.Properties.Single(property => property.Key == "theme").Order);
+        Assert.Equal("Blue", read.Properties.Single(property => property.Key == "theme").Options![0].Text);
         Assert.DoesNotContain(read.Properties, property => property.Key == "image");
         Assert.False(read.Properties.Single(property => property.Key == "unsafe").ConditionSupported);
         Assert.True(read.Properties.Single(property => property.Key == "tint").ConditionSupported);

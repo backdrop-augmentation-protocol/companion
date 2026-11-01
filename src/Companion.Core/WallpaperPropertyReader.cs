@@ -65,10 +65,11 @@ public static partial class WallpaperPropertyReader
             var conditionSupported = string.IsNullOrWhiteSpace(condition) || PropertyCondition.IsSupported(condition);
             if (!conditionSupported) diagnostics.Add($"Property '{entry.Name}' uses an unsupported display condition.");
             result.Add(new(entry.Name, type, value.Clone(), String(entry.Value, "text"), minimum, maximum, step,
-                Integer(entry.Value, "fraction") ?? Integer(entry.Value, "precision"), options, condition, conditionSupported));
+                Integer(entry.Value, "fraction") ?? Integer(entry.Value, "precision"), options, condition, conditionSupported,
+                Integer(entry.Value, "order") ?? 0));
         }
 
-        return new(result.OrderBy(property => Number(properties.GetProperty(property.Key), "order") ?? 0)
+        return new(result.OrderBy(property => property.Order)
             .ThenBy(property => property.Key, StringComparer.Ordinal).ToArray(), diagnostics);
     }
 
@@ -119,7 +120,9 @@ public static partial class WallpaperPropertyReader
                 return [];
             }
             var text = option.TryGetProperty("text", out var textNode) && textNode.ValueKind == JsonValueKind.String
-                ? textNode.GetString()! : value.ToString();
+                ? textNode.GetString()!
+                : option.TryGetProperty("label", out var labelNode) && labelNode.ValueKind == JsonValueKind.String
+                    ? labelNode.GetString()! : value.ToString();
             options.Add(new(value.Clone(), text));
         }
         return options;

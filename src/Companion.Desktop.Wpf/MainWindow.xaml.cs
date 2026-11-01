@@ -340,7 +340,14 @@ public partial class MainWindow : Window
 
     internal int EffectiveDisplayIndex => Math.Clamp(settings.DisplayIndex, 0, Math.Max(0, Forms.Screen.AllScreens.Length - 1));
 
-    private ComponentPreset? SelectedPreset => (PresetList.SelectedItem as PresetChoice)?.Preset;
+    private ComponentPreset? SelectedPreset
+    {
+        get
+        {
+            var selectedId = (PresetList.SelectedItem as PresetChoice)?.Preset.Id;
+            return selectedId is null ? null : state.Presets.FirstOrDefault(preset => preset.Id == selectedId);
+        }
+    }
 
     private void RenderPresets(string? selectId = null)
     {
@@ -349,6 +356,7 @@ public partial class MainWindow : Window
         renderingPresets = true;
         try
         {
+            PresetList.SelectedItem = null;
             PresetList.ItemsSource = state.Presets.Select(preset => new PresetChoice(preset)).ToArray();
             PresetList.SelectedItem = PresetList.Items.Cast<PresetChoice>().FirstOrDefault(choice => choice.Preset.Id == selectId);
         }
@@ -401,6 +409,7 @@ public partial class MainWindow : Window
         renderingComponentChoices = true;
         try
         {
+            SelectedComponents.SelectedItem = null;
             SelectedComponents.ItemsSource = (SelectedPreset?.Components ?? [])
                 .Select(component =>
                 {
@@ -524,18 +533,37 @@ public partial class MainWindow : Window
                 definition => component.Config is not null && component.Config.TryGetValue(definition.Key, out var configured) &&
                     WallpaperPropertyReader.IsValidValue(definition, configured) ? configured : definition.DefaultValue,
                 StringComparer.Ordinal);
+            int? previousPropertyGroup = null;
             foreach (var definition in definitions)
             {
                 var value = effectiveValues[definition.Key];
                 if (definition.ConditionSupported && !WallpaperPropertyReader.IsConditionMet(definition, effectiveValues)) continue;
-                var context = new PropertyEditContext(component.InstanceId!, definition);
-                var title = new TextBlock
+                // WE projects in the BA collection use each order decade as a settings section.
+                var propertyGroup = Math.Max(0, definition.Order) / 10;
+                var isGroupLead = previousPropertyGroup != propertyGroup;
+                if (isGroupLead)
                 {
-                    Text = PropertyTitle(definition),
-                    Foreground = (Brush)FindResource("Ink"), FontWeight = FontWeights.SemiBold,
-                    TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 7, 0, 4)
-                };
-                InstancePropertyPanel.Children.Add(title);
+                    InstancePropertyPanel.Children.Add(new TextBlock
+                    {
+                        Text = PropertyTitle(definition),
+                        Foreground = (Brush)FindResource("Muted"), FontWeight = FontWeights.SemiBold,
+                        FontSize = 11, TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, previousPropertyGroup is null ? 4 : 14, 0, 6),
+                        Tag = "PropertyGroupHeader"
+                    });
+                    previousPropertyGroup = propertyGroup;
+                }
+                var context = new PropertyEditContext(component.InstanceId!, definition);
+                if (!isGroupLead)
+                {
+                    var title = new TextBlock
+                    {
+                        Text = PropertyTitle(definition),
+                        Foreground = (Brush)FindResource("Ink"), FontWeight = FontWeights.SemiBold,
+                        TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 7, 0, 4)
+                    };
+                    InstancePropertyPanel.Children.Add(title);
+                }
                 switch (definition.Type)
                 {
                     case "bool":
@@ -701,7 +729,7 @@ public partial class MainWindow : Window
     private async Task SaveAsync(PresetState next, string? selectedId = null)
     {
         await store.WriteAsync(next);
-        state = next;
+        state = await store.ReadAsync();
         RenderPresets(selectedId);
     }
 

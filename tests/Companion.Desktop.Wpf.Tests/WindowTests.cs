@@ -130,11 +130,11 @@ public sealed class WindowTests
                 settings.SetDisplayIndex(0);
                 using var propertyJson = System.Text.Json.JsonDocument.Parse("""
                     { "general": { "properties": {
-                      "enabled": { "type": "bool", "text": "Enabled", "value": true },
-                      "mode": { "type": "combo", "text": "Mode", "value": "one", "options": [{ "value": "one", "text": "One" }, { "value": "two", "text": "Two" }] },
-                      "label": { "type": "textinput", "text": "Label", "value": "Default" },
-                      "schemecolor": { "type": "color", "text": "ui_browse_properties_scheme_color", "value": "0.1 0.2 0.3" },
-                      "opacity": { "type": "slider", "text": "Opacity", "value": 0.5, "min": 0, "max": 1 }
+                      "enabled": { "type": "bool", "text": "Enabled", "value": true, "order": 0 },
+                      "mode": { "type": "combo", "text": "Mode", "value": "one", "order": 1, "options": [{ "value": "one", "label": "One" }, { "value": "two", "label": "Two" }] },
+                      "label": { "type": "textinput", "text": "Label", "value": "Default", "order": 2, "condition": "mode.value == 'two'" },
+                      "schemecolor": { "type": "color", "text": "ui_browse_properties_scheme_color", "value": "0.1 0.2 0.3", "order": 10 },
+                      "opacity": { "type": "slider", "text": "Opacity", "value": 0.5, "min": 0, "max": 1, "order": 11 }
                     } } }
                     """);
                 var componentProperties = WallpaperPropertyReader.Read(propertyJson.RootElement).Properties;
@@ -230,6 +230,23 @@ public sealed class WindowTests
                 Assert.True(window.InstancePropertyPanel.Children.Count > 0, window.PropertyHint.Text);
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Color scheme");
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>(), button => button.ToolTip?.ToString() == "Choose color");
+                Assert.Equal(2, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>().Count(textBlock => Equals(textBlock.Tag, "PropertyGroupHeader")));
+                Assert.Equal(4, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
+                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count() +
+                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>().Count() +
+                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Slider>().Count() +
+                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>().Count(button => button.ToolTip?.ToString() == "Choose color"));
+                var customConfig = new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["mode"] = System.Text.Json.JsonDocument.Parse("\"two\"").RootElement.Clone()
+                };
+                var customPreset = initialPresetState.Presets.Single() with
+                {
+                    Components = [firstInstance with { Config = customConfig }, secondInstance]
+                };
+                window.RenderSnapshot(presetTestItems, initialPresetState with { Presets = [customPreset] });
+                window.SelectedComponents.SelectedIndex = 0;
+                Assert.Single(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>());
                 Assert.Equal(5, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count() +
                     window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>().Count() +
