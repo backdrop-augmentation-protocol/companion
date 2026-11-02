@@ -213,7 +213,8 @@ public sealed class WindowTests
                 Assert.True(window.AddHostButton.IsEnabled);
                 window.SetGlobalButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 WaitForDispatcher(() => !window.SetGlobalButton.IsEnabled, TimeSpan.FromSeconds(5));
-                Assert.False(window.SetGlobalButton.IsEnabled);
+                Assert.False(window.SetGlobalButton.IsEnabled,
+                    $"Timed out applying the global preset. Log: {ReadLog(log.Path)}");
                 Assert.Single(window.PresetHostsList.Items);
                 Assert.Equal("[All hosts]", window.PresetHostsList.Items[0].GetType().GetProperty("Title")?.GetValue(window.PresetHostsList.Items[0]));
                 Assert.Equal(Visibility.Visible, window.AddHostButton.Visibility);
@@ -384,6 +385,13 @@ public sealed class WindowTests
             timer.Start();
             System.Windows.Threading.Dispatcher.PushFrame(frame);
         }
+    }
+
+    private static string ReadLog(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 
     private sealed class StaticHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
