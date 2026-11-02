@@ -212,11 +212,7 @@ public sealed class WindowTests
                 Assert.True(window.SetGlobalButton.IsEnabled);
                 Assert.True(window.AddHostButton.IsEnabled);
                 window.SetGlobalButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                var globalFrame = new System.Windows.Threading.DispatcherFrame();
-                var globalTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-                globalTimer.Tick += (_, _) => { globalTimer.Stop(); globalFrame.Continue = false; };
-                globalTimer.Start();
-                System.Windows.Threading.Dispatcher.PushFrame(globalFrame);
+                WaitForDispatcher(() => !window.SetGlobalButton.IsEnabled, TimeSpan.FromSeconds(5));
                 Assert.False(window.SetGlobalButton.IsEnabled);
                 Assert.Single(window.PresetHostsList.Items);
                 Assert.Equal("[All hosts]", window.PresetHostsList.Items[0].GetType().GetProperty("Title")?.GetValue(window.PresetHostsList.Items[0]));
@@ -371,6 +367,24 @@ public sealed class WindowTests
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
 
+
+    private static void WaitForDispatcher(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            var frame = new System.Windows.Threading.DispatcherFrame();
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
+            timer.Tick += (_, _) =>
+            {
+                if (!condition() && DateTime.UtcNow < deadline) return;
+                timer.Stop();
+                frame.Continue = false;
+            };
+            timer.Start();
+            System.Windows.Threading.Dispatcher.PushFrame(frame);
+        }
+    }
 
     private sealed class StaticHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
