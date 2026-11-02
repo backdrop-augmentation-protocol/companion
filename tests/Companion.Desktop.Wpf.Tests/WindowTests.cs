@@ -211,8 +211,14 @@ public sealed class WindowTests
                 Assert.True(window.RemovePresetButton.IsEnabled);
                 Assert.True(window.SetGlobalButton.IsEnabled);
                 Assert.True(window.AddHostButton.IsEnabled);
-                window.SetGlobalButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-                WaitForDispatcher(() => !window.SetGlobalButton.IsEnabled, TimeSpan.FromSeconds(5));
+                var previousContext = SynchronizationContext.Current;
+                SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(application.Dispatcher));
+                try
+                {
+                    window.SetGlobalButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    WaitForDispatcher(() => !window.SetGlobalButton.IsEnabled, TimeSpan.FromSeconds(5));
+                }
+                finally { SynchronizationContext.SetSynchronizationContext(previousContext); }
                 Assert.False(window.SetGlobalButton.IsEnabled,
                     $"Timed out applying the global preset. Log: {ReadLog(log.Path)}");
                 Assert.Single(window.PresetHostsList.Items);
