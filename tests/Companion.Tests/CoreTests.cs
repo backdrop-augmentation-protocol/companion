@@ -292,6 +292,56 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void WallpaperPropertyLocalizationUsesFallbacksWithoutChangingValues()
+    {
+        using var project = JsonDocument.Parse("""{ "general": { "properties": { "format": { "type": "combo", "text": "Format", "value": "24h", "options": [{ "value": "24h", "text": "24-hour" }] }, "showDate": { "type": "bool", "text": "Show date", "value": true } } } }""");
+        using var sidecar = JsonDocument.Parse("""{ "schemaVersion": "0.1.0", "properties": { "format": { "labels": { "en": "Time format", "zh-CN": "时间格式" }, "options": [{ "value": "24h", "labels": { "en": "24-hour", "zh-CN": "24 小时制" } }] }, "showDate": { "labels": { "zh": "显示日期" } } } }""");
+
+        var read = WallpaperPropertyReader.Read(project.RootElement, sidecar.RootElement);
+        var format = read.Properties.Single(property => property.Key == "format");
+        var showDate = read.Properties.Single(property => property.Key == "showDate");
+        Assert.Equal("时间格式", WallpaperPropertyReader.ResolveLocalizedLabel(format.LocalizedLabels, "zh-CN"));
+        Assert.Equal("24 小时制", WallpaperPropertyReader.ResolveLocalizedLabel(format.Options![0].LocalizedLabels, "zh-CN"));
+        Assert.Equal("显示日期", WallpaperPropertyReader.ResolveLocalizedLabel(showDate.LocalizedLabels, "zh-CN"));
+        Assert.Null(WallpaperPropertyReader.ResolveLocalizedLabel(format.LocalizedLabels, "fr-FR"));
+        Assert.Equal("Format", format.Text); // UI falls back to the original WE label when no sidecar locale matches.
+        Assert.Equal("24h", format.DefaultValue.GetString());
+        Assert.True(WallpaperPropertyReader.IsValidValue(format, format.DefaultValue));
+        Assert.Empty(read.Diagnostics);
+    }
+
+    [Fact]
+    public void InvalidPropertyLocalizationDoesNotHideWallpaperProperties()
+    {
+        using var project = JsonDocument.Parse("""{ "general": { "properties": { "caption": { "type": "textinput", "text": "Caption", "value": "hello" } } } }""");
+        using var sidecar = JsonDocument.Parse("""{ "schemaVersion": "0.1.0", "properties": { "missing": { "labels": { "en": "Missing" } } } }""");
+
+        var read = WallpaperPropertyReader.Read(project.RootElement, sidecar.RootElement);
+        Assert.Equal("caption", Assert.Single(read.Properties).Key);
+        Assert.Contains(read.Diagnostics, diagnostic => diagnostic.Contains("unknown property", StringComparison.Ordinal));
+        Assert.Equal("Caption", read.Properties[0].Text);
+    }
+
+    [Fact]
+    public async Task InstalledCatalogIgnoresMalformedPropertyLocalizationSidecar()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-localization-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(root);
+            await File.WriteAllTextAsync(Path.Combine(root, "project.json"), """{ "type": "web", "title": "Localized component", "general": { "properties": { "caption": { "type": "textinput", "text": "Caption", "value": "hello" } } } }""");
+            await File.WriteAllTextAsync(Path.Combine(root, "manifest.json"), """{ "protocol": { "name": "bap", "version": "0.1.0", "profile": "core" }, "id": "org.example.localized", "name": "Localized", "version": "1.0.0", "role": "component", "capabilities": ["config"], "entrypoints": { "default": "index.html", "standalone": "standalone.html", "embedded": "embedded.html" }, "modes": ["standalone", "embedded"] }""");
+            await File.WriteAllTextAsync(Path.Combine(root, "bap-properties.json"), "{broken");
+
+            var item = Assert.Single(await new InstalledCatalog([], [root]).DiscoverAsync());
+            Assert.Equal("valid", item.Status);
+            Assert.Equal("caption", Assert.Single(item.Properties!).Key);
+            Assert.Contains(item.PropertyDiagnostics!, diagnostic => diagnostic.Contains("invalid JSON", StringComparison.Ordinal));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void CatalogPreviewIsConfinedToProjectAndMustBeDisplayable()
     {
         var root = Path.Combine(Path.GetTempPath(), $"bap-preview-{Guid.NewGuid():N}");

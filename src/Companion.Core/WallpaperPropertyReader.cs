@@ -15,10 +15,11 @@ public static partial class WallpaperPropertyReader
 {
     private static readonly HashSet<string> EditableTypes = ["bool", "color", "slider", "combo", "textinput"];
 
-    public static WallpaperPropertyReadResult Read(JsonElement project)
+    public static WallpaperPropertyReadResult Read(JsonElement project, JsonElement? localization = null)
     {
         var result = new List<WallpaperPropertyDefinition>();
         var diagnostics = new List<string>();
+        var localizedProperties = ReadLocalization(localization, diagnostics);
         if (!project.TryGetProperty("general", out var general) || general.ValueKind != JsonValueKind.Object ||
             !general.TryGetProperty("properties", out var properties) || properties.ValueKind != JsonValueKind.Object)
             return WallpaperPropertyReadResult.Empty;
@@ -64,14 +65,112 @@ public static partial class WallpaperPropertyReader
                 ? conditionNode.GetString() : null;
             var conditionSupported = string.IsNullOrWhiteSpace(condition) || PropertyCondition.IsSupported(condition);
             if (!conditionSupported) diagnostics.Add($"Property '{entry.Name}' uses an unsupported display condition.");
+            localizedProperties.TryGetValue(entry.Name, out var localized);
+            if (localized is not null && localized.Options.Count > 0)
+            {
+                options = options.Select(option => localized.Options.TryGetValue(OptionKey(option.Value), out var labels)
+                    ? option with { LocalizedLabels = labels } : option).ToList();
+                foreach (var optionValue in localized.Options.Keys)
+                    if (!options.Any(option => OptionKey(option.Value) == optionValue))
+                        diagnostics.Add($"Localization for property '{entry.Name}' references an unknown option value.");
+            }
             result.Add(new(entry.Name, type, value.Clone(), String(entry.Value, "text"), minimum, maximum, step,
                 Integer(entry.Value, "fraction") ?? Integer(entry.Value, "precision"), options, condition, conditionSupported,
-                Integer(entry.Value, "order") ?? 0));
+                Integer(entry.Value, "order") ?? 0, localized?.Labels));
         }
+
+        foreach (var key in localizedProperties.Keys)
+            if (!result.Any(property => property.Key == key))
+                diagnostics.Add($"Localization references unknown property '{key}'.");
 
         return new(result.OrderBy(property => property.Order)
             .ThenBy(property => property.Key, StringComparer.Ordinal).ToArray(), diagnostics);
     }
+
+    public static string? ResolveLocalizedLabel(IReadOnlyDictionary<string, string>? labels, string? language)
+    {
+        if (labels is null || labels.Count == 0) return null;
+        var requested = language?.Trim();
+        if (!string.IsNullOrEmpty(requested))
+        {
+            var exact = labels.FirstOrDefault(pair => string.Equals(pair.Key, requested, StringComparison.OrdinalIgnoreCase));
+            if (exact.Key is not null) return exact.Value;
+            var baseLanguage = requested.Split('-', '_')[0];
+            var partial = labels.FirstOrDefault(pair => string.Equals(pair.Key.Split('-', '_')[0], baseLanguage, StringComparison.OrdinalIgnoreCase));
+            if (partial.Key is not null) return partial.Value;
+        }
+        return labels.Count == 1 ? labels.Values.Single() : null;
+    }
+
+    private sealed record PropertyLocalization(IReadOnlyDictionary<string, string>? Labels,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Options);
+
+    private static Dictionary<string, PropertyLocalization> ReadLocalization(JsonElement? localization, List<string> diagnostics)
+    {
+        var result = new Dictionary<string, PropertyLocalization>(StringComparer.Ordinal);
+        if (localization is null) return result;
+        var root = localization.Value;
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("schemaVersion", out var schemaVersion) ||
+            schemaVersion.ValueKind != JsonValueKind.String || schemaVersion.GetString() != "0.1.0" ||
+            !root.TryGetProperty("properties", out var properties) || properties.ValueKind != JsonValueKind.Object)
+        {
+            diagnostics.Add("Property localization sidecar has an unsupported or invalid shape; localized labels were ignored.");
+            return result;
+        }
+
+        foreach (var property in properties.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.Object)
+            {
+                diagnostics.Add($"Localization for property '{property.Name}' is invalid and was ignored.");
+                continue;
+            }
+            IReadOnlyDictionary<string, string>? labels = null;
+            if (property.Value.TryGetProperty("labels", out var labelNode))
+                labels = ReadLabels(labelNode, property.Name, diagnostics);
+            var options = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
+            if (property.Value.TryGetProperty("options", out var optionNodes))
+            {
+                if (optionNodes.ValueKind != JsonValueKind.Array)
+                    diagnostics.Add($"Localized options for property '{property.Name}' are invalid and were ignored.");
+                else foreach (var option in optionNodes.EnumerateArray())
+                {
+                    if (option.ValueKind != JsonValueKind.Object || !option.TryGetProperty("value", out var value) ||
+                        !option.TryGetProperty("labels", out var optionLabels))
+                    {
+                        diagnostics.Add($"A localized option for property '{property.Name}' is invalid and was ignored.");
+                        continue;
+                    }
+                    var parsed = ReadLabels(optionLabels, property.Name, diagnostics);
+                    if (parsed is not null) options[OptionKey(value)] = parsed;
+                }
+            }
+            if (labels is not null || options.Count > 0) result[property.Name] = new(labels, options);
+        }
+        return result;
+    }
+
+    private static IReadOnlyDictionary<string, string>? ReadLabels(JsonElement node, string property, List<string> diagnostics)
+    {
+        if (node.ValueKind != JsonValueKind.Object)
+        {
+            diagnostics.Add($"Localized labels for property '{property}' are invalid and were ignored.");
+            return null;
+        }
+        var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in node.EnumerateObject())
+        {
+            if (entry.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(entry.Value.GetString()))
+            {
+                diagnostics.Add($"Localized label '{entry.Name}' for property '{property}' is invalid and was ignored.");
+                continue;
+            }
+            labels[entry.Name] = entry.Value.GetString()!;
+        }
+        return labels.Count == 0 ? null : labels;
+    }
+
+    private static string OptionKey(JsonElement value) => value.ValueKind + ":" + value.GetRawText();
 
     public static bool IsValidValue(WallpaperPropertyDefinition definition, JsonElement value)
     {

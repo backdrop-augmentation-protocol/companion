@@ -39,7 +39,8 @@ public sealed record ComponentManifest(
 
 public sealed record ComponentDescriptor(ComponentManifest Manifest, string Location);
 
-public sealed record WallpaperPropertyOption(JsonElement Value, string Text);
+public sealed record WallpaperPropertyOption(JsonElement Value, string Text,
+    IReadOnlyDictionary<string, string>? LocalizedLabels = null);
 
 public sealed record WallpaperPropertyDefinition(
     string Key,
@@ -53,7 +54,8 @@ public sealed record WallpaperPropertyDefinition(
     IReadOnlyList<WallpaperPropertyOption>? Options = null,
     string? Condition = null,
     bool ConditionSupported = true,
-    int Order = 0);
+    int Order = 0,
+    IReadOnlyDictionary<string, string>? LocalizedLabels = null);
 
 public sealed record CompanionConfig(
     Dictionary<string, object?> Global,

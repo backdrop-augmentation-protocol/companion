@@ -590,7 +590,9 @@ public partial class MainWindow : Window
                     case "combo":
                         var combo = new ComboBox { Tag = context, Margin = new Thickness(0, 0, 0, 5), IsEnabled = definition.ConditionSupported };
                         combo.ItemsSource = (definition.Options ?? []).Select(option => new PropertyOptionChoice(
-                            option, UiStrings.PropertyText(option.Text, settings.Language))).ToArray();
+                            option, UiStrings.PropertyText(
+                                WallpaperPropertyReader.ResolveLocalizedLabel(option.LocalizedLabels, settings.Language) ?? option.Text,
+                                settings.Language))).ToArray();
                         combo.DisplayMemberPath = nameof(PropertyOptionChoice.Label);
                         combo.SelectedItem = combo.Items.Cast<PropertyOptionChoice>().FirstOrDefault(option =>
                             System.Text.Json.JsonElement.DeepEquals(option.Option.Value, value));
@@ -931,6 +933,8 @@ public partial class MainWindow : Window
 
     private string PropertyTitle(WallpaperPropertyDefinition definition)
     {
+        var localized = WallpaperPropertyReader.ResolveLocalizedLabel(definition.LocalizedLabels, settings.Language);
+        if (!string.IsNullOrWhiteSpace(localized)) return UiStrings.PropertyText(localized, settings.Language);
         if (definition.Text == "ui_browse_properties_scheme_color")
             return settings.Language == "zh-CN" ? "配色" : "Color scheme";
         var text = definition.Text is { Length: > 0 } label && !label.StartsWith("ui_", StringComparison.Ordinal)

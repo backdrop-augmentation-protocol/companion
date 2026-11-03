@@ -131,9 +131,27 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
                 ? titleValue.GetString() : manifest?.Name;
             var preview = project is not null && project.Value.TryGetProperty("preview", out var previewValue)
                 ? previewValue.GetString() : null;
-            var propertyResult = roleName == "component" && project is not null
-                ? WallpaperPropertyReader.Read(project.Value)
-                : WallpaperPropertyReadResult.Empty;
+            var propertyResult = WallpaperPropertyReadResult.Empty;
+            if (roleName == "component" && project is not null)
+            {
+                JsonElement? localization = null;
+                var localizationPath = Path.Combine(directory, "bap-properties.json");
+                var localizationDiagnostics = new List<string>();
+                if (File.Exists(localizationPath))
+                {
+                    try
+                    {
+                        using var localizationDocument = JsonDocument.Parse(await File.ReadAllTextAsync(localizationPath, ct));
+                        localization = localizationDocument.RootElement.Clone();
+                    }
+                    catch (JsonException)
+                    {
+                        localizationDiagnostics.Add("Property localization sidecar contains invalid JSON; original Wallpaper Engine labels are used.");
+                    }
+                }
+                var read = WallpaperPropertyReader.Read(project.Value, localization);
+                propertyResult = read with { Diagnostics = localizationDiagnostics.Concat(read.Diagnostics).ToArray() };
+            }
             // Existing published demo hosts predate packaged Host Manifests.
             if (roleName == "host" && bapId is null && title == "BAP Host Wallpaper Demo")
             { bapId = "org.bap.examples.host-wallpaper"; status = "legacy"; }
