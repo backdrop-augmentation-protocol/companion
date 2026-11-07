@@ -84,11 +84,11 @@ app.MapPost("/v1/diagnostics", (HttpContext context, JsonElement entry, ISession
 });
 
 app.MapGet("/v1/components", async (HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
-    await Authenticated(request, sessions, "component.discovery", async () => Results.Ok((await source.DiscoverAsync(ct)).Where(IsValid).Select(x => x.Manifest))));
+    await Authenticated(request, sessions, ["component.discovery"], async () => Results.Ok((await source.DiscoverAsync(ct)).Where(IsValid).Select(x => x.Manifest))));
 
 app.MapGet("/v1/hosts/{hostId}/components", async (string hostId, string? projectUrl, HttpRequest request, ISessionStore sessions,
     JsonPresetStore presets, InstalledCatalog catalog, CancellationToken ct) =>
-    await Authenticated(request, sessions, "component.discovery", async () =>
+    await Authenticated(request, sessions, ["component.discovery", "config.read"], async () =>
     {
         var hostKey = await catalog.MatchHostKeyAsync(projectUrl, hostId, ct) ?? hostId;
         return Results.Ok(EffectiveComponents.Resolve(await presets.ReadAsync(ct), hostKey, await catalog.DiscoverAsync(ct)));
@@ -98,7 +98,7 @@ app.MapGet("/v1/hosts/{hostId}/composition", async (string hostId, string? proje
     JsonPresetStore presets, InstalledCatalog catalog, CancellationToken ct) =>
     {
         response.Headers.CacheControl = "no-store";
-        return await Authenticated(request, sessions, "component.discovery", async () =>
+        return await Authenticated(request, sessions, ["component.discovery", "config.read"], async () =>
         {
             var hostKey = await catalog.MatchHostKeyAsync(projectUrl, hostId, ct) ?? hostId;
             return Results.Ok(EffectiveComponents.ResolveComposition(await presets.ReadAsync(ct), hostKey, await catalog.DiscoverAsync(ct)));
@@ -109,7 +109,7 @@ app.MapGet("/v1/catalog/components/{key}/resources/{**resourcePath}", async (str
     HttpContext context, ISessionStore sessions, InstalledCatalog catalog, CancellationToken ct) =>
 {
     context.Response.Headers.CacheControl = "no-store";
-    return await Authenticated(context.Request, sessions, "component.discovery", async () =>
+    return await Authenticated(context.Request, sessions, ["component.discovery"], async () =>
     {
         var item = await catalog.GetAsync(key, ct);
         if (item?.ComponentManifest is null) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "component was not found");
@@ -120,7 +120,7 @@ app.MapGet("/v1/catalog/components/{key}/resources/{**resourcePath}", async (str
 });
 
 app.MapGet("/v1/components/{id}/manifest", async (string id, HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
-    await Authenticated(request, sessions, "component.discovery", async () =>
+    await Authenticated(request, sessions, ["component.discovery"], async () =>
     {
         var item = await source.GetAsync(id, ct);
         if (item is null) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "component was not found");
@@ -130,7 +130,7 @@ app.MapGet("/v1/components/{id}/manifest", async (string id, HttpRequest request
 app.MapGet("/v1/components/{id}/resources/{**resourcePath}", async (string id, string? resourcePath, HttpContext context, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
 {
     context.Response.Headers.CacheControl = "no-store";
-    return await Authenticated(context.Request, sessions, "component.discovery", async () =>
+    return await Authenticated(context.Request, sessions, ["component.discovery"], async () =>
     {
         var component = await source.GetAsync(id, ct);
         if (component is null) return Error(StatusCodes.Status404NotFound, "NOT_FOUND", "component was not found");
@@ -140,10 +140,10 @@ app.MapGet("/v1/components/{id}/resources/{**resourcePath}", async (string id, s
 });
 
 app.MapGet("/v1/config", async (HttpRequest request, IConfigStore store, ISessionStore sessions, CancellationToken ct) =>
-    await Authenticated(request, sessions, "config.read", async () => Results.Ok(await store.ReadAsync(ct))));
+    await Authenticated(request, sessions, ["config.read"], async () => Results.Ok(await store.ReadAsync(ct))));
 
 app.MapPut("/v1/config/global", async (HttpRequest request, Dictionary<string, object?>? values, IConfigStore store, ISessionStore sessions, CancellationToken ct) =>
-    await Authenticated(request, sessions, "config.write", async () =>
+    await Authenticated(request, sessions, ["config.write"], async () =>
     {
         if (values is null) return Error(StatusCodes.Status400BadRequest, "INVALID_MESSAGE", "configuration object is required");
         await store.WriteGlobalAsync(values, ct);
@@ -151,7 +151,7 @@ app.MapPut("/v1/config/global", async (HttpRequest request, Dictionary<string, o
     }));
 
 app.MapPut("/v1/config/wallpapers/{wallpaperId}", async (string wallpaperId, HttpRequest request, Dictionary<string, object?>? values, IConfigStore store, ISessionStore sessions, CancellationToken ct) =>
-    await Authenticated(request, sessions, "config.write", async () =>
+    await Authenticated(request, sessions, ["config.write"], async () =>
     {
         if (string.IsNullOrWhiteSpace(wallpaperId) || values is null) return Error(StatusCodes.Status400BadRequest, "INVALID_MESSAGE", "wallpaperId and configuration object are required");
         await store.WriteWallpaperAsync(wallpaperId, values, ct);
@@ -307,11 +307,11 @@ static string? GetToken(HttpRequest request, bool allowQueryToken = false)
 }
 static bool IsAllowedOrigin(string? origin) => string.IsNullOrWhiteSpace(origin) || origin is "null" or "file://" || Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.Host is "localhost" or "127.0.0.1" or "[::1]";
 static bool IsCompatible(ProtocolDescriptor requested, ProtocolDescriptor supported) => requested.Name == supported.Name && requested.Profile == supported.Profile && requested.Version == supported.Version;
-static async Task<IResult> Authenticated(HttpRequest request, ISessionStore sessions, string requiredPermission, Func<Task<IResult>> action)
+static async Task<IResult> Authenticated(HttpRequest request, ISessionStore sessions, IReadOnlyCollection<string> requiredPermissions, Func<Task<IResult>> action)
 {
     var token = GetToken(request);
     if (token is null || !sessions.TryGet(token, out var session)) return Error(401, "UNAUTHORIZED", "a valid bearer session is required");
-    if (!session.GrantedPermissions.Contains(requiredPermission)) return Error(403, "CAPABILITY_DENIED", "the session has not negotiated the required permission");
+    if (requiredPermissions.Any(permission => !session.GrantedPermissions.Contains(permission))) return Error(403, "CAPABILITY_DENIED", "the session has not negotiated the required permission");
     return await action();
 }
 static IResult Error(int status, string code, string message, bool retryable = false) => Results.Json(new BapError(code, message, retryable), statusCode: status);
