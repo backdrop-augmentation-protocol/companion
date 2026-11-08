@@ -30,7 +30,39 @@ internal static class WallpaperEngineControl
     {
         var exe = FindExecutable() ?? throw new FileNotFoundException("Wallpaper Engine executable was not found");
         var output = await RunAsync(exe, ["-control", "getWallpaper", "-monitor", monitor.ToString()], captureOutput: true);
-        return output.Trim().Trim('"');
+        var current = output.Trim().Trim('"');
+        if (!string.IsNullOrWhiteSpace(current)) return current;
+
+        // Some WE builds accept getWallpaper but do not forward its result to a
+        // redirected stdout stream. The selected wallpaper is also persisted in
+        // the user's config.json, so use that as the read-only fallback.
+        return await ReadCurrentFromConfigAsync(Path.Combine(Path.GetDirectoryName(exe)!, "config.json"), monitor);
+    }
+
+    internal static async Task<string> ReadCurrentFromConfigAsync(string configPath, int monitor, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(configPath)) return "";
+        try
+        {
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(configPath, cancellationToken));
+            foreach (var user in document.RootElement.EnumerateObject())
+            {
+                if (user.Value.ValueKind != JsonValueKind.Object ||
+                    !user.Value.TryGetProperty("general", out var general) || general.ValueKind != JsonValueKind.Object ||
+                    !general.TryGetProperty("wallpaperconfig", out var wallpaperConfig) ||
+                    wallpaperConfig.ValueKind != JsonValueKind.Object ||
+                    !wallpaperConfig.TryGetProperty("selectedwallpapers", out var selected)) continue;
+
+                var monitorKey = $"Monitor{monitor}";
+                if (selected.ValueKind != JsonValueKind.Object || !selected.TryGetProperty(monitorKey, out var wallpaper) ||
+                    wallpaper.ValueKind != JsonValueKind.Object ||
+                    !wallpaper.TryGetProperty("file", out var file) || file.ValueKind != JsonValueKind.String) return "";
+                var path = file.GetString();
+                return string.IsNullOrWhiteSpace(path) ? "" : Path.GetFullPath(path);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException or NotSupportedException) { }
+        return "";
     }
 
     public static async Task<WallpaperSwitchResult> OpenAsync(InstalledItem host, int monitor)
