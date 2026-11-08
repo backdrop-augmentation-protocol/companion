@@ -89,4 +89,14 @@ public sealed class WallpaperEngineControlTests
         Assert.Contains("privateLabel:String", summary);
         Assert.DoesNotContain("do-not-log-this", summary);
     }
+
+    [Fact]
+    public void ApplyPropertiesUsesRawWallpaperEngineCommandLineSyntax()
+    {
+        const string json = "{\"schemecolor\":\"0 0 0\",\"label\":\"a b\"}";
+
+        var commandLine = WallpaperEngineControl.BuildApplyPropertiesCommandLine(json, 2);
+
+        Assert.Equal("-control applyProperties -properties RAW~({\"schemecolor\":\"0 0 0\",\"label\":\"a b\"})~END -monitor 2", commandLine);
+    }
 }

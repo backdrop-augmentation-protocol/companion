@@ -95,21 +95,25 @@ internal static class WallpaperEngineControl
         if (properties.Count == 0) return;
         var exe = FindExecutable() ?? throw new FileNotFoundException("Wallpaper Engine executable was not found");
         var json = System.Text.Json.JsonSerializer.Serialize(properties);
-        var arguments = new[] { "-control", "applyProperties", "-properties", $"RAW~({json})~END", "-monitor", monitor.ToString() };
+        var rawArguments = BuildApplyPropertiesCommandLine(json, monitor);
         var version = FileVersionInfo.GetVersionInfo(exe).FileVersion ?? "unknown";
         var payloadHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
-        log.Write("we-control", $"applyProperties launch; exe={Path.GetFullPath(exe)}; version={version}; monitor={monitor}; args=[-control,applyProperties,-properties,RAW~(<redacted-json>)~END,-monitor,{monitor}]; properties=[{DescribeProperties(properties)}]; payloadSha256={payloadHash}; callerPid={Environment.ProcessId}; caller64Bit={Environment.Is64BitProcess}; workingDirectory=(inherited); shellExecute=false; createNoWindow=true; redirectStdout=true; redirectStderr=true");
-        await RunAsync(exe, arguments, captureOutput: false, log, "applyProperties");
+        log.Write("we-control", $"applyProperties launch; exe={Path.GetFullPath(exe)}; version={version}; monitor={monitor}; args=[-control,applyProperties,-properties,RAW~(<redacted-json>)~END,-monitor,{monitor}]; argumentTransport=raw-command-line; properties=[{DescribeProperties(properties)}]; payloadSha256={payloadHash}; callerPid={Environment.ProcessId}; caller64Bit={Environment.Is64BitProcess}; workingDirectory=(inherited); shellExecute=false; createNoWindow=true; redirectStdout=true; redirectStderr=true");
+        await RunAsync(exe, [], captureOutput: false, log, "applyProperties", rawArguments);
     }
+
+    internal static string BuildApplyPropertiesCommandLine(string json, int monitor) =>
+        $"-control applyProperties -properties RAW~({json})~END -monitor {monitor}";
 
     internal static string DescribeProperties(IReadOnlyDictionary<string, System.Text.Json.JsonElement> properties) =>
         string.Join(",", properties.OrderBy(pair => pair.Key, StringComparer.Ordinal)
             .Select(pair => $"{pair.Key}:{pair.Value.ValueKind}"));
 
-    private static async Task<string> RunAsync(string exe, IReadOnlyList<string> arguments, bool captureOutput, CompanionLog? diagnosticLog = null, string? diagnosticCommand = null)
+    private static async Task<string> RunAsync(string exe, IReadOnlyList<string> arguments, bool captureOutput, CompanionLog? diagnosticLog = null, string? diagnosticCommand = null, string? rawArguments = null)
     {
         var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        if (rawArguments is not null) start.Arguments = rawArguments;
+        else foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not invoke Wallpaper Engine");
         diagnosticLog?.Write("we-control", $"{diagnosticCommand ?? "control"} started; pid={process.Id}; session={process.SessionId}");
         var output = process.StandardOutput.ReadToEndAsync();
