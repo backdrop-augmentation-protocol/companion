@@ -1191,7 +1191,7 @@ public partial class MainWindow : Window
                 [context.OwnerKey] = config
             };
             await SaveAsync(state with { HostConfigs = allConfigs }, SelectedPreset?.Id);
-            await WallpaperEngineControl.ApplyPropertiesAsync(config, EffectiveDisplayIndex);
+            await WallpaperEngineControl.ApplyPropertiesAsync(config, EffectiveDisplayIndex, log);
             return;
         }
         var preset = SelectedPreset;

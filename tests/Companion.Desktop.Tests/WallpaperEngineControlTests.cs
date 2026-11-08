@@ -73,4 +73,20 @@ public sealed class WallpaperEngineControlTests
         Assert.Contains("exit code 1", message);
         Assert.Contains("no diagnostic output", message);
     }
+
+    [Fact]
+    public void PropertyDiagnosticListsTypesWithoutLoggingValues()
+    {
+        var properties = new Dictionary<string, System.Text.Json.JsonElement>
+        {
+            ["privateLabel"] = System.Text.Json.JsonSerializer.SerializeToElement("do-not-log-this"),
+            ["enabled"] = System.Text.Json.JsonSerializer.SerializeToElement(true)
+        };
+
+        var summary = WallpaperEngineControl.DescribeProperties(properties);
+
+        Assert.Contains("enabled:True", summary);
+        Assert.Contains("privateLabel:String", summary);
+        Assert.DoesNotContain("do-not-log-this", summary);
+    }
 }

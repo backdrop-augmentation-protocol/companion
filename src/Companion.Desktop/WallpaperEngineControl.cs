@@ -90,26 +90,40 @@ internal static class WallpaperEngineControl
         return WallpaperSwitchResult.CommandAccepted;
     }
 
-    public static async Task ApplyPropertiesAsync(IReadOnlyDictionary<string, System.Text.Json.JsonElement> properties, int monitor)
+    public static async Task ApplyPropertiesAsync(IReadOnlyDictionary<string, System.Text.Json.JsonElement> properties, int monitor, CompanionLog log)
     {
         if (properties.Count == 0) return;
         var exe = FindExecutable() ?? throw new FileNotFoundException("Wallpaper Engine executable was not found");
         var json = System.Text.Json.JsonSerializer.Serialize(properties);
-        await RunAsync(exe, ["-control", "applyProperties", "-properties", $"RAW~({json})~END", "-monitor", monitor.ToString()], captureOutput: false);
+        var arguments = new[] { "-control", "applyProperties", "-properties", $"RAW~({json})~END", "-monitor", monitor.ToString() };
+        var version = FileVersionInfo.GetVersionInfo(exe).FileVersion ?? "unknown";
+        var payloadHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)));
+        log.Write("we-control", $"applyProperties launch; exe={Path.GetFullPath(exe)}; version={version}; monitor={monitor}; args=[-control,applyProperties,-properties,RAW~(<redacted-json>)~END,-monitor,{monitor}]; properties=[{DescribeProperties(properties)}]; payloadSha256={payloadHash}; callerPid={Environment.ProcessId}; caller64Bit={Environment.Is64BitProcess}; workingDirectory=(inherited); shellExecute=false; createNoWindow=true; redirectStdout=true; redirectStderr=true");
+        await RunAsync(exe, arguments, captureOutput: false, log, "applyProperties");
     }
 
-    private static async Task<string> RunAsync(string exe, IReadOnlyList<string> arguments, bool captureOutput)
+    internal static string DescribeProperties(IReadOnlyDictionary<string, System.Text.Json.JsonElement> properties) =>
+        string.Join(",", properties.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => $"{pair.Key}:{pair.Value.ValueKind}"));
+
+    private static async Task<string> RunAsync(string exe, IReadOnlyList<string> arguments, bool captureOutput, CompanionLog? diagnosticLog = null, string? diagnosticCommand = null)
     {
         var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not invoke Wallpaper Engine");
+        diagnosticLog?.Write("we-control", $"{diagnosticCommand ?? "control"} started; pid={process.Id}; session={process.SessionId}");
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         try { await process.WaitForExitAsync(timeout.Token); }
-        catch (OperationCanceledException) { throw new TimeoutException("Wallpaper Engine control did not respond"); }
+        catch (OperationCanceledException)
+        {
+            diagnosticLog?.Write("we-control", $"{diagnosticCommand ?? "control"} timed out; pid={process.Id}; timeoutSeconds=8");
+            throw new TimeoutException("Wallpaper Engine control did not respond");
+        }
         var outputText = await output;
         var errorText = await error;
+        diagnosticLog?.Write("we-control", $"{diagnosticCommand ?? "control"} exited; pid={process.Id}; exitCode={process.ExitCode}; stdoutLength={outputText.Length}; stderrLength={errorText.Length}");
         if (process.ExitCode != 0) throw new InvalidOperationException(FormatControlFailure(process.ExitCode, errorText, outputText));
         return captureOutput ? outputText : "";
     }
