@@ -9,7 +9,8 @@ public sealed record InstalledItem(
     string? WorkshopId, string? BapId, string? Version, string? PreviewPath,
     ComponentManifest? ComponentManifest, string Status = "valid",
     IReadOnlyList<WallpaperPropertyDefinition>? Properties = null,
-    IReadOnlyList<string>? PropertyDiagnostics = null);
+    IReadOnlyList<string>? PropertyDiagnostics = null,
+    int? MaxInstances = null);
 
 public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumerable<string> localRoots)
 {
@@ -132,8 +133,11 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
             var preview = project is not null && project.Value.TryGetProperty("preview", out var previewValue)
                 ? previewValue.GetString() : null;
             var propertyResult = WallpaperPropertyReadResult.Empty;
+            int? maxInstances = null;
+            var componentDiagnostics = new List<string>();
             if (roleName == "component" && project is not null)
             {
+                maxInstances = await ReadMaxInstancesAsync(directory, componentDiagnostics, ct);
                 JsonElement? localization = null;
                 var localizationPath = Path.Combine(directory, "bap-properties.json");
                 var localizationDiagnostics = new List<string>();
@@ -150,7 +154,7 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
                     }
                 }
                 var read = WallpaperPropertyReader.Read(project.Value, localization);
-                propertyResult = read with { Diagnostics = localizationDiagnostics.Concat(read.Diagnostics).ToArray() };
+                propertyResult = read with { Diagnostics = componentDiagnostics.Concat(localizationDiagnostics).Concat(read.Diagnostics).ToArray() };
             }
             // Existing published demo hosts predate packaged Host Manifests.
             if (roleName == "host" && bapId is null && title == "BAP Host Wallpaper Demo")
@@ -158,9 +162,50 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
             var workshopId = kind == "workshop" ? Path.GetFileName(directory) : null;
             var key = kind == "workshop" ? $"workshop:{workshopId}" : $"local:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToUpperInvariant())))[..16].ToLowerInvariant()}";
             return new(key, kind, roleName, title ?? Path.GetFileName(directory), Path.GetFullPath(directory), workshopId, bapId, version,
-                ResolvePreviewPath(directory, preview), manifest, status, propertyResult.Properties, propertyResult.Diagnostics);
+                ResolvePreviewPath(directory, preview), manifest, status, propertyResult.Properties, propertyResult.Diagnostics, maxInstances);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { return null; }
+    }
+
+    private static async Task<int?> ReadMaxInstancesAsync(string directory, List<string> diagnostics, CancellationToken ct)
+    {
+        var path = Path.Combine(directory, "bap-component.json");
+        if (!File.Exists(path)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path, ct));
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("schemaVersion", out var version) || version.ValueKind != JsonValueKind.String || version.GetString() != "0.1.0")
+            {
+                diagnostics.Add("Component metadata sidecar is invalid; no instance limit is applied.");
+                return null;
+            }
+            if (root.EnumerateObject().Any(property => property.Name is not ("schemaVersion" or "maxInstances")))
+            {
+                diagnostics.Add("Component metadata sidecar contains an unknown field; no instance limit is applied.");
+                return null;
+            }
+            if (!root.TryGetProperty("maxInstances", out var limit)) return null;
+            if (limit.ValueKind == JsonValueKind.Number && limit.TryGetInt32(out var count) && count > 0) return count;
+            diagnostics.Add("Component metadata maxInstances must be a positive 32-bit integer; no instance limit is applied.");
+            return null;
+        }
+        catch (JsonException)
+        {
+            diagnostics.Add("Component metadata sidecar contains invalid JSON; no instance limit is applied.");
+            return null;
+        }
+        catch (IOException)
+        {
+            diagnostics.Add("Component metadata sidecar could not be read; no instance limit is applied.");
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            diagnostics.Add("Component metadata sidecar could not be read; no instance limit is applied.");
+            return null;
+        }
     }
 
     public static string? ResolvePreviewPath(string directory, string? preview)

@@ -1026,6 +1026,8 @@ public partial class MainWindow : Window
 
     private async Task SaveAsync(PresetState next, string? selectedId = null)
     {
+        var limitErrors = PresetSelection.ValidateInstanceLimitIncreases(state, next, items);
+        if (limitErrors.Count > 0) throw new InvalidDataException(string.Join("; ", limitErrors));
         await store.WriteAsync(next);
         state = await store.ReadAsync();
         RenderPresets(selectedId);
@@ -1076,8 +1078,20 @@ public partial class MainWindow : Window
         var selected = CatalogSelectionDialog.Show(this, L("chooseComponent"), choices, settings.Language);
         if (selected?.Value is not InstalledItem item || item.BapId is null) return;
         var order = preset.Components.Count;
-        await ReplacePresetAsync(preset with { Components = [.. preset.Components, new(item.BapId, item.Key,
-            Guid.NewGuid().ToString("N"), Layout: new ComponentLayout("automatic", Order: order, ZIndex: order))] });
+        var changed = preset with { Components = [.. preset.Components, new(item.BapId, item.Key,
+            Guid.NewGuid().ToString("N"), Layout: new ComponentLayout("automatic", Order: order, ZIndex: order))] };
+        var limitErrors = PresetSelection.ValidateInstanceLimits(changed, items);
+        if (limitErrors.Count > 0)
+        {
+            var limit = items.Where(candidate => candidate.Role == "component" && candidate.BapId == item.BapId && candidate.MaxInstances is not null)
+                .Select(candidate => candidate.MaxInstances!.Value).DefaultIfEmpty(int.MaxValue).Min();
+            var message = settings.Language == "zh-CN"
+                ? $"此组件在每个预设中最多只能有 {limit} 个实例。"
+                : $"This component allows at most {limit} instance(s) in each preset.";
+            ThemedDialog.ShowMessage(this, L("chooseComponent"), message, settings.Language == "zh-CN" ? "确定" : "OK");
+            return;
+        }
+        await ReplacePresetAsync(changed);
     });
 
     private void AddHostButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>

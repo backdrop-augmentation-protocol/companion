@@ -40,6 +40,37 @@ public sealed record PresetState(
 
 public static class PresetSelection
 {
+    public static IReadOnlyList<string> ValidateInstanceLimits(ComponentPreset preset, IReadOnlyList<InstalledItem> items)
+    {
+        var errors = new List<string>();
+        foreach (var group in preset.Components.GroupBy(component => component.ComponentId, StringComparer.Ordinal))
+        {
+            var limit = items.Where(item => item.Role == "component" && item.BapId == group.Key && item.MaxInstances is not null)
+                .Select(item => item.MaxInstances!.Value).DefaultIfEmpty(int.MaxValue).Min();
+            if (group.Count() > limit) errors.Add($"component '{group.Key}' exceeds its maximum instance count of {limit}");
+        }
+        return errors;
+    }
+
+    public static IReadOnlyList<string> ValidateInstanceLimitIncreases(PresetState current, PresetState next, IReadOnlyList<InstalledItem> items)
+    {
+        var errors = new List<string>();
+        foreach (var preset in next.Presets)
+        {
+            var previous = current.Presets.FirstOrDefault(candidate => candidate.Id == preset.Id);
+            var previousCounts = previous?.Components.GroupBy(component => component.ComponentId, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal) ?? new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var group in preset.Components.GroupBy(component => component.ComponentId, StringComparer.Ordinal))
+            {
+                var limit = items.Where(item => item.Role == "component" && item.BapId == group.Key && item.MaxInstances is not null)
+                    .Select(item => item.MaxInstances!.Value).DefaultIfEmpty(int.MaxValue).Min();
+                if (group.Count() > limit && group.Count() > previousCounts.GetValueOrDefault(group.Key))
+                    errors.Add($"component '{group.Key}' exceeds its maximum instance count of {limit}");
+            }
+        }
+        return errors;
+    }
+
     public static ComponentPreset? Resolve(PresetState state, string hostKey)
     {
         var selected = state.HostPresetIds.TryGetValue(hostKey, out var hostPresetId)

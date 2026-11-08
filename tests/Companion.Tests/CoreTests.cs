@@ -402,26 +402,74 @@ public sealed class CoreTests
             new Dictionary<string, string> { ["default"] = "index.html", ["standalone"] = "index.html", ["embedded"] = "embedded.html" }, ["standalone", "embedded"]);
         using var project = JsonDocument.Parse("""{ "general": { "properties": { "format": { "type": "combo", "value": "24h", "options": [{ "value": "24h", "text": "24-hour" }, { "value": "12h", "text": "12-hour" }] }, "showDate": { "type": "bool", "value": true }, "media": { "type": "file", "value": "not-imported.png" } } } }""");
         var definitions = WallpaperPropertyReader.Read(project.RootElement).Properties;
-        var items = new[] { new InstalledItem("workshop:123", "workshop", "component", "Clock", "subscribed", "123", manifest.Id, manifest.Version, null, manifest, Properties: definitions) };
+        var items = new[] { new InstalledItem("workshop:123", "workshop", "component", "Clock", "subscribed", "123", manifest.Id, manifest.Version, null, manifest, Properties: definitions, MaxInstances: 2) };
         var overridden = new Dictionary<string, JsonElement> { ["format"] = JsonDocument.Parse("\"12h\"").RootElement, ["media"] = JsonDocument.Parse("\"C:\\\\private.png\"").RootElement };
         var preset = new ComponentPreset("daily", "Daily",
         [
             new("org.example.clock", "workshop:123", "clock-a", Layout: new ComponentLayout("automatic", Order: 0), Config: overridden),
-            new("org.example.clock", "workshop:123", "clock-b", Enabled: false, Layout: new ComponentLayout("automatic", Order: 1))
+            new("org.example.clock", "workshop:123", "clock-b", Enabled: false, Layout: new ComponentLayout("automatic", Order: 1)),
+            new("org.example.clock", "workshop:123", "clock-c", Layout: new ComponentLayout("automatic", Order: 2))
         ], Revision: 4);
         var result = EffectiveComponents.Resolve(
             new PresetState([preset], preset.Id, new Dictionary<string, string>()),
             "org.example.host", items);
 
-        Assert.Equal(["clock-a", "clock-b"], result.Select(item => item.InstanceId));
-        Assert.Equal(["available", "disabled"], result.Select(item => item.Status));
+        Assert.Equal(["clock-a", "clock-b", "clock-c"], result.Select(item => item.InstanceId));
+        Assert.Equal(["available", "disabled", "unavailable"], result.Select(item => item.Status));
         Assert.All(result, item => Assert.Equal("org.example.clock", item.ComponentId));
-        Assert.Equal([0, 1], result.Select(item => item.Layout.Order));
+        Assert.Equal([0, 1, 2], result.Select(item => item.Layout.Order));
         Assert.Equal("12h", result[0].Config["format"].GetString());
         Assert.Equal(4, result[0].ConfigRevision);
         Assert.True(result[0].Config["showDate"].GetBoolean());
         Assert.DoesNotContain("media", result[0].Config.Keys);
         Assert.Equal("24h", result[1].Config["format"].GetString());
+        Assert.Equal("24h", result[2].Config["format"].GetString());
+    }
+
+    [Fact]
+    public void ComponentInstanceLimitCountsDisabledInstancesAndUsesStrictestInstalledDeclaration()
+    {
+        var preset = new ComponentPreset("daily", "Daily",
+        [
+            new("org.example.game-ui", "workshop:1", "ui-a", Enabled: false),
+            new("org.example.game-ui", "local:ui", "ui-b")
+        ]);
+        var items = new[]
+        {
+            new InstalledItem("workshop:1", "workshop", "component", "Game UI", "workshop", "1", "org.example.game-ui", "1.0.0", null, null, MaxInstances: 2),
+            new InstalledItem("local:ui", "local", "component", "Game UI dev", "local", null, "org.example.game-ui", "1.1.0", null, null, MaxInstances: 1)
+        };
+
+        var errors = PresetSelection.ValidateInstanceLimits(preset, items);
+
+        Assert.Single(errors);
+        Assert.Contains("maximum instance count of 1", errors[0], StringComparison.Ordinal);
+        Assert.Empty(PresetSelection.ValidateInstanceLimits(preset with { Components = [preset.Components[0]] }, items));
+        Assert.Empty(PresetSelection.ValidateInstanceLimits(preset, items.Select(item => item with { MaxInstances = null }).ToArray()));
+    }
+
+    [Fact]
+    public async Task InstalledCatalogReadsComponentInstanceLimitSidecarAndIgnoresMalformedSidecar()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-component-metadata-{Guid.NewGuid():N}");
+        var component = Path.Combine(root, "component");
+        Directory.CreateDirectory(component);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(component, "project.json"), """{"type":"web","title":"Widget","file":"index.html"}""");
+            await File.WriteAllTextAsync(Path.Combine(component, "manifest.json"), """{"protocol":{"name":"bap","version":"0.1.0","profile":"core"},"id":"org.example.widget","name":"Widget","version":"1.0.0","role":"component","capabilities":[],"entrypoints":{"default":"index.html","standalone":"index.html","embedded":"embedded.html"},"modes":["standalone","embedded"]}""");
+            await File.WriteAllTextAsync(Path.Combine(component, "bap-component.json"), """{"schemaVersion":"0.1.0","maxInstances":1}""");
+            var catalog = new InstalledCatalog([], [root]);
+
+            var item = Assert.Single(await catalog.DiscoverAsync());
+            Assert.Equal(1, item.MaxInstances);
+
+            await File.WriteAllTextAsync(Path.Combine(component, "bap-component.json"), "not-json");
+            item = Assert.Single(await catalog.DiscoverAsync(force: true));
+            Assert.Null(item.MaxInstances);
+            Assert.Contains(item.PropertyDiagnostics!, diagnostic => diagnostic.Contains("invalid JSON", StringComparison.Ordinal));
+        }
+        finally { Directory.Delete(root, true); }
     }
 
     [Fact]

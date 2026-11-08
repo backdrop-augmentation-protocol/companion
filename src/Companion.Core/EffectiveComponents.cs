@@ -43,8 +43,15 @@ public static class EffectiveComponents
     {
         var preset = PresetSelection.Resolve(state, hostId);
         var selections = preset?.Components ?? Array.Empty<PresetComponent>();
+        var limits = items.Where(item => item.Role == "component" && item.BapId is not null && item.MaxInstances is not null)
+            .GroupBy(item => item.BapId!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Min(item => item.MaxInstances!.Value), StringComparer.Ordinal);
+        var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
         return selections.Select((selection, index) =>
         {
+            var occurrence = occurrences.GetValueOrDefault(selection.ComponentId);
+            occurrences[selection.ComponentId] = occurrence + 1;
+            var exceedsLimit = limits.TryGetValue(selection.ComponentId, out var limit) && occurrence >= limit;
             var instanceId = selection.InstanceId ?? DefaultInstanceId(selection.ComponentId, selection.SourceKey);
             var layout = selection.Layout ?? new ComponentLayout("automatic", Order: index, ZIndex: index);
             var config = selection.Config ?? [];
@@ -58,7 +65,7 @@ public static class EffectiveComponents
             if (item is null) return new EffectiveComponent(instanceId, selection.ComponentId, selection.SourceKey, selection.ComponentId,
                 selection.Enabled ? "missing" : "disabled", null, selection.Enabled, selection.UserVisible, layout, config, configRevision);
             var embedded = item.ComponentManifest?.Entrypoints.GetValueOrDefault("embedded");
-            var status = !selection.Enabled ? "disabled" : embedded is null ? "unavailable" : "available";
+            var status = !selection.Enabled ? "disabled" : exceedsLimit || embedded is null ? "unavailable" : "available";
             return new EffectiveComponent(instanceId, selection.ComponentId, item.Key, item.Title, status, embedded,
                 selection.Enabled, selection.UserVisible, layout, ResolveConfig(item, selection.Config), configRevision);
         }).ToArray();
