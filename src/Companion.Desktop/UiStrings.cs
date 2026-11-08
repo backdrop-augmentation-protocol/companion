@@ -79,6 +79,7 @@ internal static class UiStrings
         ["switchDisplay"] = ("Display for wallpaper switching", "切换壁纸使用的显示器"),
         ["switchDisplayHint"] = ("Host wallpapers opened from Companion will appear on this display.", "从伴侣软件切换的宿主壁纸将显示在此显示器上。"),
         ["switchHost"] = ("Use this host wallpaper", "切换到此宿主壁纸"),
+        ["currentWallpaper"] = ("Current wallpaper", "当前壁纸"),
         ["noPreview"] = ("No preview", "暂无预览"),
         ["noHosts"] = ("No host wallpapers found", "未发现宿主壁纸"),
         ["noComponents"] = ("No components found", "未发现组件"),

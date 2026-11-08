@@ -36,7 +36,8 @@ public sealed record ComponentPreset(
 public sealed record PresetState(
     IReadOnlyList<ComponentPreset> Presets,
     string? GlobalPresetId,
-    IReadOnlyDictionary<string, string> HostPresetIds);
+    IReadOnlyDictionary<string, string> HostPresetIds,
+    IReadOnlyDictionary<string, Dictionary<string, JsonElement>>? HostConfigs = null);
 
 public static class PresetSelection
 {
@@ -92,7 +93,19 @@ public static class PresetSelection
             if (matches.Length == 0) bindings[key] = presetId;
             else foreach (var item in matches) bindings[item.Key] = presetId;
         }
-        return state with { HostPresetIds = bindings };
+        var existingConfigs = state.HostConfigs ?? new Dictionary<string, Dictionary<string, JsonElement>>();
+        var configs = new Dictionary<string, Dictionary<string, JsonElement>>(existingConfigs, StringComparer.Ordinal);
+        foreach (var (oldKey, _) in existingConfigs)
+        {
+            if (items.Any(item => item.Role == "host" && item.Key == oldKey)) continue;
+            var matches = items.Where(item => item.Role == "host" && item.BapId == oldKey).ToArray();
+            if (matches.Length == 1)
+            {
+                configs.TryAdd(matches[0].Key, configs[oldKey]);
+                configs.Remove(oldKey);
+            }
+        }
+        return state with { HostPresetIds = bindings, HostConfigs = configs };
     }
 
     public static IReadOnlyList<string> Validate(PresetState state)
@@ -206,7 +219,7 @@ public sealed class JsonPresetStore(string path)
                 Config = component.Config ?? []
             }).ToArray()
         }).ToArray();
-        return state with { Presets = presets };
+        return state with { Presets = presets, HostConfigs = state.HostConfigs ?? new Dictionary<string, Dictionary<string, JsonElement>>() };
     }
 
     private static PresetState ApplyRevisions(PresetState current, PresetState next) => next with

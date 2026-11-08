@@ -58,6 +58,14 @@ internal static class WallpaperEngineControl
         return WallpaperSwitchResult.CommandAccepted;
     }
 
+    public static async Task ApplyPropertiesAsync(IReadOnlyDictionary<string, System.Text.Json.JsonElement> properties, int monitor)
+    {
+        if (properties.Count == 0) return;
+        var exe = FindExecutable() ?? throw new FileNotFoundException("Wallpaper Engine executable was not found");
+        var json = System.Text.Json.JsonSerializer.Serialize(properties);
+        await RunAsync(exe, ["-control", "applyProperties", "-properties", $"RAW~({json})~END", "-monitor", monitor.ToString()], captureOutput: false);
+    }
+
     private static async Task<string> RunAsync(string exe, IReadOnlyList<string> arguments, bool captureOutput)
     {
         var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = captureOutput, RedirectStandardError = true };

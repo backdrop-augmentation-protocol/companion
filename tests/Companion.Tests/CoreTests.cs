@@ -59,12 +59,17 @@ public sealed class CoreTests
             var state = new PresetState(
                 [new("global", "Everywhere", [new("org.example.clock")]),
                  new("host", "For Host", [new("org.example.calendar", "local:abc")])],
-                "global", new Dictionary<string, string> { ["org.example.host"] = "host" });
+                "global", new Dictionary<string, string> { ["org.example.host"] = "host" },
+                new Dictionary<string, Dictionary<string, JsonElement>>
+                {
+                    ["workshop:123"] = new() { ["theme"] = JsonDocument.Parse("\"blue\"").RootElement }
+                });
             await store.WriteAsync(state);
             var loaded = await store.ReadAsync();
             Assert.Equal("global", PresetSelection.Resolve(loaded, "org.example.other")?.Id);
             Assert.Equal("host", PresetSelection.Resolve(loaded, "org.example.host")?.Id);
             Assert.Equal("local:abc", PresetSelection.Resolve(loaded, "org.example.host")?.Components[0].SourceKey);
+            Assert.Equal("blue", loaded.HostConfigs!["workshop:123"]["theme"].GetString());
             Assert.Throws<ArgumentException>(() => store.WriteAsync(state with { GlobalPresetId = "missing" }).GetAwaiter().GetResult());
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
@@ -337,6 +342,23 @@ public sealed class CoreTests
             Assert.Equal("valid", item.Status);
             Assert.Equal("caption", Assert.Single(item.Properties!).Key);
             Assert.Contains(item.PropertyDiagnostics!, diagnostic => diagnostic.Contains("invalid JSON", StringComparison.Ordinal));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task InstalledCatalogReadsEditablePropertiesFromHostProjects()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-host-properties-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(root);
+            await File.WriteAllTextAsync(Path.Combine(root, "project.json"), """{ "type": "web", "title": "Host", "general": { "properties": { "accent": { "type": "color", "text": "Accent", "value": "0.2 0.4 0.8" } } } }""");
+            await File.WriteAllTextAsync(Path.Combine(root, "manifest.json"), """{ "protocol": { "name": "bap", "version": "0.1.0", "profile": "core" }, "id": "org.example.host", "name": "Host", "version": "1.0.0", "role": "host", "capabilities": [], "entrypoints": { "default": "index.html" } }""");
+
+            var item = Assert.Single(await new InstalledCatalog([], [root]).DiscoverAsync());
+            Assert.Equal("host", item.Role);
+            Assert.Equal("accent", Assert.Single(item.Properties!).Key);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

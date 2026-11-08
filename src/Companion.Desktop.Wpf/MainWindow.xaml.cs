@@ -46,6 +46,7 @@ public partial class MainWindow : Window
     private bool renderingComponentChoices;
     private bool renderingPresets;
     private string? selectedComponentInstanceId;
+    private string? activeHostKey;
 
     internal MainWindow(CompanionLog log, int port, DesktopSettings settings, HostAuthorizationClient? authorizationClient = null,
         SteamWorkshopCreatorLookup? creatorLookup = null, JsonPresetStore? presetStore = null)
@@ -218,6 +219,7 @@ public partial class MainWindow : Window
     {
         if (authorizationClient is not null) await authorizationClient.RefreshCatalogAsync();
         var discovered = await catalog.DiscoverAsync(force: true);
+        activeHostKey = await FindActiveHostKeyAsync(discovered);
         var presets = await store.ReadAsync();
         var migrated = PresetSelection.MigrateInstalledHostBindings(presets, discovered);
         if (!presets.HostPresetIds.OrderBy(pair => pair.Key).SequenceEqual(migrated.HostPresetIds.OrderBy(pair => pair.Key)))
@@ -341,6 +343,22 @@ public partial class MainWindow : Window
         finally { SwitchHostButton.IsEnabled = true; }
     });
 
+    private void PresetSwitchHostButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(async () =>
+    {
+        var key = (PresetHostsList.SelectedItem as PresetHostChoice)?.HostKey;
+        var host = key is null ? null : FindHost(key);
+        if (host is null) return;
+        PresetSwitchHostButton.IsEnabled = false;
+        try
+        {
+            var result = await WallpaperEngineControl.OpenAsync(host, EffectiveDisplayIndex);
+            PresetSwitchHostStatus.Text = L(result == WallpaperSwitchResult.Confirmed ? "switchVerified" : "switchSent");
+            activeHostKey = await FindActiveHostKeyAsync(items);
+            RenderPresetHosts(host.Key);
+        }
+        finally { PresetSwitchHostButton.IsEnabled = true; }
+    });
+
     internal int EffectiveDisplayIndex => Math.Clamp(settings.DisplayIndex, 0, Math.Max(0, Forms.Screen.AllScreens.Length - 1));
 
     private ComponentPreset? SelectedPreset
@@ -446,7 +464,7 @@ public partial class MainWindow : Window
         MoveDownButton.IsEnabled = selected && SelectedPreset is { } preset && SelectedComponents.SelectedIndex < preset.Components.Count - 1;
     }
 
-    private void RenderPresetHosts()
+    private void RenderPresetHosts(string? preferredHostKey = null)
     {
         if (PresetHostsList is null) return;
         var preset = SelectedPreset;
@@ -455,7 +473,11 @@ public partial class MainWindow : Window
         if (preset is null) hosts = [];
         else if (state.GlobalPresetId == preset.Id)
         {
-            hosts = [new PresetHostChoice(null, L("allHosts"), L("globalPreset"), preset.Name, null, "", true)];
+            var active = FindHost(activeHostKey ?? "");
+            var globalHosts = new List<PresetHostChoice>();
+            if (active is not null) globalHosts.Add(CreatePresetHostChoice(active, true));
+            globalHosts.Add(new PresetHostChoice(null, L("allHosts"), L("globalPreset"), preset.Name, null, "", true));
+            hosts = globalHosts.ToArray();
         }
         else
         {
@@ -467,11 +489,15 @@ public partial class MainWindow : Window
                         item is null ? L("missing") : L(item.SourceKind),
                         item is null ? binding.Key : $"{L(item.Status)} · {item.Version ?? "—"}",
                         LoadPreview(item?.PreviewPath), item?.PreviewPath is null ? L("noPreview") : "", false);
-                }).ToArray();
+                }).Select(choice => choice with { IsCurrent = choice.HostKey == activeHostKey })
+                .OrderByDescending(choice => choice.IsCurrent).ThenBy(choice => choice.Title, StringComparer.CurrentCultureIgnoreCase).ToArray();
         }
         PresetHostsList.ItemsSource = hosts;
-        PresetHostsList.SelectedItem = hosts.FirstOrDefault(host => host.IsGlobal)
-            ?? hosts.FirstOrDefault(host => host.HostKey == selectedHostKey);
+        PresetHostsList.SelectedItem = hosts.FirstOrDefault(host => host.HostKey == preferredHostKey)
+            ?? hosts.FirstOrDefault(host => host.HostKey == selectedHostKey)
+            ?? hosts.FirstOrDefault(host => host.IsCurrent)
+            ?? hosts.FirstOrDefault(host => host.IsGlobal)
+            ?? hosts.FirstOrDefault();
         HostsEmpty.Visibility = showingPresetHosts && hosts.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         AddHostButton.IsEnabled = preset is not null && state.GlobalPresetId != preset.Id && GetAvailableHostCandidates(preset).Count > 0;
         AddHostButton.Visibility = showingPresetHosts && preset is not null ? Visibility.Visible : Visibility.Collapsed;
@@ -480,19 +506,149 @@ public partial class MainWindow : Window
         SetGlobalButton.Style = (Style)FindResource(preset is not null && state.GlobalPresetId == preset.Id ? "PrimaryButton" : "QuietButton");
         PresetStatus.Text = $"{L("global")}: {state.Presets.FirstOrDefault(entry => entry.Id == state.GlobalPresetId)?.Name ?? L("allInstalled")}\n{L("overrides")}: {state.HostPresetIds.Count}";
         UpdateHostActions();
+        RenderPresetHostDetails();
     }
 
-    private void PresetHostsList_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateHostActions();
+    private PresetHostChoice CreatePresetHostChoice(InstalledItem item, bool current) => new(item.Key, item.Title,
+        current ? $"{L(item.SourceKind)} · {L("currentWallpaper")}" : L(item.SourceKind),
+        $"{L(item.Status)} · {item.Version ?? "—"}", LoadPreview(item.PreviewPath), item.PreviewPath is null ? L("noPreview") : "", false, current);
+
+    private void PresetHostsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateHostActions();
+        RenderPresetHostDetails();
+    }
+
+    private void RenderPresetHostDetails()
+    {
+        if (PresetHostDetailPanel is null || !showingPresetHosts) return;
+        var choice = PresetHostsList.SelectedItem as PresetHostChoice;
+        var item = choice?.HostKey is { } key ? FindHost(key) : null;
+        var isCurrent = item is not null && item.Key == activeHostKey;
+        PresetHostDetailPanel.Visibility = item is not null && !isCurrent ? Visibility.Visible : Visibility.Collapsed;
+        PropertyHint.Visibility = item is not null && !isCurrent ? Visibility.Collapsed : Visibility.Visible;
+        TransformPanel.Visibility = Visibility.Collapsed;
+        InstancePropertyPanel.Visibility = isCurrent ? Visibility.Visible : Visibility.Collapsed;
+        if (item is null)
+        {
+            PropertyHeading.Text = settings.Language == "zh-CN" ? "宿主属性" : "Host properties";
+            PropertyHint.Text = settings.Language == "zh-CN" ? "当前壁纸未出现在此预设的宿主列表中。" : "The active wallpaper is not listed in this preset.";
+            InstancePropertyPanel.Children.Clear();
+            return;
+        }
+        if (!isCurrent)
+        {
+            PropertyHeading.Text = settings.Language == "zh-CN" ? "宿主详情" : "Host details";
+            PresetHostPreview.Source = LoadPreview(item.PreviewPath);
+            PresetHostTitle.Text = item.Title;
+            PresetHostMetadata.Text = $"{L("source")}: {L(item.SourceKind)}\n{L("status")}: {L(item.Status)}\n{L("bapId")}: {item.BapId ?? "—"}\n{L("version")}: {item.Version ?? "—"}";
+            PresetHostPath.Text = item.ProjectDirectory;
+            PresetSwitchHostButton.Content = L("switchHost");
+            PresetSwitchHostButton.IsEnabled = true;
+            PresetSwitchHostStatus.Text = "";
+            InstancePropertyPanel.Children.Clear();
+            return;
+        }
+
+        PropertyHeading.Text = settings.Language == "zh-CN" ? "宿主属性" : "Host properties";
+        renderingPropertyEditors = true;
+        try
+        {
+            InstancePropertyPanel.Children.Clear();
+            var definitions = item.Properties ?? [];
+            if (definitions.Count == 0)
+            {
+                PropertyHint.Text = item.PropertyDiagnostics is { Count: > 0 }
+                    ? (settings.Language == "zh-CN" ? "没有可编辑属性；部分声明无效。" : "No editable properties; some declarations are invalid.")
+                    : (settings.Language == "zh-CN" ? "此宿主没有可编辑的 WE 属性。" : "This host declares no editable Wallpaper Engine properties.");
+                AddPropertyDiagnostics(item);
+                return;
+            }
+            PropertyHint.Text = settings.Language == "zh-CN"
+                ? $"{item.Title} · 设置保存在此宿主项目，并同步到当前壁纸。"
+                : $"{item.Title} · settings are stored per host project and applied to the active wallpaper.";
+            var config = state.HostConfigs?.GetValueOrDefault(item.Key) ?? [];
+            var values = definitions.ToDictionary(definition => definition.Key,
+                definition => config.TryGetValue(definition.Key, out var configured) && WallpaperPropertyReader.IsValidValue(definition, configured)
+                    ? configured : definition.DefaultValue, StringComparer.Ordinal);
+            int? previousGroup = null;
+            foreach (var definition in definitions)
+            {
+                if (definition.ConditionSupported && !WallpaperPropertyReader.IsConditionMet(definition, values)) continue;
+                var group = Math.Max(0, definition.Order) / 10;
+                var lead = previousGroup != group;
+                if (lead)
+                {
+                    InstancePropertyPanel.Children.Add(new TextBlock { Text = PropertyTitle(definition), Foreground = (Brush)FindResource("Muted"), FontWeight = FontWeights.SemiBold, FontSize = 11, Margin = new Thickness(0, previousGroup is null ? 4 : 14, 0, 6) });
+                    previousGroup = group;
+                }
+                if (!lead && definition.Type != "bool") InstancePropertyPanel.Children.Add(new TextBlock { Text = PropertyTitle(definition), Foreground = (Brush)FindResource("Ink"), FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 7, 0, 4) });
+                var context = new PropertyEditContext("host", item.Key, null, definition);
+                var value = values[definition.Key];
+                switch (definition.Type)
+                {
+                    case "bool":
+                        var check = new CheckBox { Content = lead ? null : PropertyTitle(definition), IsChecked = value.ValueKind == System.Text.Json.JsonValueKind.True, Tag = context, Margin = new Thickness(0, 0, 0, 5), IsEnabled = definition.ConditionSupported };
+                        check.Checked += PropertyCheck_Changed; check.Unchecked += PropertyCheck_Changed; InstancePropertyPanel.Children.Add(check); break;
+                    case "combo":
+                        var combo = new ComboBox { Tag = context, Margin = new Thickness(0, 0, 0, 5), IsEnabled = definition.ConditionSupported };
+                        combo.ItemsSource = (definition.Options ?? []).Select(option => new PropertyOptionChoice(option, UiStrings.PropertyText(WallpaperPropertyReader.ResolveLocalizedLabel(option.LocalizedLabels, settings.Language) ?? option.Text, settings.Language))).ToArray();
+                        combo.DisplayMemberPath = nameof(PropertyOptionChoice.Label);
+                        combo.SelectedItem = combo.Items.Cast<PropertyOptionChoice>().FirstOrDefault(option => System.Text.Json.JsonElement.DeepEquals(option.Option.Value, value));
+                        combo.SelectionChanged += PropertyCombo_Changed; InstancePropertyPanel.Children.Add(combo); break;
+                    case "textinput":
+                        var text = new TextBox { Text = value.GetString() ?? "", Tag = context, Style = (Style)FindResource("DialogTextBox"), IsEnabled = definition.ConditionSupported };
+                        text.LostKeyboardFocus += PropertyText_LostKeyboardFocus; InstancePropertyPanel.Children.Add(text); break;
+                    case "color":
+                        var color = ColorPickerDialog.ParseWeColor(value.GetString());
+                        var colorButton = new Button { Tag = context, ToolTip = settings.Language == "zh-CN" ? "选择颜色" : "Choose color", Style = (Style)FindResource("QuietButton"), IsEnabled = definition.ConditionSupported, HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 3), Content = $"#{color.R:X2}{color.G:X2}{color.B:X2}" };
+                        colorButton.Click += PropertyColor_Click; InstancePropertyPanel.Children.Add(colorButton); break;
+                    case "slider":
+                        var number = value.GetDouble();
+                        var label = new TextBlock { Text = number.ToString($"F{definition.Fraction ?? 2}", CultureInfo.InvariantCulture), Foreground = (Brush)FindResource("Muted"), HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+                        InstancePropertyPanel.Children.Add(label);
+                        var slider = new Slider { Minimum = definition.Minimum!.Value, Maximum = definition.Maximum!.Value, Value = number, SmallChange = definition.Step ?? 0.01, Tag = new SliderEditContext(context, label), IsEnabled = definition.ConditionSupported };
+                        slider.ValueChanged += PropertySlider_ValueChanged; slider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler(PropertySlider_DragCompleted)); slider.KeyUp += PropertySlider_KeyUp; InstancePropertyPanel.Children.Add(slider); break;
+                }
+            }
+            AddPropertyDiagnostics(item);
+        }
+        finally { renderingPropertyEditors = false; }
+    }
 
     private void UpdateHostActions()
     {
-        var canRemove = PresetHostsList.SelectedItem is PresetHostChoice { IsGlobal: true }
-            or PresetHostChoice { IsGlobal: false, HostKey: not null };
+        var canRemove = PresetHostsList.SelectedItem is PresetHostChoice { IsGlobal: true } ||
+            state.GlobalPresetId != SelectedPreset?.Id && PresetHostsList.SelectedItem is PresetHostChoice { HostKey: not null };
         RemovePresetButton.IsEnabled = canRemove;
         RemovePresetButton.Visibility = showingPresetHosts ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private InstalledItem? FindHost(string hostKey) => items.FirstOrDefault(item => item.Role == "host" && item.Key == hostKey);
+
+    private async Task<string?> FindActiveHostKeyAsync(IReadOnlyList<InstalledItem> candidates)
+    {
+        string current;
+        try { current = await WallpaperEngineControl.GetCurrentAsync(EffectiveDisplayIndex); }
+        catch (Exception error) when (error is FileNotFoundException or InvalidOperationException or TimeoutException) { return null; }
+        if (string.IsNullOrWhiteSpace(current)) return null;
+        string currentPath;
+        try { currentPath = Path.GetFullPath(current); }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException) { return null; }
+        foreach (var host in candidates.Where(item => item.Role == "host"))
+        {
+            var projectPath = Path.Combine(host.ProjectDirectory, "project.json");
+            if (string.Equals(Path.GetFullPath(projectPath), currentPath, StringComparison.OrdinalIgnoreCase)) return host.Key;
+            try
+            {
+                using var project = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(projectPath));
+                if (project.RootElement.TryGetProperty("file", out var entry) && entry.ValueKind == System.Text.Json.JsonValueKind.String &&
+                    string.Equals(Path.GetFullPath(Path.Combine(host.ProjectDirectory, entry.GetString()!)), currentPath, StringComparison.OrdinalIgnoreCase)) return host.Key;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException or NotSupportedException) { }
+        }
+        return null;
+    }
 
     private IReadOnlyList<InstalledItem> GetHostCandidates() => items
         .Where(item => item.Role == "host")
@@ -510,6 +666,16 @@ public partial class MainWindow : Window
     private void RenderPropertyEditors()
     {
         if (InstancePropertyPanel is null) return;
+        if (showingPresetHosts)
+        {
+            RenderPresetHostDetails();
+            return;
+        }
+        PresetHostDetailPanel.Visibility = Visibility.Collapsed;
+        PropertyHint.Visibility = Visibility.Visible;
+        TransformPanel.Visibility = Visibility.Visible;
+        InstancePropertyPanel.Visibility = Visibility.Visible;
+        PropertyHeading.Text = settings.Language == "zh-CN" ? "组件属性" : "Component properties";
         renderingPropertyEditors = true;
         try
         {
@@ -562,7 +728,7 @@ public partial class MainWindow : Window
                     });
                     previousPropertyGroup = propertyGroup;
                 }
-                var context = new PropertyEditContext(component.InstanceId!, definition);
+                var context = new PropertyEditContext("component", item.Key, component.InstanceId, definition);
                 if (!isGroupLead && definition.Type != "bool")
                 {
                     var title = new TextBlock
@@ -979,7 +1145,10 @@ public partial class MainWindow : Window
     {
         if (sender is not Button { Tag: PropertyEditContext context }) return;
         var current = context.Definition.DefaultValue.GetString();
-        if (SelectedComponent?.Config?.TryGetValue(context.Definition.Key, out var configured) == true && configured.ValueKind == System.Text.Json.JsonValueKind.String)
+        var config = context.Scope == "host"
+            ? state.HostConfigs?.GetValueOrDefault(context.OwnerKey)
+            : SelectedComponent?.Config;
+        if (config?.TryGetValue(context.Definition.Key, out var configured) == true && configured.ValueKind == System.Text.Json.JsonValueKind.String)
             current = configured.GetString();
         var initial = ColorPickerDialog.ParseWeColor(current);
         var selected = ColorPickerDialog.Show(this, initial, settings.Language == "zh-CN");
@@ -1010,8 +1179,23 @@ public partial class MainWindow : Window
 
     private async Task SavePropertyValueAsync(PropertyEditContext context, System.Text.Json.JsonElement value)
     {
+        if (context.Scope == "host")
+        {
+            if (activeHostKey != context.OwnerKey || !WallpaperPropertyReader.IsValidValue(context.Definition, value)) return;
+            var config = new Dictionary<string, System.Text.Json.JsonElement>(state.HostConfigs?.GetValueOrDefault(context.OwnerKey) ?? [], StringComparer.Ordinal)
+            {
+                [context.Definition.Key] = value.Clone()
+            };
+            var allConfigs = new Dictionary<string, Dictionary<string, System.Text.Json.JsonElement>>(state.HostConfigs ?? new Dictionary<string, Dictionary<string, System.Text.Json.JsonElement>>(), StringComparer.Ordinal)
+            {
+                [context.OwnerKey] = config
+            };
+            await SaveAsync(state with { HostConfigs = allConfigs }, SelectedPreset?.Id);
+            await WallpaperEngineControl.ApplyPropertiesAsync(config, EffectiveDisplayIndex);
+            return;
+        }
         var preset = SelectedPreset;
-        if (preset is null || !WallpaperPropertyReader.IsValidValue(context.Definition, value)) return;
+        if (preset is null || context.InstanceId is null || !WallpaperPropertyReader.IsValidValue(context.Definition, value)) return;
         var changed = preset.Components.Select(component =>
         {
             if (component.InstanceId != context.InstanceId) return component;
@@ -1248,8 +1432,8 @@ public partial class MainWindow : Window
     private sealed record PresetChoice(ComponentPreset Preset) { public override string ToString() => Preset.Name; }
     private sealed record ComponentChoice(PresetComponent Component, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
     private static bool IsUnverifiedHost(InstalledItem item) => item.BapId is null || item.Status != "valid";
-    private sealed record PresetHostChoice(string? HostKey, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal);
-    private sealed record PropertyEditContext(string InstanceId, WallpaperPropertyDefinition Definition);
+    private sealed record PresetHostChoice(string? HostKey, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal, bool IsCurrent = false);
+    private sealed record PropertyEditContext(string Scope, string OwnerKey, string? InstanceId, WallpaperPropertyDefinition Definition);
     private sealed record LayoutEditContext(string InstanceId, string Field);
     private sealed record LayoutSliderEditContext(string InstanceId, string Field, TextBlock ValueText, bool Integer, double FineStep);
     private sealed record LayoutNudgeContext(Slider Slider, double Direction);

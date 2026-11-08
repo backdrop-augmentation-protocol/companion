@@ -135,9 +135,9 @@ public sealed class InstalledCatalog(IEnumerable<string> workshopRoots, IEnumera
             var propertyResult = WallpaperPropertyReadResult.Empty;
             int? maxInstances = null;
             var componentDiagnostics = new List<string>();
-            if (roleName == "component" && project is not null)
+            if ((roleName is "component" or "host") && project is not null)
             {
-                maxInstances = await ReadMaxInstancesAsync(directory, componentDiagnostics, ct);
+                if (roleName == "component") maxInstances = await ReadMaxInstancesAsync(directory, componentDiagnostics, ct);
                 JsonElement? localization = null;
                 var localizationPath = Path.Combine(directory, "bap-properties.json");
                 var localizationDiagnostics = new List<string>();
