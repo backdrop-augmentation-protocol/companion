@@ -100,15 +100,26 @@ internal static class WallpaperEngineControl
 
     private static async Task<string> RunAsync(string exe, IReadOnlyList<string> arguments, bool captureOutput)
     {
-        var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = captureOutput, RedirectStandardError = true };
+        var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not invoke Wallpaper Engine");
-        var output = captureOutput ? process.StandardOutput.ReadToEndAsync() : Task.FromResult("");
+        var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         try { await process.WaitForExitAsync(timeout.Token); }
         catch (OperationCanceledException) { throw new TimeoutException("Wallpaper Engine control did not respond"); }
-        if (process.ExitCode != 0) throw new InvalidOperationException($"Wallpaper Engine control failed: {await error}");
-        return await output;
+        var outputText = await output;
+        var errorText = await error;
+        if (process.ExitCode != 0) throw new InvalidOperationException(FormatControlFailure(process.ExitCode, errorText, outputText));
+        return captureOutput ? outputText : "";
+    }
+
+    internal static string FormatControlFailure(int exitCode, string standardError, string standardOutput)
+    {
+        var details = string.Join(Environment.NewLine, new[] { standardError.Trim(), standardOutput.Trim() }
+            .Where(text => !string.IsNullOrWhiteSpace(text)));
+        return string.IsNullOrWhiteSpace(details)
+            ? $"Wallpaper Engine control failed (exit code {exitCode}); it returned no diagnostic output."
+            : $"Wallpaper Engine control failed (exit code {exitCode}):{Environment.NewLine}{details}";
     }
 }

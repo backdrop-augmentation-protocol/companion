@@ -54,4 +54,23 @@ public sealed class WallpaperEngineControlTests
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
+
+    [Fact]
+    public void ControlFailureIncludesExitCodeAndAvailableDiagnostics()
+    {
+        var message = WallpaperEngineControl.FormatControlFailure(17, " stderr detail ", "stdout detail");
+
+        Assert.Contains("exit code 17", message);
+        Assert.Contains("stderr detail", message);
+        Assert.Contains("stdout detail", message);
+    }
+
+    [Fact]
+    public void ControlFailureExplainsWhenWallpaperEngineReturnsNoDiagnostics()
+    {
+        var message = WallpaperEngineControl.FormatControlFailure(1, "  ", "");
+
+        Assert.Contains("exit code 1", message);
+        Assert.Contains("no diagnostic output", message);
+    }
 }
