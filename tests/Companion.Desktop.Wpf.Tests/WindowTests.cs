@@ -158,6 +158,39 @@ public sealed class WindowTests
                 window.PresetList.SelectedIndex = 0;
                 window.SelectedComponents.SelectedIndex = 0;
                 window.UpdateLayout();
+                var secondManualInstance = secondInstance with
+                {
+                    Layout = new ComponentLayout("manual", "bottom-right", 0.8, 0.8, 0.2, 0.2, Scale: 1, Rotation: 0, Opacity: 1, ZIndex: 1, Locked: true)
+                };
+                var isolatedPreset = initialPresetState.Presets.Single() with { Components = [firstInstance, secondManualInstance], Grid = new GridLayoutSettings() };
+                window.RenderSnapshot(presetTestItems, initialPresetState with { Presets = [isolatedPreset] });
+                window.PresetList.SelectedIndex = 0;
+                window.SelectedComponents.SelectedIndex = 0;
+                var previousLayoutContext = SynchronizationContext.Current;
+                SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(application.Dispatcher));
+                try
+                {
+                    var placementEditor = Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>(),
+                        combo => combo.Tag?.GetType().GetProperty("Field")?.GetValue(combo.Tag) as string == "mode");
+                    placementEditor.SelectedIndex = 0;
+                    var layoutSaveFrame = new System.Windows.Threading.DispatcherFrame();
+                    var layoutSaveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+                    layoutSaveTimer.Tick += (_, _) => { layoutSaveTimer.Stop(); layoutSaveFrame.Continue = false; };
+                    layoutSaveTimer.Start();
+                    System.Windows.Threading.Dispatcher.PushFrame(layoutSaveFrame);
+                }
+                finally { SynchronizationContext.SetSynchronizationContext(previousLayoutContext); }
+                var isolatedSaved = presetStore.ReadAsync().GetAwaiter().GetResult().Presets.Single();
+                Assert.Equal("automatic", isolatedSaved.Components[0].Layout!.Mode);
+                Assert.Equal("manual", isolatedSaved.Components[1].Layout!.Mode);
+                window.SelectedComponents.SelectedIndex = 1;
+                var secondPlacementEditor = Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>(),
+                    combo => combo.Tag?.GetType().GetProperty("Field")?.GetValue(combo.Tag) as string == "mode");
+                Assert.Equal(1, secondPlacementEditor.SelectedIndex);
+                window.RenderSnapshot(presetTestItems, initialPresetState);
+                window.PresetList.SelectedIndex = 0;
+                window.SelectedComponents.SelectedIndex = 0;
+                window.UpdateLayout();
                 Assert.Equal("Component properties", window.PropertyHeading.Text);
                 Assert.Contains(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBlock>(), header => Equals(header.Tag, "TransformGroupHeader"));
                 Assert.Equal(2, window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count());
