@@ -10,6 +10,37 @@ namespace Bap.Companion.Tests;
 public sealed class CoreTests
 {
     [Fact]
+    public void RuntimeDesktopStoreKeepsHostSessionsSeparateAndDetachesSnapshots()
+    {
+        var store = new RuntimeDesktopStore();
+        var config = JsonSerializer.Deserialize<JsonElement>("""{"format":"24h"}""")
+            .EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
+        RuntimeHostSnapshot Snapshot(string session) => new(session, "org.example.host", "Example Host", DateTimeOffset.UtcNow,
+            [new("clock", "org.example.clock", "workshop:1", "running", null, new(true, true), config, 0)]);
+
+        store.Report(Snapshot("session-a"));
+        store.Report(Snapshot("session-b"));
+        Assert.Equal(2, store.Snapshot().Count);
+        var detached = store.Snapshot()[0];
+        detached.Instances[0].Config["format"] = JsonSerializer.SerializeToElement("corrupt");
+        Assert.Equal("24h", store.Snapshot()[0].Instances[0].Config["format"].GetString());
+
+        var replacement = new Dictionary<string, JsonElement> { ["format"] = JsonSerializer.SerializeToElement("12h") };
+        Assert.True(store.TrySetConfig("session-a", "clock", replacement, 1));
+        Assert.False(store.TrySetConfig("missing-session", "clock", replacement, 1));
+        Assert.Equal("12h", store.Commands("session-a").Single().Config!["format"].GetString());
+        Assert.Empty(store.Commands("session-b"));
+
+        store.Report(Snapshot("session-a") with
+        {
+            Instances = [new("clock", "org.example.clock", "workshop:1", "running", null, new(true, true), replacement, 1)]
+        });
+        Assert.Empty(store.Commands("session-a"));
+        store.RemoveSession("session-a");
+        Assert.Single(store.Snapshot());
+    }
+
+    [Fact]
     public async Task SteamWorkshopCreatorLookupResolvesAndCachesPublicCreatorName()
     {
         var requests = 0;
