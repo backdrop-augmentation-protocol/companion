@@ -254,6 +254,7 @@ public sealed class WindowTests
                 typeof(MainWindow).GetField("runtimeSnapshots", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
                     .SetValue(window, new[] { liveSnapshot });
                 window.DesktopNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                Assert.Equal(System.Windows.Controls.Grid.GetColumn(window.DesktopHostsList), System.Windows.Controls.Grid.GetColumn(window.DesktopComponentsList));
                 window.DesktopComponentsList.SelectedIndex = 0;
                 window.UpdateLayout();
                 Assert.True(window.InstancePropertyPanel.Children.Count > 0, window.PropertyHint.Text);
