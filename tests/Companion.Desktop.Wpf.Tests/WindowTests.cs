@@ -264,6 +264,19 @@ public sealed class WindowTests
                 Assert.Single(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>());
                 Assert.Equal(2, window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count());
                 Assert.Equal(8, window.TransformPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
+                if (Environment.GetEnvironmentVariable("BAP_WPF_SCREENSHOT") is { Length: > 0 } desktopScreenshotPrefix)
+                {
+                    var visual = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
+                    visual.Measure(new System.Windows.Size(1220, 790));
+                    visual.Arrange(new Rect(0, 0, 1220, 790));
+                    visual.UpdateLayout();
+                    var bitmap = new RenderTargetBitmap(1220, 790, 96, 96, PixelFormats.Pbgra32);
+                    bitmap.Render(visual);
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                    using var output = File.Create($"{desktopScreenshotPrefix}-desktop.png");
+                    encoder.Save(output);
+                }
                 window.DesktopComponentsList.SelectedIndex = 1;
                 window.UpdateLayout();
                 Assert.Empty(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>());

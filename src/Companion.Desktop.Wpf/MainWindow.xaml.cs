@@ -1103,7 +1103,7 @@ public partial class MainWindow : Window
             HorizontalAlignment = System.Windows.HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
             FontSize = 11
         };
-        var heading = new Grid { Margin = new Thickness(0, 3, 0, 0) };
+        var heading = new Grid { Margin = new Thickness(0, 3, 10, 0) };
         heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         heading.Children.Add(new TextBlock
@@ -1125,8 +1125,8 @@ public partial class MainWindow : Window
         {
             var button = new Button
             {
-                Content = glyph, Width = 25, Height = 23, Padding = new Thickness(0),
-                Margin = new Thickness(0, 0, 4, 0), Style = (Style)FindResource("QuietButton"),
+                Content = glyph, Width = 22, Height = 23, Padding = new Thickness(0),
+                Margin = new Thickness(0, 0, 2, 0), Style = (Style)FindResource("QuietButton"),
                 ToolTip = L(tooltip), Tag = new LayoutNudgeContext(slider, direction)
             };
             button.Click += LayoutNudge_Click;

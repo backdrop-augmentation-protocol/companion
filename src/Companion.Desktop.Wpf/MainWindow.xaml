@@ -127,11 +127,12 @@
       <Setter Property="Foreground" Value="{StaticResource Accent}"/>
       <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider">
-        <Grid Height="24" VerticalAlignment="Center">
-          <Track x:Name="PART_Track" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
-                 Value="{TemplateBinding Value}" IsDirectionReversed="{TemplateBinding IsDirectionReversed}">
-            <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static Slider.DecreaseLarge}" IsTabStop="False" Focusable="False" Background="#22D3FF" BorderThickness="0" Height="4" VerticalAlignment="Center"/></Track.DecreaseRepeatButton>
-            <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static Slider.IncreaseLarge}" IsTabStop="False" Focusable="False" Background="#284572" BorderThickness="0" Height="4" VerticalAlignment="Center"/></Track.IncreaseRepeatButton>
+        <Grid Height="24" VerticalAlignment="Center" HorizontalAlignment="Stretch">
+          <Border Height="4" Background="#284572" VerticalAlignment="Center" IsHitTestVisible="False"/>
+          <Track x:Name="PART_Track" Orientation="Horizontal" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                 Value="{TemplateBinding Value}" IsDirectionReversed="{TemplateBinding IsDirectionReversed}" HorizontalAlignment="Stretch">
+            <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static Slider.DecreaseLarge}" IsTabStop="False" Focusable="False" Background="Transparent" BorderThickness="0" Height="4" VerticalAlignment="Center"/></Track.DecreaseRepeatButton>
+            <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static Slider.IncreaseLarge}" IsTabStop="False" Focusable="False" Background="Transparent" BorderThickness="0" Height="4" VerticalAlignment="Center"/></Track.IncreaseRepeatButton>
             <Track.Thumb><Thumb Width="16" Height="16" Focusable="False">
               <Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="{StaticResource Accent}" BorderBrush="#EAF3FF" BorderThickness="2" CornerRadius="8"/></ControlTemplate></Thumb.Template>
             </Thumb></Track.Thumb>
