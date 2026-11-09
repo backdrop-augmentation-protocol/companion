@@ -142,7 +142,6 @@ public partial class MainWindow : Window
         PresetsTitle.Text = L("presets"); PresetIntro.Text = L("presetIntro");
         DesktopTitle.Text = L("desktop"); DesktopIntro.Text = L("desktopIntro");
         DesktopHostHeading.Text = L("desktopCurrentHost"); DesktopComponentsHeading.Text = L("desktopRuntimeComponents");
-        DesktopHostPropertiesButton.Content = L("hostProperties");
         PropertyRefreshButton.Content = L("refreshProperties");
         DesktopComponentsEmpty.Text = L("desktopWaiting");
         NewPresetButton.Content = L("newPreset"); RenameButton.Content = L("rename"); DeleteButton.Content = L("delete");
@@ -290,7 +289,13 @@ public partial class MainWindow : Window
         RenderDesktop();
     }
 
-    private void DesktopHostPropertiesButton_Click(object sender, RoutedEventArgs e)
+    private void DesktopHostsList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (DesktopHostsList.SelectedItem is not CatalogEntry) return;
+        ShowDesktopHostProperties();
+    }
+
+    private void ShowDesktopHostProperties()
     {
         selectedRuntimeComponent = null;
         changingRuntimeSelection = true;

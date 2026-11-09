@@ -255,6 +255,13 @@ public sealed class WindowTests
                     .SetValue(window, new[] { liveSnapshot });
                 window.DesktopNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 Assert.Equal(System.Windows.Controls.Grid.GetColumn(window.DesktopHostsList), System.Windows.Controls.Grid.GetColumn(window.DesktopComponentsList));
+                window.UpdateLayout();
+                var desktopHostContainer = Assert.IsType<System.Windows.Controls.ListBoxItem>(window.DesktopHostsList.ItemContainerGenerator.ContainerFromIndex(0));
+                desktopHostContainer.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+                    System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount, System.Windows.Input.MouseButton.Left)
+                { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent });
+                Assert.Equal("Host properties", window.PropertyHeading.Text);
+                Assert.Equal(Visibility.Visible, window.InstancePropertyPanel.Visibility);
                 window.DesktopComponentsList.SelectedIndex = 0;
                 window.UpdateLayout();
                 Assert.True(window.InstancePropertyPanel.Children.Count > 0, window.PropertyHint.Text);
