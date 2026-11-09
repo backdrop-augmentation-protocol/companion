@@ -16,6 +16,7 @@ builder.Services.AddSingleton(new CompanionOptions
         Environment.GetEnvironmentVariable("BAP_APPROVAL_TIMEOUT_MS"))
 });
 builder.Services.AddSingleton<ISessionStore, InMemorySessionStore>();
+builder.Services.AddSingleton<RuntimeDesktopStore>();
 builder.Services.AddSingleton<HostAuthorizationQueue>();
 builder.Services.AddHostedService<AuthorizationPipeServer>();
 builder.Services.AddSingleton(_ => new JsonPresetStore(JsonPresetStore.DefaultPath));
@@ -81,6 +82,29 @@ app.MapPost("/v1/diagnostics", (HttpContext context, JsonElement entry, ISession
     logger.LogInformation("[BAP-DIAG] {EventName} page={PageInstanceId} session={SessionId} payload={Payload}",
         eventName, pageInstanceId, sessionId, entry.GetRawText());
     return Results.NoContent();
+});
+
+app.MapPost("/v1/runtime/snapshot", (HttpContext context, RuntimeSnapshotRequest? request, ISessionStore sessions, RuntimeDesktopStore runtime) =>
+{
+    var token = GetToken(context.Request);
+    if (token is null || !sessions.TryGet(token, out var session)) return Error(401, "UNAUTHORIZED", "a valid Host session is required");
+    if (!session.GrantedPermissions.Contains("config.read")) return Error(403, "CAPABILITY_DENIED", "the Host session lacks runtime inventory permission");
+    if (request is null || session.HostId is null || !string.Equals(request.HostId, session.HostId, StringComparison.Ordinal))
+        return Error(403, "UNAUTHORIZED", "runtime inventory Host identity does not match the approved session");
+    try
+    {
+        runtime.Report(new(session.Id, request.HostId, request.HostName, DateTimeOffset.UtcNow, request.Instances));
+        return Results.NoContent();
+    }
+    catch (ArgumentException error) { return Error(400, "INVALID_MESSAGE", error.Message); }
+});
+
+app.MapGet("/v1/runtime/commands", (HttpRequest request, ISessionStore sessions, RuntimeDesktopStore runtime) =>
+{
+    var token = GetToken(request);
+    if (token is null || !sessions.TryGet(token, out var session)) return Error(401, "UNAUTHORIZED", "a valid Host session is required");
+    if (!session.GrantedPermissions.Contains("config.write")) return Error(403, "CAPABILITY_DENIED", "the Host session lacks runtime control permission");
+    return Results.Ok(runtime.Commands(session.Id));
 });
 
 app.MapGet("/v1/components", async (HttpRequest request, IWorkshopComponentSource source, ISessionStore sessions, CancellationToken ct) =>
@@ -158,7 +182,7 @@ app.MapPut("/v1/config/wallpapers/{wallpaperId}", async (string wallpaperId, Htt
         return Results.NoContent();
     }));
 
-app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionOptions options, HostAuthorizationQueue authorizations, ILogger<Program> logger) =>
+app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, RuntimeDesktopStore runtime, CompanionOptions options, HostAuthorizationQueue authorizations, ILogger<Program> logger) =>
 {
     var token = GetToken(context.Request, allowQueryToken: true);
     if (token is null || !sessions.TryGet(token, out var session)) { context.Response.StatusCode = 401; return; }
@@ -271,6 +295,7 @@ app.Map("/v1/ws", async (HttpContext context, ISessionStore sessions, CompanionO
     finally
     {
         if (permissionsGranted) sessions.ClearPermissions(token);
+        runtime.RemoveSession(session.Id);
         // Disconnects never restore lifecycle state or permissions; reconnects must handshake again.
         if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived) await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "disconnected", CancellationToken.None);
         logger.LogInformation(

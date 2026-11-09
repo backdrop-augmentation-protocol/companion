@@ -23,13 +23,17 @@ public sealed record AuthorizationControlRequest(
     string Operation,
     string? SessionId = null,
     IReadOnlyCollection<string>? Permissions = null,
-    bool Remember = false);
+    bool Remember = false,
+    string? InstanceId = null,
+    Dictionary<string, System.Text.Json.JsonElement>? Config = null,
+    long? ConfigRevision = null);
 
 public sealed record AuthorizationControlResponse(
     bool Success,
     IReadOnlyList<HostAuthorizationRequest> Requests,
     string? Error = null,
-    IReadOnlyList<TrustedHost>? TrustedHosts = null);
+    IReadOnlyList<TrustedHost>? TrustedHosts = null,
+    IReadOnlyList<RuntimeHostSnapshot>? RuntimeHosts = null);
 
 /// <summary>
 /// Holds explicit human decisions and optional per-user records for self-reported Host IDs.

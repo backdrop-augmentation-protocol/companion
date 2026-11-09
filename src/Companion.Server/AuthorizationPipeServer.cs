@@ -7,6 +7,7 @@ namespace Bap.Companion.Server;
 internal sealed class AuthorizationPipeServer(
     HostAuthorizationQueue authorizations,
     ISessionStore sessions,
+    RuntimeDesktopStore runtime,
     InstalledCatalog catalog,
     ILogger<AuthorizationPipeServer> logger) : BackgroundService
 {
@@ -56,6 +57,10 @@ internal sealed class AuthorizationPipeServer(
         {
             "snapshot" => new(true, authorizations.Snapshot()),
             "trusted" => new(true, [], TrustedHosts: authorizations.TrustedHosts()),
+            "runtime-snapshot" => new(true, [], RuntimeHosts: runtime.Snapshot()),
+            "runtime-config" when !string.IsNullOrWhiteSpace(request.SessionId) &&
+                                  !string.IsNullOrWhiteSpace(request.InstanceId) &&
+                                  request.Config is not null && request.ConfigRevision is > 0 => SetRuntimeConfig(request),
             "revoke" when !string.IsNullOrWhiteSpace(request.SessionId) => Revoke(request.SessionId),
             "approve" when !string.IsNullOrWhiteSpace(request.SessionId) => new(
                 authorizations.Approve(request.SessionId, request.Permissions ?? [], request.Remember), []),
@@ -63,6 +68,12 @@ internal sealed class AuthorizationPipeServer(
                 authorizations.Deny(request.SessionId), []),
             _ => new(false, [], "unsupported operation")
         };
+    }
+
+    private AuthorizationControlResponse SetRuntimeConfig(AuthorizationControlRequest request)
+    {
+        var success = runtime.TrySetConfig(request.SessionId!, request.InstanceId!, request.Config!, request.ConfigRevision!.Value);
+        return new(success, [], success ? null : "runtime instance was not found or revision is stale");
     }
 
     private AuthorizationControlResponse Revoke(string hostId)

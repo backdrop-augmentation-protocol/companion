@@ -14,6 +14,17 @@ public sealed class HostAuthorizationClient(string pipeName)
     public async Task<IReadOnlyList<TrustedHost>> GetTrustedHostsAsync(CancellationToken cancellationToken = default) =>
         (await SendAsync(new("trusted"), cancellationToken)).TrustedHosts ?? [];
 
+    public async Task<IReadOnlyList<RuntimeHostSnapshot>> GetRuntimeSnapshotsAsync(CancellationToken cancellationToken = default) =>
+        (await SendAsync(new("runtime-snapshot"), cancellationToken)).RuntimeHosts ?? [];
+
+    public async Task SetRuntimeConfigAsync(string sessionId, string instanceId,
+        Dictionary<string, JsonElement> config, long revision, CancellationToken cancellationToken = default)
+    {
+        var response = await SendAsync(new("runtime-config", sessionId, InstanceId: instanceId,
+            Config: config, ConfigRevision: revision), cancellationToken);
+        if (!response.Success) throw new IOException(response.Error ?? "Companion could not update the runtime component configuration.");
+    }
+
     public async Task RefreshCatalogAsync(CancellationToken cancellationToken = default)
     {
         var response = await SendAsync(new("refresh-catalog"), cancellationToken);

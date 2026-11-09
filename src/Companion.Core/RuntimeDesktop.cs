@@ -21,6 +21,11 @@ public sealed record RuntimeHostSnapshot(
     DateTimeOffset UpdatedAt,
     IReadOnlyList<RuntimeComponentInstance> Instances);
 
+public sealed record RuntimeSnapshotRequest(
+    string HostId,
+    string HostName,
+    IReadOnlyList<RuntimeComponentInstance> Instances);
+
 public sealed record RuntimeInstanceCommand(
     string InstanceId,
     Dictionary<string, JsonElement>? Config = null,
