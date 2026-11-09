@@ -266,6 +266,29 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task InstalledCatalogKeepsWebWallpaperWithBooleanFractionMetadata()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"bap-boolean-fraction-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(root);
+            await File.WriteAllTextAsync(Path.Combine(root, "project.json"), """
+                { "type": "web", "title": "Existing WE wallpaper", "file": "index.html", "general": { "properties": {
+                  "volume": { "type": "slider", "value": 50, "min": 0, "max": 100, "fraction": false }
+                } } }
+                """);
+
+            var item = Assert.Single(await new InstalledCatalog([root], []).DiscoverAsync());
+            var property = Assert.Single(item.Properties!);
+
+            Assert.Equal("Existing WE wallpaper", item.Title);
+            Assert.Equal("volume", property.Key);
+            Assert.Null(property.Fraction);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public void WallpaperPropertiesReadSupportedProjectMetadataWithoutLocalMediaOrCodeEvaluation()
     {
         using var document = JsonDocument.Parse("""
@@ -294,6 +317,21 @@ public sealed class CoreTests
         Assert.Contains(read.Diagnostics, diagnostic => diagnostic.Contains("unsupported display condition", StringComparison.Ordinal));
         Assert.True(WallpaperPropertyReader.IsValidValue(read.Properties.Single(property => property.Key == "theme"), JsonDocument.Parse("\"red\"").RootElement));
         Assert.False(WallpaperPropertyReader.IsValidValue(read.Properties.Single(property => property.Key == "opacity"), JsonDocument.Parse("2").RootElement));
+    }
+
+    [Fact]
+    public void WallpaperPropertyReaderIgnoresBooleanFractionInsteadOfRejectingWholeWallpaper()
+    {
+        using var document = JsonDocument.Parse("""
+            { "general": { "properties": {
+              "volume": { "type": "slider", "value": 50, "min": 0, "max": 100, "fraction": false }
+            } } }
+            """);
+
+        var read = WallpaperPropertyReader.Read(document.RootElement);
+
+        Assert.Equal("volume", Assert.Single(read.Properties).Key);
+        Assert.Null(read.Properties[0].Fraction);
     }
 
     [Fact]

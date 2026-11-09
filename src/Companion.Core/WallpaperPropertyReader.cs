@@ -229,7 +229,8 @@ public static partial class WallpaperPropertyReader
 
     private static string? String(JsonElement node, string name) => node.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     private static double? Number(JsonElement node, string name) => node.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number) && double.IsFinite(number) ? number : null;
-    private static int? Integer(JsonElement node, string name) => node.TryGetProperty(name, out var value) && value.TryGetInt32(out var number) ? number : null;
+    private static int? Integer(JsonElement node, string name) => node.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : null;
 
     private static partial class PropertyCondition
     {
