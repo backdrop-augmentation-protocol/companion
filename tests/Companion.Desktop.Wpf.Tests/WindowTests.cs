@@ -158,62 +158,12 @@ public sealed class WindowTests
                 window.PresetList.SelectedIndex = 0;
                 window.SelectedComponents.SelectedIndex = 0;
                 window.UpdateLayout();
-                var secondManualInstance = secondInstance with
-                {
-                    Layout = new ComponentLayout("manual", "bottom-right", 0.8, 0.8, 0.2, 0.2, Scale: 1, Rotation: 0, Opacity: 1, ZIndex: 1, Locked: true)
-                };
-                var isolatedPreset = initialPresetState.Presets.Single() with { Components = [firstInstance, secondManualInstance], Grid = new GridLayoutSettings() };
-                window.RenderSnapshot(presetTestItems, initialPresetState with { Presets = [isolatedPreset] });
-                window.PresetList.SelectedIndex = 0;
-                window.SelectedComponents.SelectedIndex = 0;
-                var previousLayoutContext = SynchronizationContext.Current;
-                SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(application.Dispatcher));
-                try
-                {
-                    var placementEditor = Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>(),
-                        combo => combo.Tag?.GetType().GetProperty("Field")?.GetValue(combo.Tag) as string == "mode");
-                    placementEditor.SelectedIndex = 0;
-                    var layoutSaveFrame = new System.Windows.Threading.DispatcherFrame();
-                    var layoutSaveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-                    layoutSaveTimer.Tick += (_, _) => { layoutSaveTimer.Stop(); layoutSaveFrame.Continue = false; };
-                    layoutSaveTimer.Start();
-                    System.Windows.Threading.Dispatcher.PushFrame(layoutSaveFrame);
-                }
-                finally { SynchronizationContext.SetSynchronizationContext(previousLayoutContext); }
-                var isolatedSaved = presetStore.ReadAsync().GetAwaiter().GetResult().Presets.Single();
-                Assert.Equal("automatic", isolatedSaved.Components[0].Layout!.Mode);
-                Assert.Equal("manual", isolatedSaved.Components[1].Layout!.Mode);
-                window.SelectedComponents.SelectedIndex = 1;
-                var secondPlacementEditor = Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>(),
-                    combo => combo.Tag?.GetType().GetProperty("Field")?.GetValue(combo.Tag) as string == "mode");
-                Assert.Equal(1, secondPlacementEditor.SelectedIndex);
+                Assert.False(window.PropertyScrollViewer.IsVisible);
                 window.RenderSnapshot(presetTestItems, initialPresetState);
                 window.PresetList.SelectedIndex = 0;
                 window.SelectedComponents.SelectedIndex = 0;
                 window.UpdateLayout();
-                Assert.Equal("Component properties", window.PropertyHeading.Text);
-                Assert.Contains(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBlock>(), header => Equals(header.Tag, "TransformGroupHeader"));
-                Assert.Equal(2, window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count());
-                Assert.Empty(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>());
-                Assert.Equal(8, window.TransformPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
-                Assert.Equal(16, window.TransformPanel.Children.OfType<System.Windows.Controls.Grid>()
-                    .SelectMany(grid => grid.Children.OfType<System.Windows.Controls.StackPanel>())
-                    .SelectMany(panel => panel.Children.OfType<System.Windows.Controls.Button>()).Count());
-                Assert.True(Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.CheckBox>()).IsChecked);
-                window.PropertyScrollViewer.ScrollToEnd();
-                window.UpdateLayout();
-                Assert.True(window.PropertyScrollViewer.VerticalOffset > 0);
-                window.SelectedComponents.SelectedIndex = 1;
-                window.UpdateLayout();
-                Assert.Equal(0, window.PropertyScrollViewer.VerticalOffset);
-                Assert.Contains(window.TransformPanel.Children.OfType<System.Windows.Controls.Grid>()
-                    .SelectMany(grid => grid.Children.OfType<System.Windows.Controls.TextBlock>()), label => label.Text == "Order");
-                Assert.Empty(window.TransformPanel.Children.OfType<System.Windows.Controls.TextBox>());
-                Assert.Equal(5, window.TransformPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
-                Assert.Equal(10, window.TransformPanel.Children.OfType<System.Windows.Controls.Grid>()
-                    .SelectMany(grid => grid.Children.OfType<System.Windows.Controls.StackPanel>())
-                    .SelectMany(panel => panel.Children.OfType<System.Windows.Controls.Button>()).Count());
-                window.SelectedComponents.SelectedIndex = 0;
+                Assert.False(window.PropertyScrollViewer.IsVisible);
                 Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
                 window.RenderSnapshot(presetTestItems, initialPresetState with { HostPresetIds = new Dictionary<string, string>() });
                 Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
@@ -287,42 +237,41 @@ public sealed class WindowTests
                 window.UpdateLayout();
                 Assert.Equal(2, window.SelectedComponents.Items.Count);
                 Assert.Equal(0, window.SelectedComponents.SelectedIndex);
+                Assert.False(window.PropertyScrollViewer.IsVisible);
+                var runtimeConfig = System.Text.Json.JsonDocument.Parse("""{"mode":"two","appearance":"custom"}""").RootElement
+                    .EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
+                var standardConfig = System.Text.Json.JsonDocument.Parse("""{"mode":"one","appearance":"standard"}""").RootElement
+                    .EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
+                var liveSnapshot = new RuntimeHostSnapshot("session-ui", "org.example.host", "Demo host wallpaper", DateTimeOffset.UtcNow,
+                [
+                    new("instance-a", "org.example.time", "workshop:123", "running",
+                        new ComponentLayout("manual", "center", 0.5, 0.5, 0.25, 0.15, Locked: true), new(true, true), runtimeConfig, 1),
+                    new("instance-b", "org.example.time", "workshop:123", "running",
+                        new ComponentLayout("automatic", Order: 1, ZIndex: 1), new(true, true), standardConfig, 1)
+                ]);
+                typeof(MainWindow).GetField("activeHostKey", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .SetValue(window, "local:host");
+                typeof(MainWindow).GetField("runtimeSnapshots", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .SetValue(window, new[] { liveSnapshot });
+                window.DesktopNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                window.DesktopComponentsList.SelectedIndex = 0;
+                window.UpdateLayout();
                 Assert.True(window.InstancePropertyPanel.Children.Count > 0, window.PropertyHint.Text);
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Color scheme");
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>(), button => button.ToolTip?.ToString() == "Choose color");
                 Assert.Equal(new[] { "Display", "Appearance" }, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>()
                     .Where(textBlock => Equals(textBlock.Tag, "PropertyGroupHeader")).Select(textBlock => textBlock.Text));
-                Assert.Equal(5, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
-                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count() +
-                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>().Count() +
-                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Slider>().Count() +
-                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>().Count(button => button.ToolTip?.ToString() == "Choose color"));
-                var customConfig = new Dictionary<string, System.Text.Json.JsonElement>
-                {
-                    ["mode"] = System.Text.Json.JsonDocument.Parse("\"two\"").RootElement.Clone()
-                };
-                var customPreset = initialPresetState.Presets.Single() with
-                {
-                    Components = [firstInstance with { Config = customConfig }, secondInstance]
-                };
-                window.RenderSnapshot(presetTestItems, initialPresetState with { Presets = [customPreset] });
-                window.SelectedComponents.SelectedIndex = 0;
                 Assert.Single(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>());
-                Assert.Equal(6, window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>().Count() +
-                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count() +
-                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>().Count() +
-                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Slider>().Count() +
-                    window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>().Count(button => button.ToolTip?.ToString() == "Choose color"));
-                var enabledProperty = Assert.Single(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.CheckBox>());
-                enabledProperty.IsChecked = false;
-                var saveFrame = new System.Windows.Threading.DispatcherFrame();
-                var saveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
-                saveTimer.Tick += (_, _) => { saveTimer.Stop(); saveFrame.Continue = false; };
-                saveTimer.Start();
-                System.Windows.Threading.Dispatcher.PushFrame(saveFrame);
-                var savedPreset = presetStore.ReadAsync().GetAwaiter().GetResult().Presets.Single();
-                Assert.Equal(System.Text.Json.JsonValueKind.False, savedPreset.Components[0].Config!["enabled"].ValueKind);
-                Assert.False(savedPreset.Components[1].Config?.ContainsKey("enabled") == true);
+                Assert.Equal(2, window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>().Count());
+                Assert.Equal(8, window.TransformPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
+                window.DesktopComponentsList.SelectedIndex = 1;
+                window.UpdateLayout();
+                Assert.Empty(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBox>());
+                Assert.DoesNotContain(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>(),
+                    button => button.ToolTip?.ToString() == "Choose color");
+                Assert.Single(window.TransformPanel.Children.OfType<System.Windows.Controls.ComboBox>());
+                Assert.Equal(5, window.TransformPanel.Children.OfType<System.Windows.Controls.Slider>().Count());
+                Assert.Equal("preset-1", presetStore.ReadAsync().GetAwaiter().GetResult().Presets.Single().Id);
                 window.HostsList.SelectedIndex = 0;
                 window.UpdateLayout();
                 window.ComponentsList.SelectedIndex = 0;

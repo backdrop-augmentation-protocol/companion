@@ -26,7 +26,8 @@ public sealed record AuthorizationControlRequest(
     bool Remember = false,
     string? InstanceId = null,
     Dictionary<string, System.Text.Json.JsonElement>? Config = null,
-    long? ConfigRevision = null);
+    long? ConfigRevision = null,
+    ComponentLayout? Layout = null);
 
 public sealed record AuthorizationControlResponse(
     bool Success,

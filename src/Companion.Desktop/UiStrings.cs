@@ -4,6 +4,16 @@ internal static class UiStrings
 {
     private static readonly Dictionary<string, (string English, string Chinese)> Values = new()
     {
+        ["desktop"] = ("Desktop", "\u684c\u9762"),
+        ["desktopIntro"] = ("Live wallpaper and component instances. Changes here affect the running desktop, not presets.", "\u8fd9\u91cc\u663e\u793a\u6b63\u5728\u8fd0\u884c\u7684\u58c1\u7eb8\u548c\u7ec4\u4ef6\u5b9e\u4f8b\u3002\u6b64\u5904\u4fee\u6539\u53ea\u4f5c\u7528\u4e8e\u5f53\u524d\u684c\u9762\uff0c\u4e0d\u4f1a\u4fee\u6539\u9884\u8bbe\u3002"),
+        ["desktopCurrentHost"] = ("Current wallpaper", "\u5f53\u524d\u58c1\u7eb8"),
+        ["desktopRuntimeComponents"] = ("Running components", "\u8fd0\u884c\u4e2d\u7684\u7ec4\u4ef6"),
+        ["desktopNoHost"] = ("No active BAP host wallpaper was detected.", "\u672a\u68c0\u6d4b\u5230\u6d3b\u52a8\u7684 BAP \u5bbf\u4e3b\u58c1\u7eb8\u3002"),
+        ["desktopWaiting"] = ("Waiting for the Host to report its live component inventory.", "\u6b63\u5728\u7b49\u5f85\u5bbf\u4e3b\u62a5\u544a\u5b9e\u65f6\u7ec4\u4ef6\u5217\u8868\u3002"),
+        ["desktopNoComponents"] = ("No components are currently mounted.", "\u5f53\u524d\u6ca1\u6709\u5df2\u6302\u8f7d\u7684\u7ec4\u4ef6\u3002"),
+        ["runtimePropertiesHint"] = ("Live values for this running instance. Changes do not modify a preset.", "\u6b64\u5b9e\u4f8b\u7684\u5b9e\u65f6\u5c5e\u6027\u3002\u4fee\u6539\u4e0d\u4f1a\u5f71\u54cd\u9884\u8bbe\u3002"),
+        ["componentProperties"] = ("Component properties", "\u7ec4\u4ef6\u5c5e\u6027"),
+        ["hostProperties"] = ("Host properties", "\u5bbf\u4e3b\u5c5e\u6027"),
         ["appSubtitle"] = ("Wallpaper Manager", "壁纸管理器"),
         ["installed"] = ("Installed", "已安装"),
         ["presets"] = ("Presets", "预设"),

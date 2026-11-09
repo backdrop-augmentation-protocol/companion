@@ -66,10 +66,19 @@ public sealed class RuntimeDesktopStore
             snapshots[snapshot.SessionId] = snapshot with { UpdatedAt = DateTimeOffset.UtcNow, Instances = instances };
             if (commands.TryGetValue(snapshot.SessionId, out var pending))
             {
+                var reportedIds = instances.Select(instance => instance.InstanceId).ToHashSet(StringComparer.Ordinal);
+                foreach (var staleId in pending.Keys.Where(instanceId => !reportedIds.Contains(instanceId)).ToArray())
+                    pending.Remove(staleId);
                 foreach (var instance in instances)
-                    if (pending.TryGetValue(instance.InstanceId, out var command) &&
-                        command.ConfigRevision is { } revision && instance.ConfigRevision >= revision)
-                        pending.Remove(instance.InstanceId);
+                {
+                    if (!pending.TryGetValue(instance.InstanceId, out var command)) continue;
+                    var configAcknowledged = command.ConfigRevision is { } revision && instance.ConfigRevision >= revision;
+                    var layoutAcknowledged = command.Layout is { } layout && Equals(instance.Layout, layout);
+                    if (configAcknowledged) command = command with { Config = null, ConfigRevision = null };
+                    if (layoutAcknowledged) command = command with { Layout = null };
+                    if (command.Config is null && command.Layout is null) pending.Remove(instance.InstanceId);
+                    else pending[instance.InstanceId] = command;
+                }
             }
         }
     }
@@ -92,7 +101,8 @@ public sealed class RuntimeDesktopStore
             var perSession = commands.GetValueOrDefault(sessionId);
             if (perSession is null) commands[sessionId] = perSession = new(StringComparer.Ordinal);
             perSession[instanceId] = new(instanceId,
-                config.ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), StringComparer.Ordinal), revision);
+                config.ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), StringComparer.Ordinal), revision,
+                perSession.GetValueOrDefault(instanceId)?.Layout);
             return true;
         }
     }
@@ -103,6 +113,23 @@ public sealed class RuntimeDesktopStore
         {
             Config = command.Config?.ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), StringComparer.Ordinal)
         }).ToArray() ?? [];
+    }
+
+    public bool TrySetLayout(string sessionId, string instanceId, ComponentLayout layout)
+    {
+        if (!PresetSelection.ValidateLayout(layout)) return false;
+        lock (gate)
+        {
+            if (!snapshots.TryGetValue(sessionId, out var snapshot) ||
+                snapshot.Instances.All(instance => instance.InstanceId != instanceId)) return false;
+            var pending = commands.GetValueOrDefault(sessionId);
+            var prior = pending?.GetValueOrDefault(instanceId);
+            if (Equals(snapshot.Instances.First(instance => instance.InstanceId == instanceId).Layout, layout) ||
+                Equals(prior?.Layout, layout)) return false;
+            if (pending is null) commands[sessionId] = pending = new(StringComparer.Ordinal);
+            pending[instanceId] = new(instanceId, prior?.Config, prior?.ConfigRevision, layout with { });
+            return true;
+        }
     }
 
     public void RemoveSession(string sessionId)

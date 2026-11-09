@@ -36,6 +36,18 @@ public sealed class CoreTests
             Instances = [new("clock", "org.example.clock", "workshop:1", "running", null, new(true, true), replacement, 1)]
         });
         Assert.Empty(store.Commands("session-a"));
+        var layout = new ComponentLayout("manual", "center", 0.5, 0.5, 0.25, 0.3, Scale: 1, Rotation: 0, Opacity: 1);
+        Assert.True(store.TrySetLayout("session-a", "clock", layout));
+        Assert.Equal(layout, store.Commands("session-a").Single().Layout);
+        Assert.False(store.TrySetLayout("session-a", "clock", layout with { X = double.NaN }));
+        store.Report(Snapshot("session-a") with
+        {
+            Instances = [new("clock", "org.example.clock", "workshop:1", "running", layout, new(true, true), replacement, 1)]
+        });
+        Assert.Empty(store.Commands("session-a"));
+        Assert.True(store.TrySetConfig("session-a", "clock", replacement, 2));
+        store.Report(Snapshot("session-a") with { Instances = [] });
+        Assert.Empty(store.Commands("session-a"));
         store.RemoveSession("session-a");
         Assert.Single(store.Snapshot());
     }

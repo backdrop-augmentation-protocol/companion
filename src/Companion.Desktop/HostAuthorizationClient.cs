@@ -25,6 +25,13 @@ public sealed class HostAuthorizationClient(string pipeName)
         if (!response.Success) throw new IOException(response.Error ?? "Companion could not update the runtime component configuration.");
     }
 
+    public async Task SetRuntimeLayoutAsync(string sessionId, string instanceId, ComponentLayout layout,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await SendAsync(new("runtime-layout", sessionId, InstanceId: instanceId, Layout: layout), cancellationToken);
+        if (!response.Success) throw new IOException(response.Error ?? "Companion could not update the runtime component layout.");
+    }
+
     public async Task RefreshCatalogAsync(CancellationToken cancellationToken = default)
     {
         var response = await SendAsync(new("refresh-catalog"), cancellationToken);

@@ -40,6 +40,12 @@ public partial class MainWindow : Window
     private bool showingPresetHosts;
     private readonly HostAuthorizationClient? authorizationClient;
     private readonly DispatcherTimer authorizationTimer;
+    private IReadOnlyList<RuntimeHostSnapshot> runtimeSnapshots = [];
+    private RuntimeComponentChoice? selectedRuntimeComponent;
+    private readonly Dictionary<string, long> runtimeCommandRevisions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ComponentLayout> runtimeLayoutCommands = new(StringComparer.Ordinal);
+    private bool refreshingRuntime;
+    private bool changingRuntimeSelection;
     private bool showingAuthorizationPrompt;
     private int creatorLookupGeneration;
     private bool renderingPropertyEditors;
@@ -86,20 +92,23 @@ public partial class MainWindow : Window
         try
         {
             var request = (await authorizationClient.GetPendingAsync()).FirstOrDefault();
-            if (request is null) return;
-            if (!IsVisible) Show();
-            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-            Activate();
-            var approved = HostApprovalDialog.Show(this, request, settings.Language, out var permissions, out var remember);
-            var applied = await authorizationClient.DecideAsync(request.SessionId, approved, permissions, remember);
-            if (!applied) log.Write("authorization", $"Request {request.SessionId} was no longer pending when the decision was submitted.");
-            else log.Write("authorization", $"Host request {request.SessionId} {(approved ? "approved" : "denied")}{(remember ? " and remembered on this device" : " for this session")}.");
+            if (request is not null)
+            {
+                if (!IsVisible) Show();
+                if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+                Activate();
+                var approved = HostApprovalDialog.Show(this, request, settings.Language, out var permissions, out var remember);
+                var applied = await authorizationClient.DecideAsync(request.SessionId, approved, permissions, remember);
+                if (!applied) log.Write("authorization", $"Request {request.SessionId} was no longer pending when the decision was submitted.");
+                else log.Write("authorization", $"Host request {request.SessionId} {(approved ? "approved" : "denied")}{(remember ? " and remembered on this device" : " for this session")}.");
+            }
         }
         catch (Exception error) when (error is IOException or TimeoutException or InvalidDataException or System.Text.Json.JsonException)
         {
             log.Write("authorization", error.Message);
         }
         finally { showingAuthorizationPrompt = false; }
+        await RefreshRuntimeAsync();
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -122,6 +131,7 @@ public partial class MainWindow : Window
     {
         AppSubtitle.Text = L("appSubtitle");
         InstalledNav.Content = L("installed"); PresetsNav.Content = L("presets"); SettingsNav.Content = L("settings");
+        DesktopNav.Content = L("desktop");
         InstalledTitle.Text = L("installed"); CatalogHint.Text = L("catalogHint"); RefreshButton.Content = L("refresh");
         PropertyRefreshButton.Content = L("refreshProperties");
         HostsHeading.Text = L("hosts"); ComponentsHeading.Text = L("components");
@@ -130,9 +140,14 @@ public partial class MainWindow : Window
         LocationLabel.Text = L("location"); MonitorLabel.Text = L("switchDisplay"); MonitorHint.Text = L("switchDisplayHint");
         SwitchHostButton.Content = L("switchHost");
         PresetsTitle.Text = L("presets"); PresetIntro.Text = L("presetIntro");
+        DesktopTitle.Text = L("desktop"); DesktopIntro.Text = L("desktopIntro");
+        DesktopHostHeading.Text = L("desktopCurrentHost"); DesktopComponentsHeading.Text = L("desktopRuntimeComponents");
+        DesktopHostPropertiesButton.Content = L("hostProperties");
+        PropertyRefreshButton.Content = L("refreshProperties");
+        DesktopComponentsEmpty.Text = L("desktopWaiting");
         NewPresetButton.Content = L("newPreset"); RenameButton.Content = L("rename"); DeleteButton.Content = L("delete");
         SelectedComponentsHeading.Text = L(showingPresetHosts ? "hostsUsingPreset" : "selectedComponents");
-        PropertyHeading.Text = settings.Language == "zh-CN" ? "组件属性" : "Component properties";
+        PropertyHeading.Text = L("componentProperties");
         if (SelectedComponents is not null) RenderPropertyEditors();
         ComponentsModeButton.Content = L("presetComponentsTab"); HostsModeButton.Content = L("presetHostsTab");
         AddComponentButton.Content = L("addComponent"); AddHostButton.Content = L("addHost");
@@ -170,14 +185,135 @@ public partial class MainWindow : Window
         RenderCatalog();
         RenderPresets();
         RenderDetails();
+        RenderDesktop();
+    }
+
+    private async Task RefreshRuntimeAsync()
+    {
+        if (authorizationClient is null || refreshingRuntime) return;
+        refreshingRuntime = true;
+        try
+        {
+            var next = await authorizationClient.GetRuntimeSnapshotsAsync();
+            var merged = new List<RuntimeHostSnapshot>(next.Count);
+            foreach (var snapshot in next)
+            {
+                var oldSnapshot = runtimeSnapshots.FirstOrDefault(candidate => candidate.SessionId == snapshot.SessionId);
+                var instances = snapshot.Instances.Select(instance =>
+                {
+                    var key = RuntimeCommandKey(snapshot.SessionId, instance.InstanceId);
+                    var previous = oldSnapshot?.Instances.FirstOrDefault(candidate => candidate.InstanceId == instance.InstanceId);
+                    if (runtimeCommandRevisions.TryGetValue(key, out var revision))
+                    {
+                        if (instance.ConfigRevision >= revision) runtimeCommandRevisions.Remove(key);
+                        else if (previous?.ConfigRevision == revision)
+                            instance = instance with { Config = previous.Config, ConfigRevision = revision };
+                    }
+                    if (runtimeLayoutCommands.TryGetValue(key, out var layout))
+                    {
+                        if (Equals(instance.Layout, layout)) runtimeLayoutCommands.Remove(key);
+                        else instance = instance with { Layout = layout };
+                    }
+                    return instance;
+                }).ToArray();
+                merged.Add(snapshot with { Instances = instances });
+            }
+            var changed = !RuntimeSnapshotsEqual(runtimeSnapshots, merged);
+            runtimeSnapshots = merged;
+            if (changed && DesktopPage.Visibility == Visibility.Visible) RenderDesktop();
+        }
+        catch (Exception error) when (error is IOException or TimeoutException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            log.Write("runtime-desktop", error.Message);
+        }
+        finally { refreshingRuntime = false; }
+    }
+
+    private static string RuntimeCommandKey(string sessionId, string instanceId) => sessionId + "\n" + instanceId;
+
+    private static bool RuntimeSnapshotsEqual(IReadOnlyList<RuntimeHostSnapshot> left, IReadOnlyList<RuntimeHostSnapshot> right) =>
+        left.Count == right.Count && left.All(snapshot => right.FirstOrDefault(candidate => candidate.SessionId == snapshot.SessionId) is { } next &&
+            snapshot.HostId == next.HostId && snapshot.HostName == next.HostName &&
+            System.Text.Json.JsonSerializer.Serialize(snapshot.Instances) == System.Text.Json.JsonSerializer.Serialize(next.Instances));
+
+    private void RenderDesktop()
+    {
+        if (DesktopHostsList is null) return;
+        changingRuntimeSelection = true;
+        try
+        {
+            var currentHost = activeHostKey is null ? null : FindHost(activeHostKey);
+            DesktopHostsList.ItemsSource = currentHost is null ? Array.Empty<CatalogEntry>() : new[] { CreateEntry(currentHost) };
+            DesktopHostsList.SelectedIndex = currentHost is null ? -1 : 0;
+            var snapshot = currentHost?.BapId is { } hostId
+                ? runtimeSnapshots.Where(candidate => candidate.HostId == hostId)
+                    .OrderByDescending(candidate => candidate.UpdatedAt).FirstOrDefault()
+                : null;
+            var previousInstanceId = selectedRuntimeComponent?.Instance.InstanceId;
+            var choices = snapshot?.Instances.Select(instance =>
+            {
+                var item = items.FirstOrDefault(candidate => candidate.Role == "component" && candidate.BapId == instance.ComponentId &&
+                    (instance.SourceKey is null || candidate.Key == instance.SourceKey));
+                return new RuntimeComponentChoice(snapshot, instance, item,
+                    item?.Title ?? instance.ComponentId, instance.InstanceId,
+                    RuntimeStateText(instance.State) + " · " + instance.InstanceId, LoadPreview(item?.PreviewPath),
+                    item?.PreviewPath is null ? L("noPreview") : "");
+            }).ToArray() ?? [];
+            DesktopComponentsList.ItemsSource = choices;
+            selectedRuntimeComponent = choices.FirstOrDefault(choice => choice.Instance.InstanceId == previousInstanceId);
+            if (selectedRuntimeComponent is not null) DesktopComponentsList.SelectedItem = selectedRuntimeComponent;
+            else DesktopComponentsList.SelectedIndex = -1;
+            DesktopComponentsEmpty.Visibility = choices.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            DesktopComponentsEmpty.Text = currentHost is null ? L("desktopNoHost") : snapshot is null ? L("desktopWaiting") : L("desktopNoComponents");
+        }
+        finally { changingRuntimeSelection = false; }
+        if (selectedRuntimeComponent is null)
+        {
+            if (DesktopHostsList.SelectedItem is CatalogEntry entry) RenderPresetHostDetails(entry.Item);
+            else
+            {
+                PresetHostDetailPanel.Visibility = Visibility.Collapsed;
+                TransformPanel.Visibility = Visibility.Collapsed;
+                InstancePropertyPanel.Children.Clear();
+                PropertyHeading.Text = L("hostProperties");
+                PropertyHint.Text = L("desktopNoHost");
+            }
+        }
+        else RenderPropertyEditors();
+    }
+
+    private void DesktopHostsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (changingRuntimeSelection) return;
+        selectedRuntimeComponent = null;
+        DesktopComponentsList.SelectedItem = null;
+        RenderDesktop();
+    }
+
+    private void DesktopHostPropertiesButton_Click(object sender, RoutedEventArgs e)
+    {
+        selectedRuntimeComponent = null;
+        changingRuntimeSelection = true;
+        try { DesktopComponentsList.SelectedItem = null; }
+        finally { changingRuntimeSelection = false; }
+        RenderDesktop();
+    }
+
+    private void DesktopComponentsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (changingRuntimeSelection) return;
+        selectedRuntimeComponent = DesktopComponentsList.SelectedItem as RuntimeComponentChoice;
+        PropertyScrollViewer.ScrollToTop();
+        RenderPropertyEditors();
     }
 
     private void SelectPage(UIElement page, Button nav)
     {
         InstalledPage.Visibility = page == InstalledPage ? Visibility.Visible : Visibility.Collapsed;
         PresetsPage.Visibility = page == PresetsPage ? Visibility.Visible : Visibility.Collapsed;
+        DesktopPage.Visibility = page == DesktopPage ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = page == SettingsPage ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var button in new[] { InstalledNav, PresetsNav, SettingsNav })
+        foreach (var button in new[] { InstalledNav, PresetsNav, DesktopNav, SettingsNav })
         {
             button.Background = button == nav ? (Brush)FindResource("NavSelected") : Brushes.Transparent;
             button.Foreground = button == nav ? (Brush)FindResource("Accent") : (Brush)FindResource("Muted");
@@ -201,6 +337,11 @@ public partial class MainWindow : Window
             CatalogScrollViewer.VerticalOffset - e.Delta / 120.0 * lines * 16);
     }
     private void PresetsNav_Click(object sender, RoutedEventArgs e) => SelectPage(PresetsPage, PresetsNav);
+    private void DesktopNav_Click(object sender, RoutedEventArgs e)
+    {
+        SelectPage(DesktopPage, DesktopNav);
+        RenderDesktop();
+    }
     private void SettingsNav_Click(object sender, RoutedEventArgs e) => SelectPage(SettingsPage, SettingsNav);
     private void RefreshButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(RefreshAsync);
     private void PropertyRefreshButton_Click(object sender, RoutedEventArgs e) => _ = RunActionAsync(RefreshAsync);
@@ -229,6 +370,7 @@ public partial class MainWindow : Window
         }
         RenderSnapshot(discovered, presets);
         await CheckServiceAsync();
+        await RefreshRuntimeAsync();
     }
 
     internal void RenderSnapshot(IReadOnlyList<InstalledItem> discovered, PresetState presets)
@@ -239,6 +381,7 @@ public partial class MainWindow : Window
         RenderCatalog();
         RenderPresets();
         RenderDetails();
+        RenderDesktop();
     }
 
     private void RenderCatalog()
@@ -265,6 +408,26 @@ public partial class MainWindow : Window
         var preview = LoadPreview(item.PreviewPath);
         return new CatalogEntry(item, item.Title, L(item.SourceKind), $"{L(item.Status)}  ·  {item.Version ?? "—"}", preview, preview is null ? L("noPreview") : "");
     }
+
+    private string RuntimeStateText(string state) => settings.Language == "zh-CN"
+        ? state switch
+        {
+            "running" => "\u8fd0\u884c\u4e2d",
+            "paused" => "\u5df2\u6682\u505c",
+            "failed" => "\u5df2\u6545\u969c",
+            "stopped" => "\u5df2\u505c\u6b62",
+            "created" or "connected" or "initialized" => "\u52a0\u8f7d\u4e2d",
+            _ => state
+        }
+        : state switch
+        {
+            "running" => "Running",
+            "paused" => "Paused",
+            "failed" => "Failed",
+            "stopped" => "Stopped",
+            "created" or "connected" or "initialized" => "Loading",
+            _ => state
+        };
 
     private static ImageSource? LoadPreview(string? path)
     {
@@ -516,15 +679,14 @@ public partial class MainWindow : Window
     private void PresetHostsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateHostActions();
-        RenderPresetHostDetails();
     }
 
-    private void RenderPresetHostDetails()
+    private void RenderPresetHostDetails(InstalledItem? desktopItem = null)
     {
-        if (PresetHostDetailPanel is null || !showingPresetHosts) return;
-        var choice = PresetHostsList.SelectedItem as PresetHostChoice;
-        var item = choice?.HostKey is { } key ? FindHost(key) : null;
-        var isCurrent = item is not null && item.Key == activeHostKey;
+        var desktopMode = DesktopPage.Visibility == Visibility.Visible;
+        if (PresetHostDetailPanel is null || !desktopMode) return;
+        var item = desktopItem ?? (DesktopHostsList.SelectedItem as CatalogEntry)?.Item;
+        var isCurrent = item is not null && (desktopMode || item.Key == activeHostKey);
         PresetHostDetailPanel.Visibility = item is not null && !isCurrent ? Visibility.Visible : Visibility.Collapsed;
         PropertyHint.Visibility = item is not null && !isCurrent ? Visibility.Collapsed : Visibility.Visible;
         TransformPanel.Visibility = Visibility.Collapsed;
@@ -666,16 +828,24 @@ public partial class MainWindow : Window
     private void RenderPropertyEditors()
     {
         if (InstancePropertyPanel is null) return;
-        if (showingPresetHosts)
+        if (DesktopPage.Visibility != Visibility.Visible)
         {
-            RenderPresetHostDetails();
+            PresetHostDetailPanel.Visibility = Visibility.Collapsed;
+            TransformPanel.Children.Clear();
+            InstancePropertyPanel.Children.Clear();
             return;
         }
+        if (DesktopPage.Visibility == Visibility.Visible && DesktopHostsList.SelectedItem is CatalogEntry desktopHost && selectedRuntimeComponent is null)
+        {
+            RenderPresetHostDetails(desktopHost.Item);
+            return;
+        }
+        var runtimeMode = DesktopPage.Visibility == Visibility.Visible;
         PresetHostDetailPanel.Visibility = Visibility.Collapsed;
         PropertyHint.Visibility = Visibility.Visible;
         TransformPanel.Visibility = Visibility.Visible;
         InstancePropertyPanel.Visibility = Visibility.Visible;
-        PropertyHeading.Text = settings.Language == "zh-CN" ? "组件属性" : "Component properties";
+        PropertyHeading.Text = L("componentProperties");
         renderingPropertyEditors = true;
         try
         {
@@ -683,14 +853,26 @@ public partial class MainWindow : Window
             InstancePropertyPanel.Children.Clear();
             var component = SelectedComponent;
             var preset = SelectedPreset;
-            if (component is not null && preset is not null) RenderLayoutEditors(component, preset);
-            var item = component is null ? null : items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId &&
-                (component.SourceKey is null || candidate.Key == component.SourceKey));
-            if (component is null || item is null)
+            var runtimeComponent = runtimeMode ? selectedRuntimeComponent : null;
+            var componentId = runtimeComponent?.Instance.ComponentId ?? component?.ComponentId;
+            var sourceKey = runtimeComponent?.Instance.SourceKey ?? component?.SourceKey;
+            var instanceId = runtimeComponent?.Instance.InstanceId ?? component?.InstanceId;
+            var config = runtimeComponent?.Instance.Config ?? component?.Config;
+            var item = runtimeComponent?.Item ?? (componentId is null ? null : items.FirstOrDefault(candidate => candidate.BapId == componentId &&
+                (sourceKey is null || candidate.Key == sourceKey)));
+            if (instanceId is null || item is null)
             {
-                PropertyHint.Text = settings.Language == "zh-CN" ? "选择一个组件实例以编辑其预设属性。" : "Select a component instance to edit its preset values.";
+                PropertyHint.Text = runtimeMode ? L("desktopWaiting") : "Select a component instance to edit its preset values.";
                 return;
             }
+
+            if (runtimeComponent is not null)
+            {
+                var runtimePresetComponent = new PresetComponent(componentId!, sourceKey, instanceId, Layout: runtimeComponent.Instance.Layout);
+                RenderLayoutEditors(runtimePresetComponent,
+                    new ComponentPreset("runtime", "runtime", [runtimePresetComponent]), runtimeComponent.Snapshot.SessionId);
+            }
+            else if (!runtimeMode && component is not null && preset is not null) RenderLayoutEditors(component, preset);
 
             if (item.Properties is not { Count: > 0 } definitions)
             {
@@ -701,11 +883,11 @@ public partial class MainWindow : Window
                 return;
             }
 
-            PropertyHint.Text = settings.Language == "zh-CN"
-                ? $"{item.Title} · 此实例在当前预设中的值"
+            PropertyHint.Text = runtimeMode
+                ? $"{item.Title} · {runtimeComponent!.Instance.InstanceId}\n{L("runtimePropertiesHint")}"
                 : $"{item.Title} · values for this instance in the selected preset";
             var effectiveValues = definitions.ToDictionary(definition => definition.Key,
-                definition => component.Config is not null && component.Config.TryGetValue(definition.Key, out var configured) &&
+                definition => config is not null && config.TryGetValue(definition.Key, out var configured) &&
                     WallpaperPropertyReader.IsValidValue(definition, configured) ? configured : definition.DefaultValue,
                 StringComparer.Ordinal);
             int? previousPropertyGroup = null;
@@ -728,7 +910,8 @@ public partial class MainWindow : Window
                     });
                     previousPropertyGroup = propertyGroup;
                 }
-                var context = new PropertyEditContext("component", item.Key, component.InstanceId, definition);
+                var context = new PropertyEditContext(runtimeMode ? "runtime" : "component", item.Key, instanceId, definition,
+                    runtimeComponent?.Snapshot.SessionId);
                 if (!isGroupLead && definition.Type != "bool")
                 {
                     var title = new TextBlock
@@ -819,7 +1002,7 @@ public partial class MainWindow : Window
         finally { renderingPropertyEditors = false; }
     }
 
-    private void RenderLayoutEditors(PresetComponent component, ComponentPreset preset)
+    private void RenderLayoutEditors(PresetComponent component, ComponentPreset preset, string? sessionId = null)
     {
         var layout = component.Layout ?? new ComponentLayout("automatic", Order: 0, ZIndex: 0);
         TransformPanel.Children.Add(new TextBlock
@@ -829,7 +1012,7 @@ public partial class MainWindow : Window
             Tag = "TransformGroupHeader"
         });
 
-        var mode = new ComboBox { Tag = new LayoutEditContext(component.InstanceId!, "mode"), Margin = new Thickness(0, 0, 0, 7) };
+        var mode = new ComboBox { Tag = new LayoutEditContext(component.InstanceId!, "mode", sessionId), Margin = new Thickness(0, 0, 0, 7) };
         mode.ItemsSource = new[]
         {
             new LayoutChoice("automatic", L("automatic")),
@@ -843,7 +1026,7 @@ public partial class MainWindow : Window
 
         if (layout.Mode == "manual")
         {
-            var anchor = new ComboBox { Tag = new LayoutEditContext(component.InstanceId!, "anchor"), Margin = new Thickness(0, 0, 0, 7) };
+            var anchor = new ComboBox { Tag = new LayoutEditContext(component.InstanceId!, "anchor", sessionId), Margin = new Thickness(0, 0, 0, 7) };
             anchor.ItemsSource = new[]
             {
                 new LayoutChoice("top-left", L("anchorTopLeft")), new LayoutChoice("top", L("anchorTop")), new LayoutChoice("top-right", L("anchorTopRight")),
@@ -854,22 +1037,22 @@ public partial class MainWindow : Window
             anchor.SelectedItem = anchor.Items.Cast<LayoutChoice>().FirstOrDefault(choice => choice.Value == layout.Anchor);
             anchor.SelectionChanged += LayoutAnchor_Changed;
             AddLayoutField(L("anchor"), anchor);
-            AddFocusedLayoutSlider(component.InstanceId!, "x", layout.X ?? 0.5, -2, 2, 0.001, 0.5);
-            AddFocusedLayoutSlider(component.InstanceId!, "y", layout.Y ?? 0.5, -2, 2, 0.001, 0.5);
-            AddFocusedLayoutSlider(component.InstanceId!, "width", layout.Width ?? 0.25, 0.01, 2, 0.001, 0.5);
-            AddFocusedLayoutSlider(component.InstanceId!, "height", layout.Height ?? 0.35, 0.01, 2, 0.001, 0.5);
+            AddFocusedLayoutSlider(component.InstanceId!, "x", layout.X ?? 0.5, -2, 2, 0.001, 0.5, sessionId: sessionId);
+            AddFocusedLayoutSlider(component.InstanceId!, "y", layout.Y ?? 0.5, -2, 2, 0.001, 0.5, sessionId: sessionId);
+            AddFocusedLayoutSlider(component.InstanceId!, "width", layout.Width ?? 0.25, 0.01, 2, 0.001, 0.5, sessionId: sessionId);
+            AddFocusedLayoutSlider(component.InstanceId!, "height", layout.Height ?? 0.35, 0.01, 2, 0.001, 0.5, sessionId: sessionId);
         }
-        else AddFocusedLayoutSlider(component.InstanceId!, "order", layout.Order ?? 0, 0, 10000, 1, 20, integer: true);
-        AddFocusedLayoutSlider(component.InstanceId!, "scale", layout.Scale, 0.1, 5, 0.005, 0.5);
-        AddFocusedLayoutSlider(component.InstanceId!, "rotation", layout.Rotation, -360, 360, 0.1, 45);
-        AddFocusedLayoutSlider(component.InstanceId!, "opacity", layout.Opacity, 0, 1, 0.005, 0.25);
-        AddFocusedLayoutSlider(component.InstanceId!, "zIndex", layout.ZIndex, -100000, 100000, 1, 20, integer: true);
+        else AddFocusedLayoutSlider(component.InstanceId!, "order", layout.Order ?? 0, 0, 10000, 1, 20, integer: true, sessionId: sessionId);
+        AddFocusedLayoutSlider(component.InstanceId!, "scale", layout.Scale, 0.1, 5, 0.005, 0.5, sessionId: sessionId);
+        AddFocusedLayoutSlider(component.InstanceId!, "rotation", layout.Rotation, -360, 360, 0.1, 45, sessionId: sessionId);
+        AddFocusedLayoutSlider(component.InstanceId!, "opacity", layout.Opacity, 0, 1, 0.005, 0.25, sessionId: sessionId);
+        AddFocusedLayoutSlider(component.InstanceId!, "zIndex", layout.ZIndex, -100000, 100000, 1, 20, integer: true, sessionId: sessionId);
         if (layout.Mode == "manual" && preset.LayoutMode == "grid")
         {
             var locked = new CheckBox
             {
                 Content = L("locked"), IsChecked = layout.Locked, IsEnabled = false,
-                Tag = new LayoutEditContext(component.InstanceId!, "locked"), Margin = new Thickness(0, 2, 0, 9)
+                Tag = new LayoutEditContext(component.InstanceId!, "locked", sessionId), Margin = new Thickness(0, 2, 0, 9)
             };
             TransformPanel.Children.Add(locked);
         }
@@ -900,7 +1083,7 @@ public partial class MainWindow : Window
     }
 
     private void AddFocusedLayoutSlider(string instanceId, string key, double value, double minimum, double maximum,
-        double fineStep, double window, bool integer = false)
+        double fineStep, double window, bool integer = false, string? sessionId = null)
     {
         var effectiveMinimum = Math.Max(minimum, value - window);
         var effectiveMaximum = Math.Min(maximum, value + window);
@@ -909,10 +1092,10 @@ public partial class MainWindow : Window
             effectiveMinimum = minimum;
             effectiveMaximum = maximum;
         }
-        AddLayoutSlider(instanceId, key, value, effectiveMinimum, effectiveMaximum, fineStep, integer);
+        AddLayoutSlider(instanceId, key, value, effectiveMinimum, effectiveMaximum, fineStep, integer, sessionId);
     }
 
-    private void AddLayoutSlider(string instanceId, string key, double value, double minimum, double maximum, double step, bool integer = false)
+    private void AddLayoutSlider(string instanceId, string key, double value, double minimum, double maximum, double step, bool integer = false, string? sessionId = null)
     {
         var valueText = new TextBlock
         {
@@ -935,7 +1118,7 @@ public partial class MainWindow : Window
             TickFrequency = step, IsSnapToTickEnabled = false, IsMoveToPointEnabled = false,
             Height = 28, Margin = new Thickness(0, 0, 0, 5),
             Style = (Style)FindResource("TransformSlider"),
-            Tag = new LayoutSliderEditContext(instanceId, key, valueText, integer, step)
+            Tag = new LayoutSliderEditContext(instanceId, key, valueText, integer, step, sessionId)
         };
         var controls = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         foreach (var (glyph, direction, tooltip) in new[] { ("−", -1d, "adjustLess"), ("+", 1d, "adjustMore") })
@@ -991,10 +1174,7 @@ public partial class MainWindow : Window
 
     private void SaveLayoutSlider(LayoutSliderEditContext context, double value)
     {
-        if (renderingPropertyEditors || SelectedPreset is not { } preset) return;
-        var component = preset.Components.FirstOrDefault(item => item.InstanceId == context.InstanceId);
-        if (component is null) return;
-        var layout = GetLayout(component, preset);
+        if (renderingPropertyEditors || !TryGetLayout(context.InstanceId, context.SessionId, out var layout)) return;
         value = context.Integer ? Math.Round(value) : Math.Round(value, 3);
         var currentValue = context.Field switch
         {
@@ -1023,37 +1203,36 @@ public partial class MainWindow : Window
             "zIndex" => layout with { ZIndex = (int)Math.Round(value) },
             _ => null
         };
-        if (next is not null) _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, next));
+        if (next is not null) _ = RunActionAsync(() => SaveLayoutAsync(context.InstanceId, context.SessionId, next));
     }
 
     private void LayoutMode_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (renderingPropertyEditors || sender is not ComboBox { Tag: LayoutEditContext context, SelectedItem: LayoutChoice choice } || SelectedPreset is not { } preset) return;
-        var component = preset.Components.FirstOrDefault(item => item.InstanceId == context.InstanceId);
-        if (component is null) return;
-        var current = GetLayout(component, preset);
+        if (renderingPropertyEditors || sender is not ComboBox { Tag: LayoutEditContext context, SelectedItem: LayoutChoice choice } ||
+            !TryGetLayout(context.InstanceId, context.SessionId, out var current)) return;
+        var preset = SelectedPreset;
+        var order = context.SessionId is not null
+            ? runtimeSnapshots.FirstOrDefault(snapshot => snapshot.SessionId == context.SessionId)?.Instances
+                .ToList().FindIndex(item => item.InstanceId == context.InstanceId) ?? 0
+            : Math.Max(0, SelectedComponents.SelectedIndex);
         var next = choice.Value == "manual"
-            ? current with { Mode = "manual", Anchor = "center", X = 0.5, Y = 0.5, Width = 0.25, Height = 0.38, Locked = preset.LayoutMode == "grid" }
-            : current with { Mode = "automatic", Anchor = null, X = null, Y = null, Width = null, Height = null, Locked = false, Order = current.Order ?? Math.Max(0, SelectedComponents.SelectedIndex) };
-        _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, next));
+            ? current with { Mode = "manual", Anchor = "center", X = 0.5, Y = 0.5, Width = 0.25, Height = 0.38, Locked = preset?.LayoutMode == "grid" }
+            : current with { Mode = "automatic", Anchor = null, X = null, Y = null, Width = null, Height = null, Locked = false, Order = current.Order ?? order };
+        _ = RunActionAsync(() => SaveLayoutAsync(context.InstanceId, context.SessionId, next));
     }
 
     private void LayoutAnchor_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (!renderingPropertyEditors && sender is ComboBox { Tag: LayoutEditContext context, SelectedItem: LayoutChoice choice } && SelectedPreset is { } preset)
-        {
-            var component = preset.Components.FirstOrDefault(item => item.InstanceId == context.InstanceId);
-            if (component is not null && GetLayout(component, preset) is { Mode: "manual" } layout)
-                _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, layout with { Anchor = choice.Value }));
-        }
+        if (!renderingPropertyEditors && sender is ComboBox { Tag: LayoutEditContext context, SelectedItem: LayoutChoice choice } &&
+            TryGetLayout(context.InstanceId, context.SessionId, out var layout) && layout.Mode == "manual")
+            _ = RunActionAsync(() => SaveLayoutAsync(context.InstanceId, context.SessionId, layout with { Anchor = choice.Value }));
     }
 
     private void LayoutNumber_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        if (renderingPropertyEditors || sender is not TextBox { Tag: LayoutEditContext context } field || SelectedPreset is not { } preset) return;
-        var component = preset.Components.FirstOrDefault(item => item.InstanceId == context.InstanceId);
-        var layout = component is null ? null : GetLayout(component, preset);
-        if (layout is null || !double.TryParse(field.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !double.IsFinite(value))
+        if (renderingPropertyEditors || sender is not TextBox { Tag: LayoutEditContext context } field ||
+            !TryGetLayout(context.InstanceId, context.SessionId, out var layout) ||
+            !double.TryParse(field.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || !double.IsFinite(value))
         {
             RenderPropertyEditors();
             return;
@@ -1076,7 +1255,44 @@ public partial class MainWindow : Window
             RenderPropertyEditors();
             return;
         }
-        _ = RunActionAsync(() => SaveComponentLayoutAsync(context.InstanceId, next));
+        _ = RunActionAsync(() => SaveLayoutAsync(context.InstanceId, context.SessionId, next));
+    }
+
+    private bool TryGetLayout(string instanceId, string? sessionId, out ComponentLayout layout)
+    {
+        if (sessionId is not null)
+        {
+            var instance = runtimeSnapshots.FirstOrDefault(snapshot => snapshot.SessionId == sessionId)?
+                .Instances.FirstOrDefault(item => item.InstanceId == instanceId);
+            if (instance is null) { layout = null!; return false; }
+            var index = runtimeSnapshots.First(snapshot => snapshot.SessionId == sessionId).Instances
+                .ToList().FindIndex(item => item.InstanceId == instanceId);
+            layout = instance.Layout ?? new ComponentLayout("automatic", Order: Math.Max(0, index), ZIndex: Math.Max(0, index));
+            return true;
+        }
+        if (SelectedPreset is { } preset && preset.Components.FirstOrDefault(item => item.InstanceId == instanceId) is { } component)
+        {
+            layout = GetLayout(component, preset);
+            return true;
+        }
+        layout = null!;
+        return false;
+    }
+
+    private async Task SaveLayoutAsync(string instanceId, string? sessionId, ComponentLayout layout)
+    {
+        if (sessionId is null)
+        {
+            await SaveComponentLayoutAsync(instanceId, layout);
+            return;
+        }
+        if (authorizationClient is null) return;
+        await authorizationClient.SetRuntimeLayoutAsync(sessionId, instanceId, layout);
+        runtimeLayoutCommands[RuntimeCommandKey(sessionId, instanceId)] = layout;
+        runtimeSnapshots = runtimeSnapshots.Select(snapshot => snapshot.SessionId != sessionId ? snapshot :
+            snapshot with { Instances = snapshot.Instances.Select(instance => instance.InstanceId != instanceId ? instance :
+                instance with { Layout = layout }).ToArray() }).ToArray();
+        RenderDesktop();
     }
 
     private async Task SaveComponentLayoutAsync(string instanceId, ComponentLayout layout)
@@ -1147,7 +1363,9 @@ public partial class MainWindow : Window
         var current = context.Definition.DefaultValue.GetString();
         var config = context.Scope == "host"
             ? state.HostConfigs?.GetValueOrDefault(context.OwnerKey)
-            : SelectedComponent?.Config;
+            : context.Scope == "runtime"
+                ? selectedRuntimeComponent?.Instance.Config
+                : SelectedComponent?.Config;
         if (config?.TryGetValue(context.Definition.Key, out var configured) == true && configured.ValueKind == System.Text.Json.JsonValueKind.String)
             current = configured.GetString();
         var initial = ColorPickerDialog.ParseWeColor(current);
@@ -1179,6 +1397,27 @@ public partial class MainWindow : Window
 
     private async Task SavePropertyValueAsync(PropertyEditContext context, System.Text.Json.JsonElement value)
     {
+        if (context.Scope == "runtime")
+        {
+            if (authorizationClient is null || context.SessionId is null || context.InstanceId is null ||
+                !WallpaperPropertyReader.IsValidValue(context.Definition, value)) return;
+            var snapshot = runtimeSnapshots.FirstOrDefault(candidate => candidate.SessionId == context.SessionId);
+            var instance = snapshot?.Instances.FirstOrDefault(candidate => candidate.InstanceId == context.InstanceId);
+            if (snapshot is null || instance is null) return;
+            var config = new Dictionary<string, System.Text.Json.JsonElement>(instance.Config, StringComparer.Ordinal)
+            {
+                [context.Definition.Key] = value.Clone()
+            };
+            var revisionKey = RuntimeCommandKey(context.SessionId, context.InstanceId);
+            var revision = Math.Max(instance.ConfigRevision, runtimeCommandRevisions.GetValueOrDefault(revisionKey)) + 1;
+            await authorizationClient.SetRuntimeConfigAsync(context.SessionId, context.InstanceId, config, revision);
+            runtimeCommandRevisions[revisionKey] = revision;
+            runtimeSnapshots = runtimeSnapshots.Select(candidate => candidate.SessionId != snapshot.SessionId ? candidate :
+                candidate with { Instances = candidate.Instances.Select(current => current.InstanceId != instance.InstanceId ? current :
+                    current with { Config = config, ConfigRevision = revision }).ToArray() }).ToArray();
+            RenderDesktop();
+            return;
+        }
         if (context.Scope == "host")
         {
             if (activeHostKey != context.OwnerKey || !WallpaperPropertyReader.IsValidValue(context.Definition, value)) return;
@@ -1190,7 +1429,7 @@ public partial class MainWindow : Window
             {
                 [context.OwnerKey] = config
             };
-            await SaveAsync(state with { HostConfigs = allConfigs }, SelectedPreset?.Id);
+            await SaveAsync(state with { HostConfigs = allConfigs });
             await WallpaperEngineControl.ApplyPropertiesAsync(config, EffectiveDisplayIndex, log);
             return;
         }
@@ -1433,9 +1672,12 @@ public partial class MainWindow : Window
     private sealed record ComponentChoice(PresetComponent Component, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
     private static bool IsUnverifiedHost(InstalledItem item) => item.BapId is null || item.Status != "valid";
     private sealed record PresetHostChoice(string? HostKey, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal, bool IsCurrent = false);
-    private sealed record PropertyEditContext(string Scope, string OwnerKey, string? InstanceId, WallpaperPropertyDefinition Definition);
-    private sealed record LayoutEditContext(string InstanceId, string Field);
-    private sealed record LayoutSliderEditContext(string InstanceId, string Field, TextBlock ValueText, bool Integer, double FineStep);
+    private sealed record RuntimeComponentChoice(RuntimeHostSnapshot Snapshot, RuntimeComponentInstance Instance, InstalledItem? Item,
+        string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
+    private sealed record PropertyEditContext(string Scope, string OwnerKey, string? InstanceId,
+        WallpaperPropertyDefinition Definition, string? SessionId = null);
+    private sealed record LayoutEditContext(string InstanceId, string Field, string? SessionId = null);
+    private sealed record LayoutSliderEditContext(string InstanceId, string Field, TextBlock ValueText, bool Integer, double FineStep, string? SessionId = null);
     private sealed record LayoutNudgeContext(Slider Slider, double Direction);
     private sealed record LayoutChoice(string Value, string Label);
     private sealed record SliderEditContext(PropertyEditContext Edit, TextBlock ValueLabel);

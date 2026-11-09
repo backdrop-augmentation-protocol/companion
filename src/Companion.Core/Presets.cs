@@ -134,7 +134,7 @@ public static class PresetSelection
         return errors;
     }
 
-    private static bool ValidateLayout(ComponentLayout layout) => layout.Mode switch
+    internal static bool ValidateLayout(ComponentLayout layout) => layout.Mode switch
     {
         "automatic" => layout.Order is >= 0 and <= 10000 && InRange(layout.Scale, 0.1, 5) && InRange(layout.Rotation, -360, 360) && InRange(layout.Opacity, 0, 1) && layout.ZIndex is >= -100000 and <= 100000,
         "manual" => layout.Anchor is "top-left" or "top" or "top-right" or "left" or "center" or "right" or "bottom-left" or "bottom" or "bottom-right" &&

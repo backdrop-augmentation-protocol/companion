@@ -61,6 +61,9 @@ internal sealed class AuthorizationPipeServer(
             "runtime-config" when !string.IsNullOrWhiteSpace(request.SessionId) &&
                                   !string.IsNullOrWhiteSpace(request.InstanceId) &&
                                   request.Config is not null && request.ConfigRevision is > 0 => SetRuntimeConfig(request),
+            "runtime-layout" when !string.IsNullOrWhiteSpace(request.SessionId) &&
+                                  !string.IsNullOrWhiteSpace(request.InstanceId) &&
+                                  request.Layout is not null => SetRuntimeLayout(request),
             "revoke" when !string.IsNullOrWhiteSpace(request.SessionId) => Revoke(request.SessionId),
             "approve" when !string.IsNullOrWhiteSpace(request.SessionId) => new(
                 authorizations.Approve(request.SessionId, request.Permissions ?? [], request.Remember), []),
@@ -74,6 +77,12 @@ internal sealed class AuthorizationPipeServer(
     {
         var success = runtime.TrySetConfig(request.SessionId!, request.InstanceId!, request.Config!, request.ConfigRevision!.Value);
         return new(success, [], success ? null : "runtime instance was not found or revision is stale");
+    }
+
+    private AuthorizationControlResponse SetRuntimeLayout(AuthorizationControlRequest request)
+    {
+        var success = runtime.TrySetLayout(request.SessionId!, request.InstanceId!, request.Layout!);
+        return new(success, [], success ? null : "runtime instance was not found or layout is invalid or unchanged");
     }
 
     private AuthorizationControlResponse Revoke(string hostId)
