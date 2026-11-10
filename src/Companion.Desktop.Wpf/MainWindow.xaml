@@ -90,6 +90,45 @@
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="DefaultComboBoxStyle" TargetType="ComboBox">
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
+      <Setter Property="OverridesDefaultStyle" Value="True"/>
+      <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
+        <Grid>
+          <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="1" CornerRadius="{TemplateBinding Border.CornerRadius}"/>
+          <Grid Margin="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="34"/></Grid.ColumnDefinitions>
+            <ContentPresenter x:Name="ContentSite" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
+                              HorizontalAlignment="Left" Content="{TemplateBinding SelectionBoxItem}"
+                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" IsHitTestVisible="False"/>
+            <ToggleButton x:Name="ToggleButton" Grid.Column="1" Focusable="False" ClickMode="Press"
+                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                          Background="Transparent" BorderThickness="0">
+              <Path Data="M 0 0 L 5 5 L 10 0 Z" Fill="{TemplateBinding Foreground}"
+                    Width="10" Height="5" Stretch="Fill" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </ToggleButton>
+          </Grid>
+          <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                 AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+            <Border Background="#10264A" BorderBrush="#284572" BorderThickness="1" CornerRadius="8"
+                    MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="320">
+              <ScrollViewer CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
+                            HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+              </ScrollViewer>
+            </Border>
+          </Popup>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#397CB6"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.55"/></Trigger>
+          <Trigger Property="IsDropDownOpen" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#22D3FF"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style TargetType="ComboBox" BasedOn="{StaticResource DefaultComboBoxStyle}">
       <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
       <Setter Property="Background" Value="#132B51"/>
@@ -116,6 +155,46 @@
       <Setter Property="Foreground" Value="{StaticResource Ink}"/>
       <Setter Property="FontSize" Value="14"/>
       <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
+        <Grid Background="Transparent" SnapsToDevicePixels="True">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border x:Name="CheckSurface" Width="17" Height="17" CornerRadius="4" BorderThickness="1"
+                  BorderBrush="{StaticResource Border}" Background="#132B51" VerticalAlignment="Center">
+            <Path x:Name="CheckMark" Data="M 3 8 L 7 12 L 14 4" Stroke="White" StrokeThickness="2"
+                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
+          </Border>
+          <ContentPresenter Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center"
+                            RecognizesAccessKey="True" Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="CheckSurface" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+          <Trigger Property="IsChecked" Value="True">
+            <Setter TargetName="CheckSurface" Property="Background" Value="#1A6BFF"/>
+            <Setter TargetName="CheckSurface" Property="BorderBrush" Value="#1A6BFF"/>
+            <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+          </Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="10"/><Setter Property="MinWidth" Value="10"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="Focusable" Value="False"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+        <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" Minimum="{TemplateBinding Minimum}"
+               Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value}"
+               ViewportSize="{TemplateBinding ViewportSize}">
+          <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" IsTabStop="False" Focusable="False" Background="Transparent" BorderThickness="0"/></Track.DecreaseRepeatButton>
+          <Track.Thumb><Thumb MinHeight="24" MinWidth="6" Background="#39587D">
+            <Thumb.Template><ControlTemplate TargetType="Thumb"><Border x:Name="ThumbSurface" Background="{TemplateBinding Background}" CornerRadius="4" Margin="2"/></ControlTemplate></Thumb.Template>
+          </Thumb></Track.Thumb>
+          <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" IsTabStop="False" Focusable="False" Background="Transparent" BorderThickness="0"/></Track.IncreaseRepeatButton>
+        </Track>
+      </ControlTemplate></Setter.Value></Setter>
+      <Style.Triggers>
+        <Trigger Property="Orientation" Value="Horizontal"><Setter Property="Width" Value="Auto"/><Setter Property="MinWidth" Value="0"/><Setter Property="Height" Value="10"/><Setter Property="MinHeight" Value="10"/></Trigger>
+      </Style.Triggers>
     </Style>
     <Style x:Key="DialogTextBox" TargetType="TextBox">
       <Setter Property="Background" Value="#10264A"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>

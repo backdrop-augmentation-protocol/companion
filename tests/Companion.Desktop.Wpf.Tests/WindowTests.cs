@@ -32,7 +32,7 @@ public sealed class WindowTests
         Assert.Equal(expected, ColorPickerDialog.ScreenSampler.CorrectChannel(sampled));
 
     [Fact]
-    public void FluentWindowConstructsAndSwitchesLanguageWithoutStartingServer()
+    public void WindowConstructsAndSwitchesLanguageWithoutStartingServer()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"bap-wpf-{Guid.NewGuid():N}");
         Exception? failure = null;
@@ -40,9 +40,8 @@ public sealed class WindowTests
         {
             try
             {
-#pragma warning disable WPF0001 // Match the production Fluent dark-mode configuration.
-                var application = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown, ThemeMode = ThemeMode.Dark };
-#pragma warning restore WPF0001
+                var application = Program.CreateApplication();
+                application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
                 using var iconStream = System.Windows.Application.GetResourceStream(
                     new Uri("pack://application:,,,/Bap.Companion.Desktop;component/Assets/bap-companion.ico"))?.Stream;
                 Assert.NotNull(iconStream);

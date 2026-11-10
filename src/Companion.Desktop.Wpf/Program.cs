@@ -32,11 +32,11 @@ internal static class Program
         context.MarkRunLoopReturned();
     }
 
-    private static System.Windows.Application CreateApplication()
+    internal static System.Windows.Application CreateApplication()
     {
-#pragma warning disable WPF0001 // .NET 10 Fluent dark mode keeps native controls interactive and visually consistent.
-        return new System.Windows.Application { ThemeMode = ThemeMode.Dark };
-#pragma warning restore WPF0001
+        // Keep the desktop independent of the experimental Fluent theme manager.
+        // Its OS-theme resource refresh has caused a fatal ScrollViewer style cycle.
+        return new System.Windows.Application();
     }
 }
 
