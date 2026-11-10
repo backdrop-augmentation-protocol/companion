@@ -65,7 +65,7 @@ public static class EffectiveComponents
             if (item is null) return new EffectiveComponent(instanceId, selection.ComponentId, selection.SourceKey, selection.ComponentId,
                 selection.Enabled ? "missing" : "disabled", null, selection.Enabled, selection.UserVisible, layout, config, configRevision);
             var embedded = item.ComponentManifest?.Entrypoints.GetValueOrDefault("embedded");
-            var status = !selection.Enabled ? "disabled" : exceedsLimit || embedded is null ? "unavailable" : "available";
+            var status = exceedsLimit ? "unavailable" : !selection.Enabled ? "disabled" : embedded is null ? "unavailable" : "available";
             return new EffectiveComponent(instanceId, selection.ComponentId, item.Key, item.Title, status, embedded,
                 selection.Enabled, selection.UserVisible, layout, ResolveConfig(item, selection.Config), configRevision);
         }).ToArray();

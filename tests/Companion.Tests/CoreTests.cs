@@ -552,6 +552,29 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void ExistingOverLimitPresetCanBeCleanedButNotExpandedAndOverflowIsUnavailable()
+    {
+        var manifest = new ComponentManifest(new("bap", "0.1.0", "core"), "org.example.game-ui", "1.0.0", "Game UI", "component", [],
+            new Dictionary<string, string> { ["default"] = "index.html", ["standalone"] = "index.html", ["embedded"] = "embedded.html" }, ["standalone", "embedded"]);
+        var item = new InstalledItem("workshop:1", "workshop", "component", "Game UI", "subscribed", "1", manifest.Id, manifest.Version, null, manifest, MaxInstances: 1);
+        var existing = new ComponentPreset("daily", "Daily", [
+            new(manifest.Id, "workshop:1", "ui-a"),
+            new(manifest.Id, "workshop:1", "ui-b", Enabled: false),
+            new(manifest.Id, "workshop:1", "ui-c")
+        ]);
+        var current = new PresetState([existing], existing.Id, new Dictionary<string, string>());
+
+        var cleanup = existing with { Components = existing.Components.Take(2).ToArray() };
+        Assert.Empty(PresetSelection.ValidateInstanceLimitIncreases(current, current with { Presets = [cleanup] }, [item]));
+
+        var expanded = existing with { Components = [.. existing.Components, new(manifest.Id, "workshop:1", "ui-d")] };
+        Assert.Single(PresetSelection.ValidateInstanceLimitIncreases(current, current with { Presets = [expanded] }, [item]));
+
+        var effective = EffectiveComponents.Resolve(current, "host", [item]);
+        Assert.Equal(["available", "unavailable", "unavailable"], effective.Select(component => component.Status));
+    }
+
+    [Fact]
     public async Task InstalledCatalogReadsComponentInstanceLimitSidecarAndIgnoresMalformedSidecar()
     {
         var root = Path.Combine(Path.GetTempPath(), $"bap-component-metadata-{Guid.NewGuid():N}");
