@@ -45,7 +45,7 @@ internal sealed class CompanionLifetime : IDisposable
     private readonly System.Windows.Application application;
     private readonly DesktopSettings settings;
     private readonly CompanionLog log;
-    private readonly Process server;
+    private readonly Process? server;
     private readonly MainWindow window;
     private readonly string authorizationPipeName;
     private readonly Forms.NotifyIcon tray;
@@ -157,13 +157,15 @@ internal sealed class CompanionLifetime : IDisposable
     private void StopServer(string reason)
     {
         if (Interlocked.Exchange(ref serverStopStarted, 1) != 0) return;
+        var serverProcess = server;
+        if (serverProcess is null) return;
         try
         {
-            if (server.HasExited) return;
-            log.Write("desktop", $"Stopping Companion Server; reason={reason}; processId={server.Id}");
-            server.Kill(entireProcessTree: true);
-            if (!server.WaitForExit(3000))
-                log.Write("desktop-error", $"Companion Server did not exit after kill request; processId={server.Id}");
+            if (serverProcess.HasExited) return;
+            log.Write("desktop", $"Stopping Companion Server; reason={reason}; processId={serverProcess.Id}");
+            serverProcess.Kill(entireProcessTree: true);
+            if (!serverProcess.WaitForExit(3000))
+                log.Write("desktop-error", $"Companion Server did not exit after kill request; processId={serverProcess.Id}");
         }
         catch (Exception error)
         {
@@ -211,7 +213,7 @@ internal sealed class CompanionLifetime : IDisposable
         trayIconStream.Dispose();
         menu.Dispose();
         StopServer("normal-dispose");
-        server.Dispose();
+        server?.Dispose();
         log.Write("desktop", $"Companion stopping; shutdownReason={shutdownReason}; processId={Environment.ProcessId}");
         application.DispatcherUnhandledException -= OnDispatcherUnhandledException;
         application.Exit -= OnApplicationExit;
