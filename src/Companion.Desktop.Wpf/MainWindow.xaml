@@ -182,7 +182,7 @@
       <Setter Property="Width" Value="10"/><Setter Property="MinWidth" Value="10"/>
       <Setter Property="Background" Value="Transparent"/><Setter Property="Focusable" Value="False"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
-        <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" Minimum="{TemplateBinding Minimum}"
+        <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True" Minimum="{TemplateBinding Minimum}"
                Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value}"
                ViewportSize="{TemplateBinding ViewportSize}">
           <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" IsTabStop="False" Focusable="False" Background="Transparent" BorderThickness="0"/></Track.DecreaseRepeatButton>
@@ -191,6 +191,9 @@
           </Thumb></Track.Thumb>
           <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" IsTabStop="False" Focusable="False" Background="Transparent" BorderThickness="0"/></Track.IncreaseRepeatButton>
         </Track>
+        <ControlTemplate.Triggers>
+          <Trigger Property="Orientation" Value="Horizontal"><Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/></Trigger>
+        </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
       <Style.Triggers>
         <Trigger Property="Orientation" Value="Horizontal"><Setter Property="Width" Value="Auto"/><Setter Property="MinWidth" Value="0"/><Setter Property="Height" Value="10"/><Setter Property="MinHeight" Value="10"/></Trigger>

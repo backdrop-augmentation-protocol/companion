@@ -340,6 +340,26 @@ public sealed class WindowTests
                     new PresetState([], null, new Dictionary<string, string>()));
                 window.UpdateLayout();
                 Assert.True(window.CatalogScrollViewer.ScrollableHeight > 0);
+                var verticalScrollBar = new System.Windows.Controls.Primitives.ScrollBar
+                {
+                    Orientation = System.Windows.Controls.Orientation.Vertical,
+                    Style = (System.Windows.Style)window.FindResource(typeof(System.Windows.Controls.Primitives.ScrollBar))
+                };
+                verticalScrollBar.ApplyTemplate();
+                var verticalTrack = Assert.IsType<System.Windows.Controls.Primitives.Track>(
+                    verticalScrollBar.Template.FindName("PART_Track", verticalScrollBar));
+                Assert.True(verticalTrack.IsDirectionReversed,
+                    "Dragging a vertical scrollbar thumb down must increase the scroll offset.");
+                var horizontalScrollBar = new System.Windows.Controls.Primitives.ScrollBar
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    Style = (System.Windows.Style)window.FindResource(typeof(System.Windows.Controls.Primitives.ScrollBar))
+                };
+                horizontalScrollBar.ApplyTemplate();
+                var horizontalTrack = Assert.IsType<System.Windows.Controls.Primitives.Track>(
+                    horizontalScrollBar.Template.FindName("PART_Track", horizontalScrollBar));
+                Assert.False(horizontalTrack.IsDirectionReversed,
+                    "Dragging a horizontal scrollbar thumb right must increase the scroll offset.");
                 var firstHost = Assert.IsType<System.Windows.Controls.ListBoxItem>(window.HostsList.ItemContainerGenerator.ContainerFromIndex(0));
                 var wheel = new System.Windows.Input.MouseWheelEventArgs(
                     System.Windows.Input.InputManager.Current.PrimaryMouseDevice, Environment.TickCount, -120)
