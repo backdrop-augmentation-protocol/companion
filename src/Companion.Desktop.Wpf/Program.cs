@@ -56,6 +56,7 @@ internal sealed class CompanionLifetime : IDisposable
     private readonly Forms.ToolStripItem healthItem;
     private readonly Forms.ToolStripItem exitItem;
     private readonly DispatcherTimer activationTimer;
+    private int serverStopStarted;
     private bool exiting;
     private string shutdownReason = "not-recorded";
 
@@ -132,17 +133,44 @@ internal sealed class CompanionLifetime : IDisposable
         log.Write("desktop", $"Application.Run returned; shutdownReason={shutdownReason}");
     }
 
-    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs eventArgs) =>
+    private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs eventArgs)
+    {
         log.Write("desktop-error", $"DispatcherUnhandledException; handled={eventArgs.Handled}; exception={eventArgs.Exception}");
+        if (!eventArgs.Handled) StopServer("unhandled-dispatcher-exception");
+    }
 
     private void OnApplicationExit(object? sender, ExitEventArgs eventArgs) =>
         log.Write("desktop", $"WPF Application.Exit raised; exitCode={eventArgs.ApplicationExitCode}; shutdownReason={shutdownReason}");
 
-    private void OnUnhandledException(object sender, UnhandledExceptionEventArgs eventArgs) =>
+    private void OnUnhandledException(object sender, UnhandledExceptionEventArgs eventArgs)
+    {
         log.Write("desktop-error", $"AppDomain.UnhandledException; terminating={eventArgs.IsTerminating}; exception={eventArgs.ExceptionObject}");
+        if (eventArgs.IsTerminating) StopServer("terminating-unhandled-exception");
+    }
 
-    private void OnProcessExit(object? sender, EventArgs eventArgs) =>
+    private void OnProcessExit(object? sender, EventArgs eventArgs)
+    {
         log.Write("desktop", $"ProcessExit raised; processId={Environment.ProcessId}; shutdownReason={shutdownReason}");
+        StopServer("process-exit");
+    }
+
+    private void StopServer(string reason)
+    {
+        if (Interlocked.Exchange(ref serverStopStarted, 1) != 0) return;
+        try
+        {
+            if (server.HasExited) return;
+            log.Write("desktop", $"Stopping Companion Server; reason={reason}; processId={server.Id}");
+            server.Kill(entireProcessTree: true);
+            if (!server.WaitForExit(3000))
+                log.Write("desktop-error", $"Companion Server did not exit after kill request; processId={server.Id}");
+        }
+        catch (Exception error)
+        {
+            try { log.Write("desktop-error", $"Could not stop Companion Server during {reason}: {error}"); }
+            catch (ObjectDisposedException) { }
+        }
+    }
 
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs eventArgs) =>
         log.Write("desktop-error", $"TaskScheduler.UnobservedTaskException; exception={eventArgs.Exception}");
@@ -182,11 +210,7 @@ internal sealed class CompanionLifetime : IDisposable
         trayIcon.Dispose();
         trayIconStream.Dispose();
         menu.Dispose();
-        if (!server.HasExited)
-        {
-            server.Kill(true);
-            server.WaitForExit(5000);
-        }
+        StopServer("normal-dispose");
         server.Dispose();
         log.Write("desktop", $"Companion stopping; shutdownReason={shutdownReason}; processId={Environment.ProcessId}");
         application.DispatcherUnhandledException -= OnDispatcherUnhandledException;
