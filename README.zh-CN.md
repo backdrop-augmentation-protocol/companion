@@ -1,5 +1,8 @@
 # BAP Companion
 
+Companion 0.2.0 候选版本。伴侣软件版本与 BAP Core 协议版本相互独立；Core
+协议版本仍为 0.1.0。
+
 [English](README.md) | 简体中文
 
 BAP 官方开源 Windows Companion，用于发现 Workshop 组件、校验 Manifest、提供本地资源服务、持久化配置，并与兼容的 BAP Host 协作。

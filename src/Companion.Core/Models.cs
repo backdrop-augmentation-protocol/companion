@@ -72,7 +72,7 @@ public sealed class CompanionOptions
     public ProtocolDescriptor Protocol { get; init; } = new("bap", "0.1.0", "core");
     public string CompanionId { get; init; } = "org.bap.companion";
     public string CompanionName { get; init; } = "BAP Companion";
-    public string CompanionVersion { get; init; } = "0.1.0";
+    public string CompanionVersion { get; init; } = "0.2.0";
     public TimeSpan SessionLifetime { get; init; } = TimeSpan.FromHours(8);
     public TimeSpan AuthorizationTimeout { get; init; } = TimeSpan.FromSeconds(300);
 

@@ -1,5 +1,8 @@
 # BAP Companion
 
+Companion release candidate version 0.2.0. The Companion application version is
+independent from the BAP Core protocol version, which remains 0.1.0.
+
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 Open-source official Windows Companion for discovering Workshop components, validating manifests, serving local resources, persisting configuration, and coordinating with compatible BAP Hosts.
