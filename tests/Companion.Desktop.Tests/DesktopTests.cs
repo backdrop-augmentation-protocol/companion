@@ -86,6 +86,47 @@ public sealed class DesktopTests
     }
 
     [Fact]
+    public async Task SharedControlClientReadsServiceStatusCatalogPresetsAndRuntimeSnapshots()
+    {
+        var name = $"Bap.Companion.Test.{Guid.NewGuid():N}";
+        var client = new HostAuthorizationClient(name);
+        var host = new RuntimeHostSnapshot("session", "org.example.host", "Example Host", DateTimeOffset.UtcNow, []);
+        var item = new InstalledItem("local:host", "local", "host", "Example Host", "path", null, "org.example.host", "1.0", null, null);
+        var presets = new PresetState([], null, new Dictionary<string, string>());
+        var operations = new List<(string Name, Func<Task> Call, string Response)>
+        {
+            ("service-status", async () => Assert.Equal(123, (await client.GetServiceStatusAsync()).ProcessId),
+                """{"success":true,"requests":[],"service":{"processId":123,"version":"0.2.0","startedAt":"2026-01-01T00:00:00Z"}}"""),
+            ("catalog-list", async () => Assert.Equal("local:host", Assert.Single(await client.GetCatalogAsync()).Key),
+                JsonSerializer.Serialize(new AuthorizationControlResponse(true, [], CatalogItems: [item]), new JsonSerializerOptions(JsonSerializerDefaults.Web))),
+            ("presets", async () => Assert.Empty((await client.GetPresetsAsync()).Presets),
+                JsonSerializer.Serialize(new AuthorizationControlResponse(true, [], Presets: presets), new JsonSerializerOptions(JsonSerializerDefaults.Web))),
+            ("runtime-snapshot", async () => Assert.Equal("org.example.host", Assert.Single(await client.GetRuntimeSnapshotsAsync()).HostId),
+                JsonSerializer.Serialize(new AuthorizationControlResponse(true, [], RuntimeHosts: [host]), new JsonSerializerOptions(JsonSerializerDefaults.Web)))
+        };
+
+        foreach (var (operation, call, response) in operations)
+        {
+            var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            var exchange = Task.Run(async () =>
+            {
+                await using (server)
+                {
+                    await server.WaitForConnectionAsync();
+                    using var reader = new StreamReader(server, leaveOpen: true);
+                    await using var writer = new StreamWriter(server) { AutoFlush = true };
+                    using var request = JsonDocument.Parse(await reader.ReadLineAsync() ?? "{}");
+                    Assert.Equal(operation, request.RootElement.GetProperty("operation").GetString());
+                    await writer.WriteLineAsync(response);
+                }
+            });
+            await call();
+            await exchange;
+        }
+    }
+
+    [Fact]
     public void PreferencesPreserveExplicitStartupOptOutAndChinese()
     {
         var path = Path.Combine(Path.GetTempPath(), $"bap-desktop-{Guid.NewGuid():N}.json");

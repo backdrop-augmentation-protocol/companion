@@ -7,6 +7,8 @@ using Bap.Companion.Core;
 using Bap.Companion.Server;
 
 var builder = WebApplication.CreateBuilder(args);
+using var serviceMutex = new Mutex(true, @"Local\BAP.Companion.Server", out var firstServiceInstance);
+if (!firstServiceInstance) return;
 // The browser WebSocket carries a short-lived bearer token in its URL.
 // Do not write full request URLs, including that token, to routine logs.
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);

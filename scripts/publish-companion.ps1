@@ -13,6 +13,7 @@ $desktopProject = if ($LegacyUi) {
 } else {
     Join-Path $repo 'src\Companion.Desktop.Wpf\Companion.Desktop.Wpf.csproj'
 }
+$cliProject = Join-Path $repo 'src\Companion.Cli\Companion.Cli.csproj'
 $destination = if ($Output) { [System.IO.Path]::GetFullPath($Output) } else { Join-Path $repo "artifacts\companion-$Runtime" }
 
 if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
@@ -26,6 +27,10 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $desktopArgs = @('publish', $desktopProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $destination, '--self-contained', ($SelfContained.IsPresent.ToString().ToLowerInvariant()))
 & dotnet @desktopArgs
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$cliArgs = @('publish', $cliProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $destination, '--self-contained', ($SelfContained.IsPresent.ToString().ToLowerInvariant()))
+& dotnet @cliArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'start-companion.ps1') -Destination $destination -Force

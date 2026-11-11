@@ -4,12 +4,23 @@ using Bap.Companion.Core;
 
 namespace Bap.Companion.Desktop;
 
-public sealed class HostAuthorizationClient(string pipeName)
+public sealed class HostAuthorizationClient(string pipeName = CompanionControlChannel.PipeName)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public async Task<IReadOnlyList<HostAuthorizationRequest>> GetPendingAsync(CancellationToken cancellationToken = default) =>
         (await SendAsync(new("snapshot"), cancellationToken)).Requests;
+
+    public async Task<CompanionServiceStatus> GetServiceStatusAsync(CancellationToken cancellationToken = default) =>
+        (await SendAsync(new("service-status"), cancellationToken)).Service
+            ?? throw new InvalidDataException("Companion service did not return its status.");
+
+    public async Task<IReadOnlyList<InstalledItem>> GetCatalogAsync(CancellationToken cancellationToken = default) =>
+        (await SendAsync(new("catalog-list"), cancellationToken)).CatalogItems ?? [];
+
+    public async Task<PresetState> GetPresetsAsync(CancellationToken cancellationToken = default) =>
+        (await SendAsync(new("presets"), cancellationToken)).Presets
+            ?? throw new InvalidDataException("Companion service did not return preset state.");
 
     public async Task<IReadOnlyList<TrustedHost>> GetTrustedHostsAsync(CancellationToken cancellationToken = default) =>
         (await SendAsync(new("trusted"), cancellationToken)).TrustedHosts ?? [];

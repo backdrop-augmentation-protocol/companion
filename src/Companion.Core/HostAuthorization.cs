@@ -19,6 +19,14 @@ public static class AuthorizationErrorCodes
     public const string Denied = "UNAUTHORIZED";
 }
 
+/// <summary>Versioned, same-user local control channel shared by the desktop UI and CLI.</summary>
+public static class CompanionControlChannel
+{
+    public const string PipeName = "Bap.Companion.Control.v1";
+}
+
+public sealed record CompanionServiceStatus(int ProcessId, string Version, DateTimeOffset StartedAt);
+
 public sealed record AuthorizationControlRequest(
     string Operation,
     string? SessionId = null,
@@ -34,7 +42,10 @@ public sealed record AuthorizationControlResponse(
     IReadOnlyList<HostAuthorizationRequest> Requests,
     string? Error = null,
     IReadOnlyList<TrustedHost>? TrustedHosts = null,
-    IReadOnlyList<RuntimeHostSnapshot>? RuntimeHosts = null);
+    IReadOnlyList<RuntimeHostSnapshot>? RuntimeHosts = null,
+    IReadOnlyList<InstalledItem>? CatalogItems = null,
+    PresetState? Presets = null,
+    CompanionServiceStatus? Service = null);
 
 /// <summary>
 /// Holds explicit human decisions and optional per-user records for self-reported Host IDs.

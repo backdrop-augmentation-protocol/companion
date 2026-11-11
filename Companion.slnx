@@ -4,6 +4,7 @@
     <Project Path="src/Companion.Server/Companion.Server.csproj" />
     <Project Path="src/Companion.Desktop/Companion.Desktop.csproj" />
     <Project Path="src/Companion.Desktop.Wpf/Companion.Desktop.Wpf.csproj" />
+    <Project Path="src/Companion.Cli/Companion.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Companion.Tests/Companion.Tests.csproj" />

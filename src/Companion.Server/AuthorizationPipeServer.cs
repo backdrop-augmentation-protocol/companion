@@ -9,26 +9,21 @@ internal sealed class AuthorizationPipeServer(
     ISessionStore sessions,
     RuntimeDesktopStore runtime,
     InstalledCatalog catalog,
+    JsonPresetStore presets,
     ILogger<AuthorizationPipeServer> logger) : BackgroundService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-    private readonly string? pipeName = Environment.GetEnvironmentVariable("BAP_AUTHORIZATION_PIPE");
+    private static readonly DateTimeOffset ProcessStartedAt = DateTimeOffset.UtcNow;
+    private const string PipeName = CompanionControlChannel.PipeName;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (string.IsNullOrWhiteSpace(pipeName) || pipeName.Length > 200 || pipeName.Any(character =>
-                !char.IsAsciiLetterOrDigit(character) && character is not '.' and not '_' and not '-'))
-        {
-            logger.LogError("Authorization control pipe is not configured; Host approvals will remain unavailable.");
-            return;
-        }
-
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 await using var pipe = new NamedPipeServerStream(
-                    pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+                    PipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                 await pipe.WaitForConnectionAsync(stoppingToken);
                 using var reader = new StreamReader(pipe, leaveOpen: true);
@@ -47,6 +42,12 @@ internal sealed class AuthorizationPipeServer(
     private async Task<AuthorizationControlResponse> HandleAsync(AuthorizationControlRequest? request, CancellationToken cancellationToken)
     {
         if (request is null) return new(false, [], "invalid request");
+        if (request.Operation == "service-status")
+            return new(true, [], Service: new(Environment.ProcessId, typeof(AuthorizationPipeServer).Assembly.GetName().Version?.ToString() ?? "unknown", ProcessStartedAt));
+        if (request.Operation == "catalog-list")
+            return new(true, [], CatalogItems: await catalog.DiscoverAsync(cancellationToken));
+        if (request.Operation == "presets")
+            return new(true, [], Presets: await presets.ReadAsync(cancellationToken));
         if (request.Operation == "refresh-catalog")
         {
             var items = await catalog.DiscoverAsync(cancellationToken, force: true);

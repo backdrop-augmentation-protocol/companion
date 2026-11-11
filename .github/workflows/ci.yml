@@ -14,5 +14,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: dotnet test Companion.slnx --configuration Release
+      - run: dotnet publish src/Companion.Cli/Companion.Cli.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/ci-cli
+      - run: artifacts/ci-cli/bapc.exe --help
       - run: dotnet publish src/Companion.Server/Companion.Server.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/ci-server
       - run: dotnet publish src/Companion.Desktop.Wpf/Companion.Desktop.Wpf.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/ci-desktop
