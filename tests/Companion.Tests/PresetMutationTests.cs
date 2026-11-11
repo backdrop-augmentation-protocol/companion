@@ -1,4 +1,5 @@
 using Bap.Companion.Core;
+using System.Text.Json;
 using Xunit;
 
 namespace Bap.Companion.Tests;
@@ -17,6 +18,44 @@ public sealed class PresetMutationTests
 
         Assert.Empty(deleted.Presets);
         Assert.Null(deleted.GlobalPresetId);
+    }
+
+    [Fact]
+    public void HostCanBelongToMultiplePresetsAndFirstEnabledPresetWins()
+    {
+        var state = State("first", "second", "global");
+        state = PresetSelection.AddHostToPreset(state, "first", "workshop:host");
+        state = PresetSelection.AddHostToPreset(state, "second", "workshop:host");
+        state = PresetSelection.SetGlobalPreset(state, "global");
+
+        Assert.Equal("first", PresetSelection.Resolve(state, "workshop:host")?.Id);
+        state = PresetSelection.SetPresetEnabled(state, "first", false);
+        Assert.Equal("second", PresetSelection.Resolve(state, "workshop:host")?.Id);
+        state = PresetSelection.MovePreset(state, "global", 0);
+        Assert.Equal("global", PresetSelection.Resolve(state, "workshop:host")?.Id);
+
+        state = PresetSelection.RemoveHostFromPreset(state, "second", "workshop:host");
+        Assert.Equal(["first"], state.HostPresetIds["workshop:host"]);
+        Assert.Equal("global", PresetSelection.Resolve(state, "workshop:host")?.Id);
+    }
+
+    [Fact]
+    public async Task LegacySingleHostBindingIsMigratedAndBackedUp()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"bap-preset-migration-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "presets.json");
+        await File.WriteAllTextAsync(path, """{"presets":[{"id":"legacy","name":"Legacy","components":[]}],"globalPresetId":null,"hostPresetIds":{"workshop:host":"legacy"}}""");
+        try
+        {
+            var state = await new JsonPresetStore(path).ReadAsync();
+            Assert.Equal(["legacy"], state.HostPresetIds["workshop:host"]);
+            Assert.True(state.Presets[0].Enabled);
+            Assert.Single(Directory.GetFiles(directory, "presets.json.pre-instance-migration-*.bak"));
+            using var saved = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+            Assert.Equal(JsonValueKind.Array, saved.RootElement.GetProperty("hostPresetIds").GetProperty("workshop:host").ValueKind);
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     [Fact]
@@ -51,7 +90,7 @@ public sealed class PresetMutationTests
     private static PresetState State(params string[] ids) => new(
         ids.Select(id => new ComponentPreset(id, id, [], Grid: new GridLayoutSettings())).ToArray(),
         null,
-        new Dictionary<string, string>(StringComparer.Ordinal));
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal));
 
     private static InstalledItem Component(string key, string id, int maxInstances) =>
         new(key, "local", "component", id, "C:/components", null, id, "1.0.0", null, null,

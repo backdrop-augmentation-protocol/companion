@@ -42,7 +42,8 @@ public sealed record AuthorizationControlRequest(
     bool? ComponentEnabled = null,
     string? Name = null,
     string? ComponentKey = null,
-    int? DestinationIndex = null);
+    int? DestinationIndex = null,
+    bool? PresetEnabled = null);
 
 public sealed record AuthorizationControlResponse(
     bool Success,

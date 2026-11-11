@@ -439,6 +439,11 @@
                 <Button x:Name="RenameButton" Style="{StaticResource QuietButton}" Click="RenameButton_Click" Margin="0,0,4,0"/>
                 <Button x:Name="DeleteButton" Grid.Column="1" Style="{StaticResource QuietButton}" Click="DeleteButton_Click" Margin="4,0,0,0"/>
               </Grid>
+              <Grid Margin="0,7,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Button x:Name="PresetUpButton" Style="{StaticResource QuietButton}" Click="PresetUpButton_Click" Margin="0,0,3,0"/>
+                <Button x:Name="PresetDownButton" Grid.Column="1" Style="{StaticResource QuietButton}" Click="PresetDownButton_Click" Margin="3,0"/>
+                <Button x:Name="TogglePresetButton" Grid.Column="2" Style="{StaticResource QuietButton}" Click="TogglePresetButton_Click" Margin="3,0,0,0"/>
+              </Grid>
             </StackPanel>
             <ListBox x:Name="PresetList" Style="{StaticResource SelectorList}" SelectionChanged="PresetList_SelectionChanged"/>
           </DockPanel></Border>

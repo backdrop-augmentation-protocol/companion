@@ -155,7 +155,7 @@ public sealed class WindowTests
                 ];
                 var initialPresetState = new PresetState(
                     [new ComponentPreset("preset-1", "Daily setup", [firstInstance, secondInstance])],
-                    null, new Dictionary<string, string> { ["local:host"] = "preset-1" });
+                    null, new Dictionary<string, IReadOnlyList<string>> { ["local:host"] = ["preset-1"] });
                 window.RenderSnapshot(presetTestItems, initialPresetState);
                 window.PresetsNav.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                 window.PresetList.SelectedIndex = 0;
@@ -168,7 +168,7 @@ public sealed class WindowTests
                 window.UpdateLayout();
                 Assert.False(window.PropertyScrollViewer.IsVisible);
                 Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
-                window.RenderSnapshot(presetTestItems, initialPresetState with { HostPresetIds = new Dictionary<string, string>() });
+                window.RenderSnapshot(presetTestItems, initialPresetState with { HostPresetIds = new Dictionary<string, IReadOnlyList<string>>() });
                 Assert.Equal(Visibility.Collapsed, window.HostsEmpty.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.ComponentsEmpty.Visibility);
                 window.RenderSnapshot(presetTestItems, initialPresetState);
@@ -179,11 +179,11 @@ public sealed class WindowTests
                 Assert.Single(window.PresetHostsList.Items);
                 window.RenderSnapshot(presetTestItems, initialPresetState with
                 {
-                    HostPresetIds = new Dictionary<string, string>
+                    HostPresetIds = new Dictionary<string, IReadOnlyList<string>>
                     {
-                        ["local:host"] = "preset-1",
-                        ["workshop:host-2"] = "preset-1",
-                        ["local:non-bap-host"] = "preset-1"
+                        ["local:host"] = ["preset-1"],
+                        ["workshop:host-2"] = ["preset-1"],
+                        ["local:non-bap-host"] = ["preset-1"]
                     }
                 });
                 Assert.False(window.AddHostButton.IsEnabled);
@@ -214,7 +214,7 @@ public sealed class WindowTests
                 Assert.True(window.RemovePresetButton.IsEnabled);
                 var savedGlobalState = presetStore.ReadAsync().GetAwaiter().GetResult();
                 Assert.Equal("preset-1", savedGlobalState.GlobalPresetId);
-                Assert.Empty(savedGlobalState.HostPresetIds);
+                Assert.Equal(["preset-1"], savedGlobalState.HostPresetIds["local:host"]);
                 var globalHost = Assert.Single(window.PresetHostsList.Items);
                 Assert.NotNull(globalHost);
                 Assert.Null(globalHost!.GetType().GetProperty("Preview")?.GetValue(globalHost));
@@ -341,7 +341,7 @@ public sealed class WindowTests
                         $"org.example.host-{index}", "1.0.0", null, null))
                     .Concat([new InstalledItem("local:widget", "local", "component", "Widget", "component", null,
                         "org.example.widget", "1.0.0", null, null)]).ToArray(),
-                    new PresetState([], null, new Dictionary<string, string>()));
+                    new PresetState([], null, new Dictionary<string, IReadOnlyList<string>>()));
                 window.UpdateLayout();
                 Assert.True(window.CatalogScrollViewer.ScrollableHeight > 0);
                 var verticalScrollBar = new System.Windows.Controls.Primitives.ScrollBar

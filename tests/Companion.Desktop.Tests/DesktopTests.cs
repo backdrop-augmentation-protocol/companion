@@ -120,7 +120,7 @@ public sealed class DesktopTests
         var client = new HostAuthorizationClient(name);
         var host = new RuntimeHostSnapshot("session", "org.example.host", "Example Host", DateTimeOffset.UtcNow, []);
         var item = new InstalledItem("local:host", "local", "host", "Example Host", "path", null, "org.example.host", "1.0", null, null);
-        var presets = new PresetState([], null, new Dictionary<string, string>());
+        var presets = new PresetState([], null, new Dictionary<string, IReadOnlyList<string>>());
         var operations = new List<(string Name, Func<Task> Call, string Response)>
         {
             ("service-status", async () => Assert.Equal(123, (await client.GetServiceStatusAsync()).ProcessId),

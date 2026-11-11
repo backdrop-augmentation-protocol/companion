@@ -117,7 +117,7 @@ try
             if (!json && presets.Presets.Count == 0) Console.WriteLine("No presets are configured.");
             if (!json)
                 foreach (var preset in presets.Presets)
-                    Console.WriteLine($"{preset.Id,-24} {preset.Name} — {preset.Components.Count} component instance(s)");
+                    Console.WriteLine($"{preset.Id,-24} {(preset.Enabled ? "enabled" : "disabled"),-9} {preset.Name} - {preset.Components.Count} component instance(s)");
             return 0;
         case ["preset", "component", "set-enabled", var presetId, var instanceId, var enabledText]:
             if (!bool.TryParse(enabledText, out var enabled))
@@ -140,6 +140,36 @@ try
             var deleted = await client.DeletePresetAsync(deleteId);
             Print(deleted, json, output);
             if (!json) Console.WriteLine($"Deleted preset {deleteId}.");
+            return 0;
+        case ["preset", "set-enabled", var enabledPresetId, var presetEnabledText]:
+            if (!bool.TryParse(presetEnabledText, out var presetEnabled))
+            {
+                Console.Error.WriteLine("Enabled must be 'true' or 'false'.");
+                return UsageError;
+            }
+            var enabledState = await client.SetPresetEnabledAsync(enabledPresetId, presetEnabled);
+            Print(enabledState, json, output);
+            if (!json) Console.WriteLine($"Preset {enabledPresetId} is {(presetEnabled ? "enabled" : "disabled")}.");
+            return 0;
+        case ["preset", "move", var movePresetId, var presetDestinationText]:
+            if (!int.TryParse(presetDestinationText, out var presetDestination) || presetDestination < 0)
+            {
+                Console.Error.WriteLine("Destination index must be a nonnegative integer (zero-based).");
+                return UsageError;
+            }
+            var movedPreset = await client.MovePresetAsync(movePresetId, presetDestination);
+            Print(movedPreset, json, output);
+            if (!json) Console.WriteLine($"Moved preset {movePresetId} to priority index {presetDestination}.");
+            return 0;
+        case ["preset", "host", "add", var hostPresetId, var hostKey]:
+            var withHost = await client.AddPresetHostAsync(hostPresetId, hostKey);
+            Print(withHost, json, output);
+            if (!json) Console.WriteLine($"Added Host {hostKey} to preset {hostPresetId}.");
+            return 0;
+        case ["preset", "host", "remove", var unbindPresetId, var unbindHostKey]:
+            var withoutHost = await client.RemovePresetHostAsync(unbindPresetId, unbindHostKey);
+            Print(withoutHost, json, output);
+            if (!json) Console.WriteLine($"Removed Host {unbindHostKey} from preset {unbindPresetId}.");
             return 0;
         case ["preset", "component", "add", var addPresetId, var componentKey, var newInstanceId]:
             var withComponent = await client.AddPresetComponentAsync(addPresetId, componentKey, newInstanceId);
@@ -258,6 +288,10 @@ static void PrintHelp()
     Console.WriteLine("  preset list       List configured presets");
     Console.WriteLine("  preset create <id> <name>  Create a preset");
     Console.WriteLine("  preset delete <id>  Delete a preset and clear its bindings");
+    Console.WriteLine("  preset set-enabled <id> <true|false>  Enable or disable a preset");
+    Console.WriteLine("  preset move <id> <index>  Set preset priority (zero-based)");
+    Console.WriteLine("  preset host add <preset-id> <host-catalog-key>");
+    Console.WriteLine("  preset host remove <preset-id> <host-catalog-key>");
     Console.WriteLine("  preset component add <preset> <catalog-key> <instance-id>");
     Console.WriteLine("  preset component remove <preset> <instance-id>");
     Console.WriteLine("  preset component move <preset> <instance-id> <zero-based-index>");

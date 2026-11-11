@@ -28,7 +28,7 @@ Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 
 桌面应用同时列出 WE 订阅目录和本地项目目录中的所有 Web 壁纸及 BAP 组件。预设保存
 组件顺序与明确的来源；宿主绑定使用具体已安装项目的 key，因此本地版和订阅版可以分别配置。
-未接入 BAP 的壁纸可在确认风险提示后绑定，但不会因此获得 BAP 组件渲染能力。指定宿主的专用预设覆盖全局预设；暂时缺失的组件仍保留在预设中。壁纸没有专用预设或全局预设时，不会加载组件；组件必须通过预设明确绑定后才会显示。
+未接入 BAP 的壁纸可在确认风险提示后绑定，但不会因此获得 BAP 组件渲染能力。一个宿主可以加入多个预设；预设列表中的第一个已启用匹配项生效，全局预设匹配所有宿主。暂时缺失的组件仍保留在预设中；没有任何匹配的已启用预设时，不会加载组件。
 
 桌面窗口可编辑预设，以预览卡片展示已安装的宿主与组件；点击卡片可查看来源、BAP ID、版本、状态和项目位置，并可从宿主详情通过 WE 官方命令行发起切换。手动启动会打开主窗口。
 设置页提供英文与简体中文，默认英文；首次运行默认启用当前用户级开机自启，可随时取消勾选。自动启动时进入托盘。服务不弹控制台窗口，滚动日志位于
@@ -36,7 +36,7 @@ Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 
 打包目录中的 `bapc` CLI 与桌面应用共用同一个 Companion 服务。`bapc host list` 列出已安装的 Web 壁纸；`bapc host switch <catalog-key> [--monitor N]` 通过 WE 官方本机控制命令切换壁纸。`bapc authorization pending` 查看待批准请求；`bapc authorization approve <session> --permission <name> [--permission <name>] [--remember]` 仅批准请求中明确申请的权限。`bapc preset component set-enabled <preset-id> <instance-id> <true|false>` 可独立启用或禁用预设中的一个组件实例，不会修改订阅状态或其他实例。
 
-CLI 还支持 `preset create <id> <name>`、`preset delete <id>`、`preset component add/remove/move` 和 `preset global set <preset-id|none>`。添加组件时使用已安装目录中的项目键，并显式指定实例 ID；移动实例时使用从 0 开始的目标序号。运行 `bapc --help` 查看全部命令。
+CLI 还支持 `preset create <id> <name>`、`preset delete <id>`、`preset component add/remove/move`、`preset host add/remove`、`preset set-enabled`、`preset move` 和 `preset global set <preset-id|none>`。宿主可同时属于多个预设；按预设列表顺序选择第一个已启用且匹配当前宿主的预设。添加组件时使用已安装目录中的项目键，并显式指定实例 ID；移动组件或预设时使用从 0 开始的目标序号。运行 `bapc --help` 查看全部命令。
 
 单独启动服务时使用 `dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311`。
 即使将监听地址配置得更宽，服务也只接受来自回环地址、且 Host 名称为回环地址的请求。

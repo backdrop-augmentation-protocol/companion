@@ -187,6 +187,7 @@ public sealed class CliEndToEndTests
 
         var create = await RunCliAsync(["preset", "create", "e2e", "CLI", "Integration"], server.PipeName);
         Assert.Equal(0, create.ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "create", "higher", "Higher", "Priority"], server.PipeName)).ExitCode);
 
         var catalogResult = await RunCliAsync(["catalog", "list", "--json"], server.PipeName);
         Assert.Equal(0, catalogResult.ExitCode);
@@ -197,20 +198,32 @@ public sealed class CliEndToEndTests
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "add", "e2e", componentKey, "clock-b"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "move", "e2e", "clock-b", "0"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "set-enabled", "e2e", "clock-b", "false"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "host", "add", "e2e", "workshop:host"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "host", "add", "higher", "workshop:host"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "set-enabled", "e2e", "false"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "move", "higher", "0"], server.PipeName)).ExitCode);
 
         var changed = await RunCliAsync(["preset", "list", "--json"], server.PipeName);
         Assert.Equal(0, changed.ExitCode);
         using (var changedJson = JsonDocument.Parse(changed.StandardOutput))
         {
-            var components = changedJson.RootElement.GetProperty("presets")[0].GetProperty("components");
+            var presets = changedJson.RootElement.GetProperty("presets");
+            var e2ePreset = presets.EnumerateArray().Single(preset => preset.GetProperty("id").GetString() == "e2e");
+            var components = e2ePreset.GetProperty("components");
             Assert.Equal("clock-b", components[0].GetProperty("instanceId").GetString());
             Assert.False(components[0].GetProperty("enabled").GetBoolean());
             Assert.Equal("clock-a", components[1].GetProperty("instanceId").GetString());
+            Assert.Equal("higher", presets[0].GetProperty("id").GetString());
+            Assert.False(e2ePreset.GetProperty("enabled").GetBoolean());
+            var hostBindings = changedJson.RootElement.GetProperty("hostPresetIds").GetProperty("workshop:host");
+            Assert.Equal(new[] { "e2e", "higher" }, hostBindings.EnumerateArray().Select(id => id.GetString()));
         }
 
         Assert.Equal(0, (await RunCliAsync(["preset", "global", "set", "e2e"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "remove", "e2e", "clock-a"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "delete", "e2e"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "host", "remove", "higher", "workshop:host"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "delete", "higher"], server.PipeName)).ExitCode);
 
         var finalState = await RunCliAsync(["preset", "list", "--json"], server.PipeName);
         Assert.Equal(0, finalState.ExitCode);

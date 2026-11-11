@@ -11,7 +11,7 @@ internal sealed class MainForm : Form
     private readonly int port;
     private readonly DesktopSettings settings;
     private readonly HostAuthorizationClient controlClient = new();
-    private PresetState state = new([], null, new Dictionary<string, string>());
+    private PresetState state = new([], null, new Dictionary<string, IReadOnlyList<string>>());
     private IReadOnlyList<InstalledItem> items = [];
     private readonly CatalogView catalogView;
     private readonly ListBox presets = new() { Width = 230, Height = 300 };
@@ -196,7 +196,7 @@ internal sealed class MainForm : Form
         items = await catalog.DiscoverAsync(force: true);
         state = await store.ReadAsync();
         var migrated = PresetSelection.MigrateInstalledHostBindings(state, items);
-        if (!state.HostPresetIds.OrderBy(pair => pair.Key).SequenceEqual(migrated.HostPresetIds.OrderBy(pair => pair.Key)))
+        if (!PresetSelection.HostBindingsEqual(state, migrated))
         {
             await store.WriteAsync(migrated);
             state = migrated;
@@ -285,7 +285,7 @@ internal sealed class MainForm : Form
         await SaveAsync(state with {
             Presets = state.Presets.Where(item => item.Id != preset.Id).ToArray(),
             GlobalPresetId = state.GlobalPresetId == preset.Id ? null : state.GlobalPresetId,
-            HostPresetIds = state.HostPresetIds.Where(pair => pair.Value != preset.Id).ToDictionary()
+            HostPresetIds = state.HostPresetIds.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<string>)pair.Value.Where(id => id != preset.Id).ToArray()).Where(pair => pair.Value.Count > 0).ToDictionary()
         });
     }
 
@@ -329,23 +329,19 @@ internal sealed class MainForm : Form
         if (preset is null) return;
         if (hostId is null)
         {
-            var bindings = state.HostPresetIds.Where(pair => pair.Value != preset.Id).ToDictionary(pair => pair.Key, pair => pair.Value);
-            await SaveAsync(state with { GlobalPresetId = preset.Id, HostPresetIds = bindings }, preset.Id);
+            await SaveAsync(PresetSelection.SetGlobalPreset(state, preset.Id), preset.Id);
         }
         else
         {
-            var bindings = new Dictionary<string, string>(state.HostPresetIds) { [hostId] = preset.Id };
-            await SaveAsync(state with { HostPresetIds = bindings }, preset.Id);
+            await SaveAsync(PresetSelection.AddHostToPreset(state, preset.Id, hostId), preset.Id);
         }
     }
 
     private async Task ClearBindingAsync()
     {
         var hostId = (hostBinding.SelectedItem as CatalogChoice)?.Item.Key;
-        if (hostId is null) return;
-        var bindings = new Dictionary<string, string>(state.HostPresetIds);
-        bindings.Remove(hostId);
-        await SaveAsync(state with { HostPresetIds = bindings });
+        if (hostId is null || SelectedPreset is not { } preset) return;
+        await SaveAsync(PresetSelection.RemoveHostFromPreset(state, preset.Id, hostId));
     }
 
     private async Task CheckServiceAsync()

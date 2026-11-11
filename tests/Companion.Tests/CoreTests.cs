@@ -100,9 +100,9 @@ public sealed class CoreTests
         try
         {
             var state = new PresetState(
-                [new("global", "Everywhere", [new("org.example.clock")]),
-                 new("host", "For Host", [new("org.example.calendar", "local:abc")])],
-                "global", new Dictionary<string, string> { ["org.example.host"] = "host" },
+                [new("host", "For Host", [new("org.example.calendar", "local:abc")]),
+                 new("global", "Everywhere", [new("org.example.clock")])],
+                "global", new Dictionary<string, IReadOnlyList<string>> { ["org.example.host"] = ["host"] },
                 new Dictionary<string, Dictionary<string, JsonElement>>
                 {
                     ["workshop:123"] = new() { ["theme"] = JsonDocument.Parse("\"blue\"").RootElement }
@@ -124,7 +124,7 @@ public sealed class CoreTests
         var state = new PresetState(
             [new("work", "Work", [new("org.example.clock", InstanceId: "clock-a"), new("org.example.clock", InstanceId: "clock-b")]),
              new("home", "Home", [new("org.example.clock", InstanceId: "clock-c")])],
-            null, new Dictionary<string, string>());
+            null, new Dictionary<string, IReadOnlyList<string>>());
 
         var updated = PresetSelection.SetComponentEnabled(state, "work", "clock-b", false);
 
@@ -140,7 +140,7 @@ public sealed class CoreTests
     public void LegacyBapHostBindingsMigrateToEveryInstalledProjectCopy()
     {
         var state = new PresetState([new("daily", "Daily", [])], null,
-            new Dictionary<string, string> { ["org.example.host"] = "daily" });
+            new Dictionary<string, IReadOnlyList<string>> { ["org.example.host"] = ["daily"] });
         InstalledItem[] installed =
         [
             new("local:abc", "local", "host", "Local host", "host", null, "org.example.host", null, null, null),
@@ -150,8 +150,8 @@ public sealed class CoreTests
 
         var migrated = PresetSelection.MigrateInstalledHostBindings(state, installed);
 
-        Assert.Equal("daily", migrated.HostPresetIds["local:abc"]);
-        Assert.Equal("daily", migrated.HostPresetIds["workshop:123"]);
+        Assert.Equal(["daily"], migrated.HostPresetIds["local:abc"]);
+        Assert.Equal(["daily"], migrated.HostPresetIds["workshop:123"]);
         Assert.DoesNotContain("org.example.host", migrated.HostPresetIds.Keys);
         Assert.Equal("daily", PresetSelection.Resolve(migrated, "local:abc")?.Id);
         Assert.Equal("daily", PresetSelection.Resolve(migrated, "workshop:123")?.Id);
@@ -221,7 +221,7 @@ public sealed class CoreTests
         try
         {
             var initial = new ComponentPreset("daily", "Daily", []);
-            var state = new PresetState([initial], initial.Id, new Dictionary<string, string>());
+            var state = new PresetState([initial], initial.Id, new Dictionary<string, IReadOnlyList<string>>());
             await store.WriteAsync(state);
             var first = await store.ReadAsync();
             Assert.Equal(0, first.Presets[0].Revision);
@@ -507,13 +507,13 @@ public sealed class CoreTests
             new InstalledItem("workshop:123", "workshop", "component", "Clock subscribed", "subscribed", "123", manifest.Id, manifest.Version, null, manifest),
             new InstalledItem("local:abc", "local", "component", "Clock local", "local", null, manifest.Id, manifest.Version, null, manifest)
         };
-        var state = new PresetState([new("chosen", "Local", [new("org.example.missing"), new(manifest.Id, "local:abc")])], "chosen", new Dictionary<string, string>());
+        var state = new PresetState([new("chosen", "Local", [new("org.example.missing"), new(manifest.Id, "local:abc")])], "chosen", new Dictionary<string, IReadOnlyList<string>>());
         var effective = EffectiveComponents.Resolve(state, "host", items);
         Assert.Equal(["org.example.missing", manifest.Id], effective.Select(item => item.ComponentId).ToArray());
         Assert.Equal("missing", effective[0].Status);
         Assert.Equal("local:abc", effective[1].SourceKey);
         Assert.Equal("embedded.html", effective[1].EmbeddedPath);
-        Assert.Empty(EffectiveComponents.Resolve(new([], null, new Dictionary<string, string>()), "host", items));
+        Assert.Empty(EffectiveComponents.Resolve(new([], null, new Dictionary<string, IReadOnlyList<string>>()), "host", items));
     }
 
     [Fact]
@@ -532,7 +532,7 @@ public sealed class CoreTests
             new("org.example.clock", "workshop:123", "clock-c", Layout: new ComponentLayout("automatic", Order: 2))
         ], Revision: 4);
         var result = EffectiveComponents.Resolve(
-            new PresetState([preset], preset.Id, new Dictionary<string, string>()),
+            new PresetState([preset], preset.Id, new Dictionary<string, IReadOnlyList<string>>()),
             "org.example.host", items);
 
         Assert.Equal(["clock-a", "clock-b", "clock-c"], result.Select(item => item.InstanceId));
@@ -580,7 +580,7 @@ public sealed class CoreTests
             new(manifest.Id, "workshop:1", "ui-b", Enabled: false),
             new(manifest.Id, "workshop:1", "ui-c")
         ]);
-        var current = new PresetState([existing], existing.Id, new Dictionary<string, string>());
+        var current = new PresetState([existing], existing.Id, new Dictionary<string, IReadOnlyList<string>>());
 
         var cleanup = existing with { Components = existing.Components.Take(2).ToArray() };
         Assert.Empty(PresetSelection.ValidateInstanceLimitIncreases(current, current with { Presets = [cleanup] }, [item]));
@@ -620,7 +620,7 @@ public sealed class CoreTests
     public void UnassignedHostReceivesEmptyGridComposition()
     {
         var composition = EffectiveComponents.ResolveComposition(
-            new PresetState([], null, new Dictionary<string, string>()), "host", []);
+            new PresetState([], null, new Dictionary<string, IReadOnlyList<string>>()), "host", []);
 
         Assert.Equal("unassigned", composition.PresetId);
         Assert.Equal("grid", composition.LayoutMode);
@@ -635,7 +635,7 @@ public sealed class CoreTests
             LayoutMode: "grid", Grid: new GridLayoutSettings(Columns: 3), Revision: 7,
             UpdatedAt: DateTimeOffset.Parse("2026-10-31T08:00:00Z"));
         var snapshot = EffectiveComponents.ResolveComposition(
-            new PresetState([preset], preset.Id, new Dictionary<string, string>()),
+            new PresetState([preset], preset.Id, new Dictionary<string, IReadOnlyList<string>>()),
             "org.example.host", []);
 
         Assert.Equal("work", snapshot.PresetId);

@@ -36,10 +36,11 @@ from both Workshop subscriptions and local WE projects. Presets hold ordered
 component selections with explicit source keys, and host assignments are scoped
 to an installed project key so local and subscribed copies can be configured
 independently. Non-BAP wallpapers can be assigned after a warning, but they do
-not gain BAP component rendering. A host-specific preset overrides the global
-selection; missing components remain in the preset. A wallpaper with neither a
-host-specific nor a global preset receives no components. Components are added
-to a wallpaper only through an explicit preset assignment.
+not gain BAP component rendering. A Host may belong to multiple presets. The
+first enabled matching preset in the ordered list wins, with the global preset
+matching every Host. Missing components remain in the preset; a wallpaper with no
+matching enabled preset receives no components. Components are added only through
+an explicit preset assignment.
 
 The WPF desktop window edits presets and displays installed hosts and components as
 preview cards. Select a card to see its source, BAP ID, version, status, and
@@ -61,8 +62,11 @@ approves only requested permissions. Use `bapc --help` for all commands.
 `bapc preset component set-enabled <preset-id> <instance-id> <true|false>` toggles one
 component entry in a preset without changing its subscription or other instances.
 Preset structure can also be managed with `preset create <id> <name>`,
-`preset delete <id>`, `preset component add/remove/move`, and
-`preset global set <preset-id|none>`.
+`preset delete <id>`, `preset component add/remove/move`,
+`preset host add/remove`, `preset set-enabled`, `preset move`, and
+`preset global set <preset-id|none>`. A Host can belong to multiple presets;
+the first enabled matching preset in the ordered list is applied, with the
+global preset matching every Host.
 Component additions use an installed catalog key and an explicit instance ID;
 component moves use a zero-based destination index. Run `bapc --help` for syntax.
 

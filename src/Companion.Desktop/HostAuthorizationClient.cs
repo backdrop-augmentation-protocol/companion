@@ -60,6 +60,18 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
     public async Task<PresetState> SetGlobalPresetAsync(string? presetId, CancellationToken cancellationToken = default) =>
         await SendPresetMutationAsync(new("preset-global-set", PresetId: presetId), cancellationToken);
 
+    public async Task<PresetState> AddPresetHostAsync(string presetId, string hostKey, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-host-add", PresetId: presetId, HostKey: hostKey), cancellationToken);
+
+    public async Task<PresetState> RemovePresetHostAsync(string presetId, string hostKey, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-host-remove", PresetId: presetId, HostKey: hostKey), cancellationToken);
+
+    public async Task<PresetState> SetPresetEnabledAsync(string presetId, bool enabled, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-enabled", PresetId: presetId, PresetEnabled: enabled), cancellationToken);
+
+    public async Task<PresetState> MovePresetAsync(string presetId, int destinationIndex, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-move", PresetId: presetId, DestinationIndex: destinationIndex), cancellationToken);
+
     private async Task<PresetState> SendPresetMutationAsync(AuthorizationControlRequest request, CancellationToken cancellationToken)
     {
         var response = await SendAsync(request, cancellationToken);

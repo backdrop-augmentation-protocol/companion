@@ -156,6 +156,18 @@ internal sealed class AuthorizationPipeServer(
                 case "preset-global-set" when request.PresetId is null || ValidText(request.PresetId, 128):
                     updated = PresetSelection.SetGlobalPreset(state, request.PresetId);
                     break;
+                case "preset-host-add" when ValidText(request.PresetId, 128) && ValidText(request.HostKey, 512):
+                    updated = PresetSelection.AddHostToPreset(state, request.PresetId!, request.HostKey!);
+                    break;
+                case "preset-host-remove" when ValidText(request.PresetId, 128) && ValidText(request.HostKey, 512):
+                    updated = PresetSelection.RemoveHostFromPreset(state, request.PresetId!, request.HostKey!);
+                    break;
+                case "preset-enabled" when ValidText(request.PresetId, 128) && request.PresetEnabled is not null:
+                    updated = PresetSelection.SetPresetEnabled(state, request.PresetId!, request.PresetEnabled.Value);
+                    break;
+                case "preset-move" when ValidText(request.PresetId, 128) && request.DestinationIndex is >= 0 and <= 10000:
+                    updated = PresetSelection.MovePreset(state, request.PresetId!, request.DestinationIndex.Value);
+                    break;
                 default:
                     return new(false, [], "invalid preset mutation request");
             }
