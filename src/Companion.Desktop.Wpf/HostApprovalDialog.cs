@@ -81,7 +81,7 @@ internal static class HostApprovalDialog
                 Tag = permission,
                 Content = PermissionLabel(permission, chinese),
                 IsChecked = false,
-                Margin = new Thickness(0, 5, 0, 5),
+                Margin = new Thickness(0, 11, 0, 11),
                 Foreground = Brushes.White
             };
             ApplyCheckBoxTheme(owner, checkBox);
@@ -101,13 +101,13 @@ internal static class HostApprovalDialog
                 TextWrapping = TextWrapping.Wrap
             },
             IsChecked = true,
-            Margin = new Thickness(0, 14, 0, 0),
+            Margin = new Thickness(0, 20, 0, 0),
             Foreground = Brushes.White
         };
         ApplyCheckBoxTheme(owner, rememberCheck);
         content.Children.Add(rememberCheck);
 
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 22, 0, 0) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 28, 0, 0) };
         var deny = new Button { Content = chinese ? "拒绝" : "Deny", MinWidth = 100, Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 10, 0) };
         var approve = new Button { Content = chinese ? "批准所选权限" : "Approve selected", MinWidth = 140, Padding = new Thickness(14, 8, 14, 8), IsDefault = true, IsEnabled = false };
         approveButton = approve;
@@ -132,7 +132,7 @@ internal static class HostApprovalDialog
 
     internal static void ApplyCheckBoxTheme(Window owner, CheckBox checkBox)
     {
-        checkBox.Style = (Style)owner.FindResource(typeof(CheckBox));
+        checkBox.Style = (Style)owner.FindResource("ApprovalCheckBox");
         checkBox.FocusVisualStyle = (Style)owner.FindResource("NoFocusVisual");
     }
 

@@ -178,6 +178,32 @@
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="ApprovalCheckBox" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+      <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
+        <Grid Background="Transparent" SnapsToDevicePixels="True">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border x:Name="CheckSurface" Width="20" Height="20" CornerRadius="4" BorderThickness="1"
+                  BorderBrush="#AAB2BF" Background="#081630" VerticalAlignment="Center"/>
+          <Path x:Name="CheckMark" Width="12" Height="10" Data="M 1 5 L 4 8 L 11 1"
+                Stroke="#07142D" StrokeThickness="1.3" HorizontalAlignment="Center" VerticalAlignment="Center"
+                StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
+          <ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
+                            RecognizesAccessKey="True" Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="CheckSurface" Property="BorderBrush" Value="#D0D5DE"/></Trigger>
+          <Trigger Property="IsChecked" Value="True">
+            <Setter TargetName="CheckSurface" Property="Background" Value="#EE8F70"/>
+            <Setter TargetName="CheckSurface" Property="BorderBrush" Value="#EE8F70"/>
+            <Setter TargetName="CheckSurface" Property="BorderThickness" Value="0"/>
+            <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+          </Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style TargetType="ScrollBar">
       <Setter Property="Width" Value="10"/><Setter Property="MinWidth" Value="10"/>
       <Setter Property="Background" Value="Transparent"/><Setter Property="Focusable" Value="False"/>

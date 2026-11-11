@@ -74,7 +74,7 @@ public sealed class WindowTests
                     Assert.True(ReferenceEquals(window.FindResource("NoFocusVisual"), control.FocusVisualStyle), $"Unexpected focus adorner on {control.Name}.");
                 var approvalCheckBox = new System.Windows.Controls.CheckBox();
                 HostApprovalDialog.ApplyCheckBoxTheme(window, approvalCheckBox);
-                Assert.Same(window.FindResource(typeof(System.Windows.Controls.CheckBox)), approvalCheckBox.Style);
+                Assert.Same(window.FindResource("ApprovalCheckBox"), approvalCheckBox.Style);
                 Assert.Same(window.FindResource("NoFocusVisual"), approvalCheckBox.FocusVisualStyle);
                 Assert.False(window.CatalogScrollViewer.Focusable);
                 Assert.False(window.SettingsPage.Focusable);
