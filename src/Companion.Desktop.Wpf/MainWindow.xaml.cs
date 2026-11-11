@@ -1441,17 +1441,11 @@ public partial class MainWindow : Window
         }
         if (context.Scope == "host")
         {
-            if (activeHostKey != context.OwnerKey || !WallpaperPropertyReader.IsValidValue(context.Definition, value)) return;
-            var config = new Dictionary<string, System.Text.Json.JsonElement>(state.HostConfigs?.GetValueOrDefault(context.OwnerKey) ?? [], StringComparer.Ordinal)
-            {
-                [context.Definition.Key] = value.Clone()
-            };
-            var allConfigs = new Dictionary<string, Dictionary<string, System.Text.Json.JsonElement>>(state.HostConfigs ?? new Dictionary<string, Dictionary<string, System.Text.Json.JsonElement>>(), StringComparer.Ordinal)
-            {
-                [context.OwnerKey] = config
-            };
-            await SaveAsync(state with { HostConfigs = allConfigs });
-            await WallpaperEngineControl.ApplyPropertiesAsync(config, EffectiveDisplayIndex, log);
+            if (authorizationClient is null || activeHostKey != context.OwnerKey ||
+                !WallpaperPropertyReader.IsValidValue(context.Definition, value)) return;
+            var receipt = await authorizationClient.SetHostPropertyAsync(context.OwnerKey, EffectiveDisplayIndex,
+                context.Definition.Key, value);
+            state = receipt.Presets;
             return;
         }
         var preset = SelectedPreset;

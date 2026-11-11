@@ -11,6 +11,7 @@ internal sealed class AuthorizationPipeServer(
     InstalledCatalog catalog,
     JsonPresetStore presets,
     WallpaperEngineSwitcher wallpaperSwitcher,
+    HostPropertyController hostProperties,
     IHostApplicationLifetime applicationLifetime,
     ILogger<AuthorizationPipeServer> logger) : BackgroundService
 {
@@ -103,6 +104,8 @@ internal sealed class AuthorizationPipeServer(
                 return new(false, [], error.Message);
             }
         }
+        if (request.Operation == "host-property-set")
+            return await hostProperties.SetAsync(request, cancellationToken);
         return request.Operation switch
         {
             "snapshot" => new(true, authorizations.Snapshot()),

@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Bap.Companion.Core;
 
 /// <summary>
@@ -44,7 +46,9 @@ public sealed record AuthorizationControlRequest(
     string? ComponentKey = null,
     int? DestinationIndex = null,
     bool? PresetEnabled = null,
-    bool AllowUnverifiedHost = false);
+    bool AllowUnverifiedHost = false,
+    string? PropertyKey = null,
+    JsonElement? PropertyValue = null);
 
 public sealed record AuthorizationControlResponse(
     bool Success,
@@ -56,9 +60,11 @@ public sealed record AuthorizationControlResponse(
     PresetState? Presets = null,
     CompanionServiceStatus? Service = null,
     EffectiveComposition? Composition = null,
-    WallpaperSwitchReceipt? WallpaperSwitch = null);
+    WallpaperSwitchReceipt? WallpaperSwitch = null,
+    HostPropertyApplyReceipt? HostProperty = null);
 
 public sealed record WallpaperSwitchReceipt(string Status, string ProjectFile, int MonitorIndex, string? CurrentWallpaper);
+public sealed record HostPropertyApplyReceipt(string HostKey, string HostTitle, string PropertyKey, int MonitorIndex, PresetState Presets);
 
 /// <summary>
 /// Holds explicit human decisions and optional per-user records for self-reported Host IDs.

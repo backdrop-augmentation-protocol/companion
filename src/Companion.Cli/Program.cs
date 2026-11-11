@@ -128,30 +128,11 @@ try
         case ["desktop", "host", "set-property", var hostPropertyKey, var hostPropertyValue]:
             var desktopSettings = CreateDesktopSettings();
             var displayIndex = desktopSettings.DisplayIndex;
-            var activeWallpaper = await WallpaperEngineControl.GetCurrentAsync(displayIndex);
-            var activeHost = FindActiveHost(await client.GetCatalogAsync(), activeWallpaper)
-                ?? throw new InvalidOperationException("The active Wallpaper Engine wallpaper is not an installed Web Host project.");
-            var hostProperty = activeHost.Properties?.FirstOrDefault(property => property.Key == hostPropertyKey)
-                ?? throw new InvalidOperationException($"Host property was not found: {hostPropertyKey}");
             using (var parsedHostValue = JsonDocument.Parse(hostPropertyValue))
             {
-                if (!WallpaperPropertyReader.IsValidValue(hostProperty, parsedHostValue.RootElement))
-                    throw new ArgumentException($"Value does not match the declared Host property '{hostPropertyKey}'.");
-                var store = new JsonPresetStore(JsonPresetStore.DefaultPath);
-                var state = await store.ReadAsync();
-                var hostConfig = new Dictionary<string, JsonElement>(state.HostConfigs?.GetValueOrDefault(activeHost.Key) ?? [], StringComparer.Ordinal)
-                {
-                    [hostPropertyKey] = parsedHostValue.RootElement.Clone()
-                };
-                var allHostConfigs = new Dictionary<string, Dictionary<string, JsonElement>>(state.HostConfigs ?? new Dictionary<string, Dictionary<string, JsonElement>>(), StringComparer.Ordinal)
-                {
-                    [activeHost.Key] = hostConfig
-                };
-                await store.WriteAsync(state with { HostConfigs = allHostConfigs });
-                using var log = new CompanionLog();
-                await WallpaperEngineControl.ApplyPropertiesAsync(hostConfig, displayIndex, log);
-                Print(new { applied = true, hostKey = activeHost.Key, propertyKey = hostPropertyKey, displayIndex }, json, output);
-                if (!json) Console.WriteLine($"Applied Host property {hostPropertyKey} to {activeHost.Title} on display {displayIndex}.");
+                var receipt = await client.SetHostPropertyAsync(null, displayIndex, hostPropertyKey, parsedHostValue.RootElement);
+                Print(new { applied = true, hostKey = receipt.HostKey, hostTitle = receipt.HostTitle, propertyKey = receipt.PropertyKey, displayIndex = receipt.MonitorIndex }, json, output);
+                if (!json) Console.WriteLine($"Applied Host property {receipt.PropertyKey} to {receipt.HostTitle} on display {receipt.MonitorIndex}.");
             }
             return 0;
         case ["desktop", "set-config", var sessionId, var instanceId, var revisionText, var configText]:
@@ -393,30 +374,6 @@ static void PrintHelp()
 
 static DesktopSettings CreateDesktopSettings() => new(
     Environment.GetEnvironmentVariable("BAPC_SETTINGS_PATH"), synchronizeStartup: false);
-
-static InstalledItem? FindActiveHost(IReadOnlyList<InstalledItem> catalog, string currentWallpaper)
-{
-    if (string.IsNullOrWhiteSpace(currentWallpaper)) return null;
-    string currentPath;
-    try { currentPath = Path.GetFullPath(currentWallpaper); }
-    catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { return null; }
-    foreach (var item in catalog.Where(item => item.Role == "host"))
-    {
-        var projectPath = Path.GetFullPath(Path.Combine(item.ProjectDirectory, "project.json"));
-        if (string.Equals(currentPath, projectPath, StringComparison.OrdinalIgnoreCase)) return item;
-        try
-        {
-            using var project = JsonDocument.Parse(File.ReadAllText(projectPath));
-            if (project.RootElement.TryGetProperty("file", out var entry) && entry.ValueKind == JsonValueKind.String)
-            {
-                var entryPath = Path.GetFullPath(Path.Combine(item.ProjectDirectory, entry.GetString()!));
-                if (string.Equals(currentPath, entryPath, StringComparison.OrdinalIgnoreCase)) return item;
-            }
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException or NotSupportedException) { }
-    }
-    return null;
-}
 
 static async Task<int> RunSettingsCommandAsync(string[] command, HostAuthorizationClient client,
     bool json, JsonSerializerOptions output)

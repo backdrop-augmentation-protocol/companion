@@ -124,6 +124,14 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
         return response.WallpaperSwitch ?? throw new IOException(response.Error ?? "Companion could not switch the Wallpaper Engine wallpaper.");
     }
 
+    public async Task<HostPropertyApplyReceipt> SetHostPropertyAsync(string? hostKey, int monitorIndex,
+        string propertyKey, JsonElement value, CancellationToken cancellationToken = default)
+    {
+        var response = await SendAsync(new("host-property-set", HostKey: hostKey, MonitorIndex: monitorIndex,
+            PropertyKey: propertyKey, PropertyValue: value.Clone()), cancellationToken);
+        return response.HostProperty ?? throw new IOException(response.Error ?? "Companion could not apply the Host property.");
+    }
+
     public async Task<bool> RevokeTrustAsync(string id, CancellationToken cancellationToken = default) =>
         (await SendAsync(new("revoke", id), cancellationToken)).Success;
 

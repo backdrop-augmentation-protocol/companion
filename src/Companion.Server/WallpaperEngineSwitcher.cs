@@ -1,11 +1,66 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Bap.Companion.Core;
 
 namespace Bap.Companion.Server;
 
-internal sealed class WallpaperEngineSwitcher(InstalledCatalog catalog)
+internal sealed class WallpaperEngineSwitcher(InstalledCatalog catalog, ILogger<WallpaperEngineSwitcher> logger)
 {
+    public async Task<string?> GetCurrentAsync(int monitorIndex, CancellationToken cancellationToken)
+    {
+        if (monitorIndex is < 0 or > 31) throw new ArgumentOutOfRangeException(nameof(monitorIndex));
+        var executable = FindExecutable() ?? throw new FileNotFoundException("Wallpaper Engine executable was not found.");
+        return await ReadCurrentFromConfigAsync(Path.Combine(Path.GetDirectoryName(executable)!, "config.json"), monitorIndex, cancellationToken);
+    }
+
+    public async Task ApplyPropertiesAsync(IReadOnlyDictionary<string, JsonElement> properties, int monitorIndex,
+        CancellationToken cancellationToken)
+    {
+        if (properties.Count == 0) return;
+        if (monitorIndex is < 0 or > 31) throw new ArgumentOutOfRangeException(nameof(monitorIndex));
+        var executable = FindExecutable() ?? throw new FileNotFoundException("Wallpaper Engine executable was not found.");
+        var serialized = JsonSerializer.Serialize(properties);
+        var start = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            Arguments = $"-control applyProperties -properties RAW~({serialized})~END -monitor {monitorIndex}"
+        };
+        var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(serialized)));
+        var version = FileVersionInfo.GetVersionInfo(executable).FileVersion ?? "unknown";
+        logger.LogInformation("Wallpaper Engine applyProperties launch; version={Version}; monitor={MonitorIndex}; propertyKeys={PropertyKeys}; payloadSha256={PayloadHash}; callerPid={CallerPid}",
+            version, monitorIndex, string.Join(',', properties.Keys.Order(StringComparer.Ordinal)), payloadHash, Environment.ProcessId);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not invoke Wallpaper Engine.");
+        var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+            {
+                try { process.Kill(entireProcessTree: true); }
+                catch (InvalidOperationException) { }
+            }
+            if (cancellationToken.IsCancellationRequested) throw;
+            throw new TimeoutException("Wallpaper Engine applyProperties did not respond within 8 seconds.");
+        }
+        var output = await stdout;
+        var error = await stderr;
+        if (process.ExitCode != 0)
+        {
+            var details = string.Join(Environment.NewLine, new[] { error.Trim(), output.Trim() }.Where(text => !string.IsNullOrWhiteSpace(text)));
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(details)
+                ? $"Wallpaper Engine control failed (exit code {process.ExitCode}); it returned no diagnostic output."
+                : $"Wallpaper Engine control failed (exit code {process.ExitCode}):{Environment.NewLine}{details}");
+        }
+    }
+
     public async Task<WallpaperSwitchReceipt> OpenAsync(string hostKey, int monitorIndex, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(hostKey) || hostKey.Length > 256)
