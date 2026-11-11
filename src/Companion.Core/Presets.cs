@@ -108,6 +108,17 @@ public static class PresetSelection
         };
     }
 
+    public static PresetState RenamePreset(PresetState state, string presetId, string name)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("A preset name is required.", nameof(name));
+        var index = state.Presets.ToList().FindIndex(preset => preset.Id == presetId);
+        if (index < 0) throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        var presets = state.Presets.ToArray();
+        presets[index] = presets[index] with { Name = name.Trim() };
+        return state with { Presets = presets };
+    }
+
     public static PresetState AddComponent(PresetState state, string presetId, InstalledItem item, string instanceId)
     {
         ArgumentNullException.ThrowIfNull(state);

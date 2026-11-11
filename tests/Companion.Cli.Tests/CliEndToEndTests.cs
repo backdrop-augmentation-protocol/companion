@@ -137,6 +137,20 @@ public sealed class CliEndToEndTests
     }
 
     [Fact]
+    public async Task PresetRenameSendsJoinedName()
+    {
+        var service = MutationService("preset-rename");
+        var run = RunCliAsync(["preset", "rename", "focus", "After", "Work"], service.PipeName);
+        var requests = service.ServeAsync(2);
+        var result = await run;
+        var observed = await requests;
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("focus", observed[1].GetProperty("presetId").GetString());
+        Assert.Equal("After Work", observed[1].GetProperty("name").GetString());
+    }
+
+    [Fact]
     public async Task ComponentAddRemoveAndMoveSendExactInstanceCoordinates()
     {
         var addService = MutationService("preset-component-add");
@@ -188,20 +202,55 @@ public sealed class CliEndToEndTests
         var create = await RunCliAsync(["preset", "create", "e2e", "CLI", "Integration"], server.PipeName);
         Assert.Equal(0, create.ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "create", "higher", "Higher", "Priority"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "create", "global", "Global", "Fallback"], server.PipeName)).ExitCode);
 
         var catalogResult = await RunCliAsync(["catalog", "list", "--json"], server.PipeName);
         Assert.Equal(0, catalogResult.ExitCode);
         using var catalogJson = JsonDocument.Parse(catalogResult.StandardOutput);
-        var componentKey = catalogJson.RootElement[0].GetProperty("key").GetString()!;
+        var componentKey = catalogJson.RootElement.EnumerateArray().Single(item => item.GetProperty("title").GetString() == "Test clock")
+            .GetProperty("key").GetString()!;
+        var hostKey = catalogJson.RootElement.EnumerateArray().Single(item => item.GetProperty("title").GetString() == "Verified test host")
+            .GetProperty("key").GetString()!;
+        var unverifiedHostKey = catalogJson.RootElement.EnumerateArray().Single(item => item.GetProperty("title").GetString() == "Unverified wallpaper")
+            .GetProperty("key").GetString()!;
 
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "add", "e2e", componentKey, "clock-a"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "add", "e2e", componentKey, "clock-b"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "add", "higher", componentKey, "clock-high"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "add", "global", componentKey, "clock-global"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "move", "e2e", "clock-b", "0"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "set-enabled", "e2e", "clock-b", "false"], server.PipeName)).ExitCode);
-        Assert.Equal(0, (await RunCliAsync(["preset", "host", "add", "e2e", "workshop:host"], server.PipeName)).ExitCode);
-        Assert.Equal(0, (await RunCliAsync(["preset", "host", "add", "higher", "workshop:host"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "host", "add", "e2e", hostKey], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "host", "add", "higher", hostKey], server.PipeName)).ExitCode);
+        var deniedUnverified = await RunCliAsync(["preset", "host", "add", "higher", unverifiedHostKey], server.PipeName);
+        Assert.NotEqual(0, deniedUnverified.ExitCode);
+        Assert.Contains("--allow-unverified", deniedUnverified.StandardError);
+        Assert.Equal(0, (await RunCliAsync(["preset", "host", "add", "higher", unverifiedHostKey, "--allow-unverified"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "set-enabled", "e2e", "false"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "move", "higher", "0"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "rename", "higher", "Priority", "One"], server.PipeName)).ExitCode);
+
+        var initialComposition = await RunCliAsync(["host", "composition", hostKey, "--json"], server.PipeName);
+        Assert.Equal(0, initialComposition.ExitCode);
+        using (var compositionJson = JsonDocument.Parse(initialComposition.StandardOutput))
+        {
+            Assert.Equal("higher", compositionJson.RootElement.GetProperty("presetId").GetString());
+            Assert.Equal("clock-high", compositionJson.RootElement.GetProperty("instances")[0].GetProperty("instanceId").GetString());
+        }
+        Assert.Equal(0, (await RunCliAsync(["preset", "set-enabled", "e2e", "true"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "move", "e2e", "0"], server.PipeName)).ExitCode);
+        var reorderedComposition = await RunCliAsync(["host", "composition", hostKey, "--json"], server.PipeName);
+        using (var compositionJson = JsonDocument.Parse(reorderedComposition.StandardOutput))
+            Assert.Equal("e2e", compositionJson.RootElement.GetProperty("presetId").GetString());
+        Assert.Equal(0, (await RunCliAsync(["preset", "global", "set", "global"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "move", "global", "0"], server.PipeName)).ExitCode);
+        var globalComposition = await RunCliAsync(["host", "composition", hostKey, "--json"], server.PipeName);
+        using (var compositionJson = JsonDocument.Parse(globalComposition.StandardOutput))
+            Assert.Equal("global", compositionJson.RootElement.GetProperty("presetId").GetString());
+        Assert.Equal(0, (await RunCliAsync(["preset", "global", "set", "none"], server.PipeName)).ExitCode);
+        var fallbackComposition = await RunCliAsync(["host", "composition", hostKey, "--json"], server.PipeName);
+        using (var compositionJson = JsonDocument.Parse(fallbackComposition.StandardOutput))
+            Assert.Equal("e2e", compositionJson.RootElement.GetProperty("presetId").GetString());
 
         var changed = await RunCliAsync(["preset", "list", "--json"], server.PipeName);
         Assert.Equal(0, changed.ExitCode);
@@ -213,17 +262,20 @@ public sealed class CliEndToEndTests
             Assert.Equal("clock-b", components[0].GetProperty("instanceId").GetString());
             Assert.False(components[0].GetProperty("enabled").GetBoolean());
             Assert.Equal("clock-a", components[1].GetProperty("instanceId").GetString());
-            Assert.Equal("higher", presets[0].GetProperty("id").GetString());
-            Assert.False(e2ePreset.GetProperty("enabled").GetBoolean());
-            var hostBindings = changedJson.RootElement.GetProperty("hostPresetIds").GetProperty("workshop:host");
+            Assert.Equal("global", presets[0].GetProperty("id").GetString());
+            Assert.True(e2ePreset.GetProperty("enabled").GetBoolean());
+            var hostBindings = changedJson.RootElement.GetProperty("hostPresetIds").GetProperty(hostKey);
             Assert.Equal(new[] { "e2e", "higher" }, hostBindings.EnumerateArray().Select(id => id.GetString()));
+            Assert.Equal(new[] { "higher" }, changedJson.RootElement.GetProperty("hostPresetIds").GetProperty(unverifiedHostKey)
+                .EnumerateArray().Select(id => id.GetString()));
         }
 
-        Assert.Equal(0, (await RunCliAsync(["preset", "global", "set", "e2e"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "remove", "e2e", "clock-a"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "delete", "e2e"], server.PipeName)).ExitCode);
-        Assert.Equal(0, (await RunCliAsync(["preset", "host", "remove", "higher", "workshop:host"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "host", "remove", "higher", hostKey], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "host", "remove", "higher", unverifiedHostKey], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "delete", "higher"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "delete", "global"], server.PipeName)).ExitCode);
 
         var finalState = await RunCliAsync(["preset", "list", "--json"], server.PipeName);
         Assert.Equal(0, finalState.ExitCode);
@@ -306,6 +358,13 @@ public sealed class CliEndToEndTests
             var directory = Path.Combine(Path.GetTempPath(), $"bapc-cli-e2e-{Guid.NewGuid():N}");
             var components = Path.Combine(directory, "components", "clock");
             Directory.CreateDirectory(components);
+            var host = Path.Combine(directory, "components", "host");
+            Directory.CreateDirectory(host);
+            await File.WriteAllTextAsync(Path.Combine(host, "project.json"), """{"type":"web","title":"Verified test host"}""");
+            await File.WriteAllTextAsync(Path.Combine(host, "manifest.json"), """{"protocol":{"name":"bap","version":"0.1.0","profile":"core"},"id":"org.example.host","name":"Test host","version":"1.0.0","role":"host","capabilities":[]}""");
+            var unverified = Path.Combine(directory, "components", "unverified");
+            Directory.CreateDirectory(unverified);
+            await File.WriteAllTextAsync(Path.Combine(unverified, "project.json"), """{"type":"web","title":"Unverified wallpaper"}""");
             await File.WriteAllTextAsync(Path.Combine(components, "manifest.json"), """
                 { "protocol": { "name": "bap", "version": "0.1.0", "profile": "core" }, "id": "org.example.clock", "name": "Test clock", "version": "1.0.0", "role": "component", "capabilities": [], "entrypoints": { "default": "./index.html", "embedded": "./index.html" }, "modes": ["embedded"] }
                 """);

@@ -43,7 +43,8 @@ public sealed record AuthorizationControlRequest(
     string? Name = null,
     string? ComponentKey = null,
     int? DestinationIndex = null,
-    bool? PresetEnabled = null);
+    bool? PresetEnabled = null,
+    bool AllowUnverifiedHost = false);
 
 public sealed record AuthorizationControlResponse(
     bool Success,

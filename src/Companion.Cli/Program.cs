@@ -116,8 +116,14 @@ try
             Print(presets, json, output);
             if (!json && presets.Presets.Count == 0) Console.WriteLine("No presets are configured.");
             if (!json)
-                foreach (var preset in presets.Presets)
-                    Console.WriteLine($"{preset.Id,-24} {(preset.Enabled ? "enabled" : "disabled"),-9} {preset.Name} - {preset.Components.Count} component instance(s)");
+                for (var index = 0; index < presets.Presets.Count; index++)
+                {
+                    var preset = presets.Presets[index];
+                    var scope = presets.GlobalPresetId == preset.Id ? "all Hosts" : string.Join(", ", presets.HostPresetIds
+                        .Where(binding => binding.Value.Contains(preset.Id, StringComparer.Ordinal)).Select(binding => binding.Key));
+                    if (string.IsNullOrEmpty(scope)) scope = "no Hosts";
+                    Console.WriteLine($"{index,2}. [{(preset.Enabled ? "enabled" : "disabled")}] {preset.Name} ({preset.Id}) - {preset.Components.Count} component instance(s); {scope}");
+                }
             return 0;
         case ["preset", "component", "set-enabled", var presetId, var instanceId, var enabledText]:
             if (!bool.TryParse(enabledText, out var enabled))
@@ -140,6 +146,11 @@ try
             var deleted = await client.DeletePresetAsync(deleteId);
             Print(deleted, json, output);
             if (!json) Console.WriteLine($"Deleted preset {deleteId}.");
+            return 0;
+        case ["preset", "rename", var renamePresetId, ..] when command.Length > 3:
+            var renamed = await client.RenamePresetAsync(renamePresetId, string.Join(' ', command.Skip(3)));
+            Print(renamed, json, output);
+            if (!json) Console.WriteLine($"Renamed preset {renamePresetId}.");
             return 0;
         case ["preset", "set-enabled", var enabledPresetId, var presetEnabledText]:
             if (!bool.TryParse(presetEnabledText, out var presetEnabled))
@@ -165,6 +176,11 @@ try
             var withHost = await client.AddPresetHostAsync(hostPresetId, hostKey);
             Print(withHost, json, output);
             if (!json) Console.WriteLine($"Added Host {hostKey} to preset {hostPresetId}.");
+            return 0;
+        case ["preset", "host", "add", var unverifiedPresetId, var unverifiedHostKey, "--allow-unverified"]:
+            var withUnverifiedHost = await client.AddPresetHostAsync(unverifiedPresetId, unverifiedHostKey, allowUnverified: true);
+            Print(withUnverifiedHost, json, output);
+            if (!json) Console.WriteLine($"Added Host {unverifiedHostKey} to preset {unverifiedPresetId}.");
             return 0;
         case ["preset", "host", "remove", var unbindPresetId, var unbindHostKey]:
             var withoutHost = await client.RemovePresetHostAsync(unbindPresetId, unbindHostKey);
@@ -287,10 +303,11 @@ static void PrintHelp()
     Console.WriteLine("  desktop set-layout <session> <instance> <layout-json>  Queue runtime layout");
     Console.WriteLine("  preset list       List configured presets");
     Console.WriteLine("  preset create <id> <name>  Create a preset");
+    Console.WriteLine("  preset rename <id> <name>  Rename a preset");
     Console.WriteLine("  preset delete <id>  Delete a preset and clear its bindings");
     Console.WriteLine("  preset set-enabled <id> <true|false>  Enable or disable a preset");
     Console.WriteLine("  preset move <id> <index>  Set preset priority (zero-based)");
-    Console.WriteLine("  preset host add <preset-id> <host-catalog-key>");
+    Console.WriteLine("  preset host add <preset-id> <host-catalog-key> [--allow-unverified]");
     Console.WriteLine("  preset host remove <preset-id> <host-catalog-key>");
     Console.WriteLine("  preset component add <preset> <catalog-key> <instance-id>");
     Console.WriteLine("  preset component remove <preset> <instance-id>");

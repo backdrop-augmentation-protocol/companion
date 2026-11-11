@@ -62,11 +62,14 @@ approves only requested permissions. Use `bapc --help` for all commands.
 `bapc preset component set-enabled <preset-id> <instance-id> <true|false>` toggles one
 component entry in a preset without changing its subscription or other instances.
 Preset structure can also be managed with `preset create <id> <name>`,
-`preset delete <id>`, `preset component add/remove/move`,
-`preset host add/remove`, `preset set-enabled`, `preset move`, and
+`preset rename <id> <name>`, `preset delete <id>`,
+`preset component add/remove/move`, `preset host add/remove`,
+`preset set-enabled`, `preset move`, and
 `preset global set <preset-id|none>`. A Host can belong to multiple presets;
 the first enabled matching preset in the ordered list is applied, with the
 global preset matching every Host.
+Host additions accept only installed Host catalog keys. For an unverified Web
+wallpaper, pass `--allow-unverified` after reviewing the GUI's warning.
 Component additions use an installed catalog key and an explicit instance ID;
 component moves use a zero-based destination index. Run `bapc --help` for syntax.
 

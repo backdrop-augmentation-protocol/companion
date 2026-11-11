@@ -137,6 +137,9 @@ internal sealed class AuthorizationPipeServer(
                 case "preset-delete" when ValidText(request.PresetId, 128):
                     updated = PresetSelection.DeletePreset(state, request.PresetId!);
                     break;
+                case "preset-rename" when ValidText(request.PresetId, 128) && ValidText(request.Name, 128):
+                    updated = PresetSelection.RenamePreset(state, request.PresetId!, request.Name!);
+                    break;
                 case "preset-component-add" when ValidText(request.PresetId, 128) && ValidText(request.ComponentKey, 256) && ValidText(request.InstanceId, 128):
                 {
                     var catalogItems = await catalog.DiscoverAsync(cancellationToken);
@@ -156,9 +159,16 @@ internal sealed class AuthorizationPipeServer(
                 case "preset-global-set" when request.PresetId is null || ValidText(request.PresetId, 128):
                     updated = PresetSelection.SetGlobalPreset(state, request.PresetId);
                     break;
-                case "preset-host-add" when ValidText(request.PresetId, 128) && ValidText(request.HostKey, 512):
+                case "preset-host-add" when ValidText(request.PresetId, 128) && ValidText(request.HostKey, 256):
+                {
+                    var catalogItems = await catalog.DiscoverAsync(cancellationToken);
+                    var host = catalogItems.FirstOrDefault(item => item.Key == request.HostKey && item.Role == "host");
+                    if (host is null) return new(false, [], $"Host catalog key was not found: {request.HostKey}");
+                    if ((host.BapId is null || host.Status != "valid") && !request.AllowUnverifiedHost)
+                        return new(false, [], "Host is not BAP-verified; retry with --allow-unverified after reviewing it.");
                     updated = PresetSelection.AddHostToPreset(state, request.PresetId!, request.HostKey!);
                     break;
+                }
                 case "preset-host-remove" when ValidText(request.PresetId, 128) && ValidText(request.HostKey, 512):
                     updated = PresetSelection.RemoveHostFromPreset(state, request.PresetId!, request.HostKey!);
                     break;

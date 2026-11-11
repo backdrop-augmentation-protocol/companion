@@ -43,6 +43,9 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
     public async Task<PresetState> DeletePresetAsync(string presetId, CancellationToken cancellationToken = default) =>
         await SendPresetMutationAsync(new("preset-delete", PresetId: presetId), cancellationToken);
 
+    public async Task<PresetState> RenamePresetAsync(string presetId, string name, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-rename", PresetId: presetId, Name: name), cancellationToken);
+
     public async Task<PresetState> AddPresetComponentAsync(string presetId, string componentKey, string instanceId,
         CancellationToken cancellationToken = default) =>
         await SendPresetMutationAsync(new("preset-component-add", PresetId: presetId, ComponentKey: componentKey,
@@ -60,8 +63,9 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
     public async Task<PresetState> SetGlobalPresetAsync(string? presetId, CancellationToken cancellationToken = default) =>
         await SendPresetMutationAsync(new("preset-global-set", PresetId: presetId), cancellationToken);
 
-    public async Task<PresetState> AddPresetHostAsync(string presetId, string hostKey, CancellationToken cancellationToken = default) =>
-        await SendPresetMutationAsync(new("preset-host-add", PresetId: presetId, HostKey: hostKey), cancellationToken);
+    public async Task<PresetState> AddPresetHostAsync(string presetId, string hostKey, bool allowUnverified = false, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-host-add", PresetId: presetId, HostKey: hostKey,
+            AllowUnverifiedHost: allowUnverified), cancellationToken);
 
     public async Task<PresetState> RemovePresetHostAsync(string presetId, string hostKey, CancellationToken cancellationToken = default) =>
         await SendPresetMutationAsync(new("preset-host-remove", PresetId: presetId, HostKey: hostKey), cancellationToken);
