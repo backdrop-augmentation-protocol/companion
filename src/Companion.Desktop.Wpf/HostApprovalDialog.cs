@@ -82,9 +82,9 @@ internal static class HostApprovalDialog
                 Content = PermissionLabel(permission, chinese),
                 IsChecked = false,
                 Margin = new Thickness(0, 5, 0, 5),
-                Foreground = Brushes.White,
-                FocusVisualStyle = (Style)owner.FindResource("NoFocusVisual")
+                Foreground = Brushes.White
             };
+            ApplyCheckBoxTheme(owner, checkBox);
             checkBox.Checked += (_, _) => { if (approveButton is not null) approveButton.IsEnabled = true; };
             checkBox.Unchecked += (_, _) => { if (approveButton is not null) approveButton.IsEnabled = selected.Any(item => item.IsChecked == true); };
             selected.Add(checkBox);
@@ -102,9 +102,9 @@ internal static class HostApprovalDialog
             },
             IsChecked = true,
             Margin = new Thickness(0, 14, 0, 0),
-            Foreground = Brushes.White,
-            FocusVisualStyle = (Style)owner.FindResource("NoFocusVisual")
+            Foreground = Brushes.White
         };
+        ApplyCheckBoxTheme(owner, rememberCheck);
         content.Children.Add(rememberCheck);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 22, 0, 0) };
@@ -128,6 +128,12 @@ internal static class HostApprovalDialog
             : [];
         remember = approved && rememberCheck.IsChecked == true;
         return approved;
+    }
+
+    internal static void ApplyCheckBoxTheme(Window owner, CheckBox checkBox)
+    {
+        checkBox.Style = (Style)owner.FindResource(typeof(CheckBox));
+        checkBox.FocusVisualStyle = (Style)owner.FindResource("NoFocusVisual");
     }
 
     private static string PermissionLabel(string permission, bool chinese) => permission switch
