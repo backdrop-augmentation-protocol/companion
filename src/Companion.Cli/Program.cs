@@ -41,6 +41,8 @@ try
         return 0;
     }
 
+    if (command[0] == "settings")
+        return await RunSettingsCommandAsync(command, client, json, output);
     await EnsureServiceAsync(client);
     if (command[0] == "authorization")
         return await RunAuthorizationCommandAsync(command, client, json, output);
@@ -92,6 +94,65 @@ try
             if (!json)
                 foreach (var host in runtime)
                     Console.WriteLine($"{host.HostName} ({host.HostId}) — {host.Instances.Count} component instance(s), updated {host.UpdatedAt:O}");
+            return 0;
+        case ["desktop", "refresh"]:
+            await client.RefreshCatalogAsync();
+            var refreshedRuntime = await client.GetRuntimeSnapshotsAsync();
+            Print(new { refreshed = true, runtimeHosts = refreshedRuntime }, json, output);
+            if (!json) Console.WriteLine($"Desktop catalog refreshed; {refreshedRuntime.Count} Host runtime snapshot(s) available.");
+            return 0;
+        case ["desktop", "component", "set-property", var propertySessionId, var propertyInstanceId, var propertyKey, var propertyValue]:
+            var snapshots = await client.GetRuntimeSnapshotsAsync();
+            var selectedRuntimeHost = snapshots.FirstOrDefault(host => host.SessionId == propertySessionId)
+                ?? throw new InvalidOperationException($"Runtime Host session was not found: {propertySessionId}");
+            var selectedInstance = selectedRuntimeHost.Instances.FirstOrDefault(instance => instance.InstanceId == propertyInstanceId)
+                ?? throw new InvalidOperationException($"Runtime component instance was not found: {propertyInstanceId}");
+            var component = (await client.GetCatalogAsync()).FirstOrDefault(item => item.Role == "component" && item.BapId == selectedInstance.ComponentId)
+                ?? throw new InvalidOperationException($"Installed component was not found: {selectedInstance.ComponentId}");
+            var propertyDefinition = component.Properties?.FirstOrDefault(property => property.Key == propertyKey)
+                ?? throw new InvalidOperationException($"Component property was not found: {propertyKey}");
+            using (var parsedValue = JsonDocument.Parse(propertyValue))
+            {
+                if (!WallpaperPropertyReader.IsValidValue(propertyDefinition, parsedValue.RootElement))
+                    throw new ArgumentException($"Value does not match the declared component property '{propertyKey}'.");
+                var mergedConfig = new Dictionary<string, JsonElement>(selectedInstance.Config, StringComparer.Ordinal)
+                {
+                    [propertyKey] = parsedValue.RootElement.Clone()
+                };
+                var nextRevision = checked(selectedInstance.ConfigRevision + 1);
+                await client.SetRuntimeConfigAsync(propertySessionId, propertyInstanceId, mergedConfig, nextRevision);
+                Print(new { queued = true, sessionId = propertySessionId, instanceId = propertyInstanceId, propertyKey, revision = nextRevision }, json, output);
+                if (!json) Console.WriteLine($"Runtime property {propertyKey} queued for component instance {propertyInstanceId}.");
+            }
+            return 0;
+        case ["desktop", "host", "set-property", var hostPropertyKey, var hostPropertyValue]:
+            var desktopSettings = CreateDesktopSettings();
+            var displayIndex = desktopSettings.DisplayIndex;
+            var activeWallpaper = await WallpaperEngineControl.GetCurrentAsync(displayIndex);
+            var activeHost = FindActiveHost(await client.GetCatalogAsync(), activeWallpaper)
+                ?? throw new InvalidOperationException("The active Wallpaper Engine wallpaper is not an installed Web Host project.");
+            var hostProperty = activeHost.Properties?.FirstOrDefault(property => property.Key == hostPropertyKey)
+                ?? throw new InvalidOperationException($"Host property was not found: {hostPropertyKey}");
+            using (var parsedHostValue = JsonDocument.Parse(hostPropertyValue))
+            {
+                if (!WallpaperPropertyReader.IsValidValue(hostProperty, parsedHostValue.RootElement))
+                    throw new ArgumentException($"Value does not match the declared Host property '{hostPropertyKey}'.");
+                var store = new JsonPresetStore(JsonPresetStore.DefaultPath);
+                var state = await store.ReadAsync();
+                var hostConfig = new Dictionary<string, JsonElement>(state.HostConfigs?.GetValueOrDefault(activeHost.Key) ?? [], StringComparer.Ordinal)
+                {
+                    [hostPropertyKey] = parsedHostValue.RootElement.Clone()
+                };
+                var allHostConfigs = new Dictionary<string, Dictionary<string, JsonElement>>(state.HostConfigs ?? new Dictionary<string, Dictionary<string, JsonElement>>(), StringComparer.Ordinal)
+                {
+                    [activeHost.Key] = hostConfig
+                };
+                await store.WriteAsync(state with { HostConfigs = allHostConfigs });
+                using var log = new CompanionLog();
+                await WallpaperEngineControl.ApplyPropertiesAsync(hostConfig, displayIndex, log);
+                Print(new { applied = true, hostKey = activeHost.Key, propertyKey = hostPropertyKey, displayIndex }, json, output);
+                if (!json) Console.WriteLine($"Applied Host property {hostPropertyKey} to {activeHost.Title} on display {displayIndex}.");
+            }
             return 0;
         case ["desktop", "set-config", var sessionId, var instanceId, var revisionText, var configText]:
             if (!long.TryParse(revisionText, out var revision) || revision < 1)
@@ -299,8 +360,15 @@ static void PrintHelp()
     Console.WriteLine("  host switch <key> [--monitor N]  Switch Wallpaper Engine to an installed Host wallpaper");
     Console.WriteLine("  host composition <key>  Show the effective composition for an installed Host catalog key");
     Console.WriteLine("  desktop status    Show live Host and component snapshots");
+    Console.WriteLine("  desktop refresh   Refresh installed projects and read live runtime snapshots");
+    Console.WriteLine("  desktop component set-property <session> <instance> <key> <json-value>  Set one live component property");
+    Console.WriteLine("  desktop host set-property <key> <json-value>  Apply and save one property for the active Host");
     Console.WriteLine("  desktop set-config <session> <instance> <revision> <json-object>  Queue runtime config");
     Console.WriteLine("  desktop set-layout <session> <instance> <layout-json>  Queue runtime layout");
+    Console.WriteLine("  settings show     Show non-language application settings");
+    Console.WriteLine("  settings startup get|set <true|false>  Read or change Windows startup behavior");
+    Console.WriteLine("  settings display get|set <index>  Read or change the selected display (zero-based)");
+    Console.WriteLine("  settings logs path|open|open-folder  Show or open Companion logs");
     Console.WriteLine("  preset list       List configured presets");
     Console.WriteLine("  preset create <id> <name>  Create a preset");
     Console.WriteLine("  preset rename <id> <name>  Rename a preset");
@@ -321,6 +389,106 @@ static void PrintHelp()
     Console.WriteLine("  authorization revoke <host-id>  Revoke remembered trust and active sessions");
     Console.WriteLine();
     Console.WriteLine("Use --json for machine-readable output. Data commands start the service when needed.");
+}
+
+static DesktopSettings CreateDesktopSettings() => new(
+    Environment.GetEnvironmentVariable("BAPC_SETTINGS_PATH"), synchronizeStartup: false);
+
+static InstalledItem? FindActiveHost(IReadOnlyList<InstalledItem> catalog, string currentWallpaper)
+{
+    if (string.IsNullOrWhiteSpace(currentWallpaper)) return null;
+    string currentPath;
+    try { currentPath = Path.GetFullPath(currentWallpaper); }
+    catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException) { return null; }
+    foreach (var item in catalog.Where(item => item.Role == "host"))
+    {
+        var projectPath = Path.GetFullPath(Path.Combine(item.ProjectDirectory, "project.json"));
+        if (string.Equals(currentPath, projectPath, StringComparison.OrdinalIgnoreCase)) return item;
+        try
+        {
+            using var project = JsonDocument.Parse(File.ReadAllText(projectPath));
+            if (project.RootElement.TryGetProperty("file", out var entry) && entry.ValueKind == JsonValueKind.String)
+            {
+                var entryPath = Path.GetFullPath(Path.Combine(item.ProjectDirectory, entry.GetString()!));
+                if (string.Equals(currentPath, entryPath, StringComparison.OrdinalIgnoreCase)) return item;
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ArgumentException or NotSupportedException) { }
+    }
+    return null;
+}
+
+static async Task<int> RunSettingsCommandAsync(string[] command, HostAuthorizationClient client,
+    bool json, JsonSerializerOptions output)
+{
+    var settings = CreateDesktopSettings();
+    var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "BAP Companion", "logs", "companion.log");
+    if (command is ["settings", "show"])
+    {
+        var value = new { autoStart = settings.AutoStartEnabled, displayIndex = settings.DisplayIndex, logPath };
+        Print(value, json, output);
+        if (!json) Console.WriteLine($"Startup: {(value.autoStart ? "enabled" : "disabled")}\nDisplay index: {value.displayIndex}\nLog file: {value.logPath}");
+        return 0;
+    }
+    if (command is ["settings", "startup", "get"])
+    {
+        Print(new { enabled = settings.AutoStartEnabled }, json, output);
+        if (!json) Console.WriteLine($"Startup is {(settings.AutoStartEnabled ? "enabled" : "disabled")}.");
+        return 0;
+    }
+    if (command is ["settings", "startup", "set", var startupValue] && bool.TryParse(startupValue, out var startupEnabled))
+    {
+        var executable = startupEnabled ? FindDesktopExecutable() : null;
+        settings.SetAutoStart(startupEnabled, executable);
+        Print(new { enabled = settings.AutoStartEnabled }, json, output);
+        if (!json) Console.WriteLine($"Startup is now {(startupEnabled ? "enabled" : "disabled")}.");
+        return 0;
+    }
+    if (command is ["settings", "display", "get"])
+    {
+        Print(new { displayIndex = settings.DisplayIndex }, json, output);
+        if (!json) Console.WriteLine($"Selected display index: {settings.DisplayIndex}.");
+        return 0;
+    }
+    if (command is ["settings", "display", "set", var displayText] && int.TryParse(displayText, out var displayIndex) && displayIndex is >= 0 and <= 31)
+    {
+        settings.SetDisplayIndex(displayIndex);
+        Print(new { displayIndex = settings.DisplayIndex }, json, output);
+        if (!json) Console.WriteLine($"Selected display index is now {displayIndex}.");
+        return 0;
+    }
+    if (command is ["settings", "logs", "path"])
+    {
+        Print(new { logPath }, json, output);
+        if (!json) Console.WriteLine(logPath);
+        return 0;
+    }
+    if (command is ["settings", "logs", "open"] or ["settings", "logs", "open-folder"])
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Opening log paths from the CLI is supported on Windows only.");
+        var target = command[2] == "open" ? logPath : Path.GetDirectoryName(logPath)!;
+        if (command[2] == "open" && !File.Exists(target)) throw new FileNotFoundException("The Companion log file does not exist yet.", target);
+        if (command[2] == "open-folder" && !Directory.Exists(target)) throw new DirectoryNotFoundException(target);
+        Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        if (json) Print(new { opened = true, path = target }, true, output);
+        else Console.WriteLine($"Opened {target}.");
+        return 0;
+    }
+    Console.Error.WriteLine("Invalid or incomplete settings command. Run 'bapc --help' for usage.");
+    return UsageError;
+}
+
+static string FindDesktopExecutable()
+{
+    var configured = Environment.GetEnvironmentVariable("BAPC_GUI_EXE");
+    if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured)) return Path.GetFullPath(configured);
+    foreach (var name in new[] { "Bap.Companion.Desktop.Wpf.exe", "Bap.Companion.Desktop.exe" })
+    {
+        var candidate = Path.Combine(AppContext.BaseDirectory, name);
+        if (File.Exists(candidate)) return candidate;
+    }
+    throw new FileNotFoundException("Cannot locate the BAP Companion GUI executable. Set BAPC_GUI_EXE to its full path before enabling startup.");
 }
 
 static async Task<int> RunAuthorizationCommandAsync(string[] command, HostAuthorizationClient client,

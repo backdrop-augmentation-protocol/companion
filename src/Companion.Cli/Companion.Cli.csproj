@@ -9,5 +9,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Companion.Core\Companion.Core.csproj" />
     <Compile Include="..\Companion.Desktop\HostAuthorizationClient.cs" Link="Shared\HostAuthorizationClient.cs" />
+    <Compile Include="..\Companion.Desktop\DesktopSettings.cs" Link="Shared\DesktopSettings.cs" />
+    <Compile Include="..\Companion.Desktop\WallpaperEngineControl.cs" Link="Shared\WallpaperEngineControl.cs" />
+    <Compile Include="..\Companion.Desktop\CompanionLog.cs" Link="Shared\CompanionLog.cs" />
   </ItemGroup>
 </Project>

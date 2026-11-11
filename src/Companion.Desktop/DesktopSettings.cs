@@ -42,9 +42,9 @@ internal sealed class DesktopSettings
         LanguageChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public void SetAutoStart(bool enabled)
+    public void SetAutoStart(bool enabled, string? executablePath = null)
     {
-        ApplyAutoStart(enabled);
+        ApplyAutoStart(enabled, executablePath);
         var next = preferences with { AutoStart = enabled };
         Save(next);
         preferences = next;
@@ -83,13 +83,15 @@ internal sealed class DesktopSettings
         File.Move(temporary, path, true);
     }
 
-    private static void ApplyAutoStart(bool enabled)
+    private static void ApplyAutoStart(bool enabled, string? executablePath = null)
     {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Startup registration is available on Windows only.");
         using var key = Registry.CurrentUser.CreateSubKey(RunKey, true)
             ?? throw new InvalidOperationException("Cannot open current-user startup settings");
         if (enabled)
         {
-            var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Cannot determine the Companion executable path");
+            var executable = executablePath ?? Environment.ProcessPath ?? throw new InvalidOperationException("Cannot determine the Companion executable path");
+            if (!File.Exists(executable)) throw new FileNotFoundException("The Companion desktop application was not found.", executable);
             key.SetValue(AppName, $"\"{executable}\" --background", RegistryValueKind.String);
         }
         else key.DeleteValue(AppName, false);
