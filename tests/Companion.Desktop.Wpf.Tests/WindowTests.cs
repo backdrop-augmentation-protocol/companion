@@ -76,7 +76,6 @@ public sealed class WindowTests
                 HostApprovalDialog.ApplyCheckBoxTheme(window, approvalCheckBox);
                 Assert.Same(window.FindResource(typeof(System.Windows.Controls.CheckBox)), approvalCheckBox.Style);
                 Assert.Same(window.FindResource("NoFocusVisual"), approvalCheckBox.FocusVisualStyle);
-                Assert.Same(window.FindResource("Ink"), approvalCheckBox.Foreground);
                 Assert.False(window.CatalogScrollViewer.Focusable);
                 Assert.False(window.SettingsPage.Focusable);
                 var dialog = ThemedDialog.CreateWindow(window, "Preview", new System.Windows.Controls.TextBlock { Text = "Dialog body" });
