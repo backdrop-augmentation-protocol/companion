@@ -368,7 +368,7 @@ static void PrintHelp()
     Console.WriteLine("  settings show     Show non-language application settings");
     Console.WriteLine("  settings startup get|set <true|false>  Read or change Windows startup behavior");
     Console.WriteLine("  settings display get|set <index>  Read or change the selected display (zero-based)");
-    Console.WriteLine("  settings logs path|open|open-folder  Show or open Companion logs");
+    Console.WriteLine("  settings logs path  Show the Companion log file path");
     Console.WriteLine("  preset list       List configured presets");
     Console.WriteLine("  preset create <id> <name>  Create a preset");
     Console.WriteLine("  preset rename <id> <name>  Rename a preset");
@@ -462,17 +462,6 @@ static async Task<int> RunSettingsCommandAsync(string[] command, HostAuthorizati
     {
         Print(new { logPath }, json, output);
         if (!json) Console.WriteLine(logPath);
-        return 0;
-    }
-    if (command is ["settings", "logs", "open"] or ["settings", "logs", "open-folder"])
-    {
-        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Opening log paths from the CLI is supported on Windows only.");
-        var target = command[2] == "open" ? logPath : Path.GetDirectoryName(logPath)!;
-        if (command[2] == "open" && !File.Exists(target)) throw new FileNotFoundException("The Companion log file does not exist yet.", target);
-        if (command[2] == "open-folder" && !Directory.Exists(target)) throw new DirectoryNotFoundException(target);
-        Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-        if (json) Print(new { opened = true, path = target }, true, output);
-        else Console.WriteLine($"Opened {target}.");
         return 0;
     }
     Console.Error.WriteLine("Invalid or incomplete settings command. Run 'bapc --help' for usage.");
