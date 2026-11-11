@@ -41,6 +41,121 @@ public sealed record PresetState(
 
 public static class PresetSelection
 {
+    public static PresetState CreatePreset(PresetState state, string presetId, string name)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (string.IsNullOrWhiteSpace(presetId)) throw new ArgumentException("A preset ID is required.", nameof(presetId));
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("A preset name is required.", nameof(name));
+        if (state.Presets.Any(preset => preset.Id == presetId)) throw new InvalidOperationException($"Preset already exists: {presetId}");
+        var preset = new ComponentPreset(presetId, name.Trim(), [], Grid: new GridLayoutSettings());
+        return state with { Presets = [.. state.Presets, preset] };
+    }
+
+    public static PresetState DeletePreset(PresetState state, string presetId)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var preset = state.Presets.FirstOrDefault(candidate => candidate.Id == presetId)
+            ?? throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        return state with
+        {
+            Presets = state.Presets.Where(candidate => candidate.Id != preset.Id).ToArray(),
+            GlobalPresetId = state.GlobalPresetId == preset.Id ? null : state.GlobalPresetId,
+            HostPresetIds = state.HostPresetIds.Where(binding => binding.Value != preset.Id)
+                .ToDictionary(binding => binding.Key, binding => binding.Value, StringComparer.Ordinal)
+        };
+    }
+
+    public static PresetState AddComponent(PresetState state, string presetId, InstalledItem item, string instanceId)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(item);
+        if (string.IsNullOrWhiteSpace(instanceId)) throw new ArgumentException("A component instance ID is required.", nameof(instanceId));
+        if (item.Role != "component" || item.Status != "valid" || string.IsNullOrWhiteSpace(item.BapId))
+            throw new InvalidOperationException("The selected catalog item is not a valid BAP component.");
+        var presetIndex = state.Presets.ToList().FindIndex(preset => preset.Id == presetId);
+        if (presetIndex < 0) throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        var preset = state.Presets[presetIndex];
+        if (preset.Components.Any(component => component.InstanceId == instanceId))
+            throw new InvalidOperationException($"Component instance ID already exists in this preset: {instanceId}");
+
+        var order = preset.Components.Count;
+        var component = new PresetComponent(item.BapId, item.Key, instanceId, Layout: new ComponentLayout("automatic", Order: order, ZIndex: order));
+        var updatedPreset = preset with { Components = [.. preset.Components, component] };
+        if (item.MaxInstances is int maxInstances && updatedPreset.Components.Count(candidate => candidate.ComponentId == item.BapId) > maxInstances)
+            throw new InvalidOperationException($"Component '{item.BapId}' exceeds its maximum instance count of {maxInstances}.");
+        return ReplacePreset(state, presetIndex, updatedPreset);
+    }
+
+    public static PresetState RemoveComponent(PresetState state, string presetId, string instanceId)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var presetIndex = state.Presets.ToList().FindIndex(preset => preset.Id == presetId);
+        if (presetIndex < 0) throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        var preset = state.Presets[presetIndex];
+        if (!preset.Components.Any(component => component.InstanceId == instanceId))
+            throw new KeyNotFoundException($"Component instance '{instanceId}' was not found in preset '{presetId}'.");
+        return ReplacePreset(state, presetIndex, preset with
+        {
+            Components = preset.Components.Where(component => component.InstanceId != instanceId).ToArray()
+        });
+    }
+
+    public static PresetState MoveComponent(PresetState state, string presetId, string instanceId, int destinationIndex)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var presetIndex = state.Presets.ToList().FindIndex(preset => preset.Id == presetId);
+        if (presetIndex < 0) throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        var preset = state.Presets[presetIndex];
+        var components = preset.Components.ToList();
+        var sourceIndex = components.FindIndex(component => component.InstanceId == instanceId);
+        if (sourceIndex < 0) throw new KeyNotFoundException($"Component instance '{instanceId}' was not found in preset '{presetId}'.");
+        if (destinationIndex < 0 || destinationIndex >= components.Count)
+            throw new ArgumentOutOfRangeException(nameof(destinationIndex), "Destination index must identify an existing position in the preset.");
+        if (sourceIndex == destinationIndex) return state;
+        var moving = components[sourceIndex];
+        components.RemoveAt(sourceIndex);
+        components.Insert(destinationIndex, moving);
+        var reordered = components.Select((component, index) => component with
+        {
+            Layout = component.Layout is { Mode: "automatic" } layout
+                ? layout with { Order = index, ZIndex = index }
+                : component.Layout
+        }).ToArray();
+        return ReplacePreset(state, presetIndex, preset with { Components = reordered });
+    }
+
+    public static PresetState SetHostPreset(PresetState state, string hostKey, string presetId)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (string.IsNullOrWhiteSpace(hostKey)) throw new ArgumentException("A Host catalog key is required.", nameof(hostKey));
+        if (!state.Presets.Any(preset => preset.Id == presetId)) throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal) { [hostKey] = presetId };
+        return state with { HostPresetIds = bindings };
+    }
+
+    public static PresetState ClearHostPreset(PresetState state, string hostKey)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal);
+        if (!bindings.Remove(hostKey)) throw new KeyNotFoundException($"No preset is bound to Host '{hostKey}'.");
+        return state with { HostPresetIds = bindings };
+    }
+
+    public static PresetState SetGlobalPreset(PresetState state, string? presetId)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (presetId is not null && !state.Presets.Any(preset => preset.Id == presetId))
+            throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        return state with { GlobalPresetId = presetId };
+    }
+
+    private static PresetState ReplacePreset(PresetState state, int presetIndex, ComponentPreset preset)
+    {
+        var presets = state.Presets.ToArray();
+        presets[presetIndex] = preset;
+        return state with { Presets = presets };
+    }
+
     public static PresetState SetComponentEnabled(PresetState state, string presetId, string instanceId, bool enabled)
     {
         ArgumentNullException.ThrowIfNull(state);
