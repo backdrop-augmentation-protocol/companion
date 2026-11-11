@@ -34,6 +34,9 @@ try
     }
 
     await EnsureServiceAsync(client);
+    if (command[0] == "authorization")
+        return await RunAuthorizationCommandAsync(command, client, json, output);
+
     switch (command)
     {
         case ["catalog", "list"]:
@@ -156,6 +159,102 @@ static void PrintHelp()
     Console.WriteLine("  host composition <key>  Show the effective composition for an installed Host catalog key");
     Console.WriteLine("  desktop status    Show live Host and component snapshots");
     Console.WriteLine("  preset list       List configured presets");
+    Console.WriteLine("  authorization pending  List Host authorization requests awaiting a decision");
+    Console.WriteLine("  authorization approve <session> --permission <name> [--permission <name>] [--remember]");
+    Console.WriteLine("  authorization deny <session>  Deny a pending Host request");
+    Console.WriteLine("  authorization trusted  List remembered Host approvals");
+    Console.WriteLine("  authorization revoke <host-id>  Revoke remembered trust and active sessions");
     Console.WriteLine();
     Console.WriteLine("Use --json for machine-readable output. Data commands start the service when needed.");
+}
+
+static async Task<int> RunAuthorizationCommandAsync(string[] command, HostAuthorizationClient client,
+    bool json, JsonSerializerOptions output)
+{
+    if (command.Length == 2 && command[1] == "pending")
+    {
+        var requests = await client.GetPendingAsync();
+        Print(requests, json, output);
+        if (!json)
+        {
+            if (requests.Count == 0) Console.WriteLine("No Host authorization requests are pending.");
+            foreach (var request in requests)
+                Console.WriteLine($"{request.SessionId}  {request.ClaimedIdentity.Name} [{request.ClaimedIdentity.Id}]  requested: {string.Join(", ", request.RequestedPermissions)}");
+        }
+        return 0;
+    }
+    if (command.Length == 2 && command[1] == "trusted")
+    {
+        var trusted = await client.GetTrustedHostsAsync();
+        Print(trusted, json, output);
+        if (!json)
+        {
+            if (trusted.Count == 0) Console.WriteLine("No remembered Host approvals.");
+            foreach (var host in trusted)
+                Console.WriteLine($"{host.Id,-40} {host.Name} — {string.Join(", ", host.Permissions)}");
+        }
+        return 0;
+    }
+    if (command.Length == 3 && command[1] == "revoke")
+    {
+        var success = await client.RevokeTrustAsync(command[2]);
+        Print(new { success, hostId = command[2] }, json, output);
+        if (!success) Console.Error.WriteLine("No remembered approval or active session was found for that Host ID.");
+        else if (!json) Console.WriteLine($"Revoked remembered trust and active sessions for {command[2]}.");
+        return success ? 0 : CommandError;
+    }
+    if (command.Length >= 3 && command[1] is "approve" or "deny")
+    {
+        var sessionId = command[2];
+        var permissions = new List<string>();
+        var remember = false;
+        for (var index = 3; index < command.Length; index++)
+        {
+            if (command[index] == "--remember") { remember = true; continue; }
+            if (command[index] == "--permission" && index + 1 < command.Length)
+            {
+                permissions.Add(command[++index]);
+                continue;
+            }
+            if (command[index].StartsWith("--permission=", StringComparison.Ordinal))
+            {
+                permissions.Add(command[index]["--permission=".Length..]);
+                continue;
+            }
+            Console.Error.WriteLine($"Unknown or incomplete authorization option: {command[index]}");
+            return UsageError;
+        }
+        var approve = command[1] == "approve";
+        if (approve && permissions.Count == 0)
+        {
+            Console.Error.WriteLine("Approval requires at least one explicit --permission value.");
+            return UsageError;
+        }
+        if (approve)
+        {
+            var pending = (await client.GetPendingAsync()).FirstOrDefault(request => request.SessionId == sessionId);
+            if (pending is null)
+            {
+                Console.Error.WriteLine("That authorization request is no longer pending.");
+                return CommandError;
+            }
+            var requested = pending.RequestedPermissions.ToHashSet(StringComparer.Ordinal);
+            var unsupported = permissions.Distinct(StringComparer.Ordinal)
+                .Where(permission => permission is not ("component.discovery" or "config.read" or "config.write") || !requested.Contains(permission))
+                .ToArray();
+            if (unsupported.Length > 0)
+            {
+                Console.Error.WriteLine($"Permission was not requested or is unsupported: {string.Join(", ", unsupported)}");
+                return UsageError;
+            }
+        }
+        var success = await client.DecideAsync(sessionId, approve, permissions.Distinct(StringComparer.Ordinal).ToArray(), remember);
+        Print(new { success, sessionId, approved = approve, permissions = approve ? permissions.ToArray() : Array.Empty<string>(), remembered = approve && remember }, json, output);
+        if (!success) Console.Error.WriteLine("That authorization request is no longer pending.");
+        else if (!json) Console.WriteLine(approve ? $"Approved {sessionId} for {string.Join(", ", permissions)}." : $"Denied {sessionId}.");
+        return success ? 0 : CommandError;
+    }
+
+    Console.Error.WriteLine("Invalid authorization command. Run 'bapc --help' for usage.");
+    return UsageError;
 }
