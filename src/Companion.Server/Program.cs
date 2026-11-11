@@ -7,7 +7,8 @@ using Bap.Companion.Core;
 using Bap.Companion.Server;
 
 var builder = WebApplication.CreateBuilder(args);
-using var serviceMutex = new Mutex(true, @"Local\BAP.Companion.Server", out var firstServiceInstance);
+var serviceMutexName = Environment.GetEnvironmentVariable("BAP_SERVER_MUTEX_NAME") ?? @"Local\BAP.Companion.Server";
+using var serviceMutex = new Mutex(true, serviceMutexName, out var firstServiceInstance);
 if (!firstServiceInstance) return;
 // The browser WebSocket carries a short-lived bearer token in its URL.
 // Do not write full request URLs, including that token, to routine logs.
@@ -23,7 +24,7 @@ builder.Services.AddSingleton<ISessionStore, InMemorySessionStore>();
 builder.Services.AddSingleton<RuntimeDesktopStore>();
 builder.Services.AddSingleton<HostAuthorizationQueue>();
 builder.Services.AddHostedService<AuthorizationPipeServer>();
-builder.Services.AddSingleton(_ => new JsonPresetStore(JsonPresetStore.DefaultPath));
+builder.Services.AddSingleton(_ => new JsonPresetStore(Environment.GetEnvironmentVariable("BAP_PRESETS_PATH") ?? JsonPresetStore.DefaultPath));
 builder.Services.AddSingleton(_ => InstalledCatalog.FromEnvironment());
 builder.Services.AddSingleton<WallpaperEngineSwitcher>();
 builder.Services.AddSingleton<IWorkshopComponentSource>(_ => new WorkshopDirectorySource(() => WorkshopRoots.FromEnvironment()));

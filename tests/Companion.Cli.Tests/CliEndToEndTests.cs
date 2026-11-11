@@ -180,6 +180,45 @@ public sealed class CliEndToEndTests
         Assert.Equal(JsonValueKind.Null, observed[1].GetProperty("presetId").ValueKind);
     }
 
+    [Fact]
+    public async Task PresetCommandsRoundTripThroughAnIsolatedCompanionServer()
+    {
+        await using var server = await IsolatedCompanionServer.StartAsync();
+
+        var create = await RunCliAsync(["preset", "create", "e2e", "CLI", "Integration"], server.PipeName);
+        Assert.Equal(0, create.ExitCode);
+
+        var catalogResult = await RunCliAsync(["catalog", "list", "--json"], server.PipeName);
+        Assert.Equal(0, catalogResult.ExitCode);
+        using var catalogJson = JsonDocument.Parse(catalogResult.StandardOutput);
+        var componentKey = catalogJson.RootElement[0].GetProperty("key").GetString()!;
+
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "add", "e2e", componentKey, "clock-a"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "add", "e2e", componentKey, "clock-b"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "move", "e2e", "clock-b", "0"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "set-enabled", "e2e", "clock-b", "false"], server.PipeName)).ExitCode);
+
+        var changed = await RunCliAsync(["preset", "list", "--json"], server.PipeName);
+        Assert.Equal(0, changed.ExitCode);
+        using (var changedJson = JsonDocument.Parse(changed.StandardOutput))
+        {
+            var components = changedJson.RootElement.GetProperty("presets")[0].GetProperty("components");
+            Assert.Equal("clock-b", components[0].GetProperty("instanceId").GetString());
+            Assert.False(components[0].GetProperty("enabled").GetBoolean());
+            Assert.Equal("clock-a", components[1].GetProperty("instanceId").GetString());
+        }
+
+        Assert.Equal(0, (await RunCliAsync(["preset", "global", "set", "e2e"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "remove", "e2e", "clock-a"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "delete", "e2e"], server.PipeName)).ExitCode);
+
+        var finalState = await RunCliAsync(["preset", "list", "--json"], server.PipeName);
+        Assert.Equal(0, finalState.ExitCode);
+        using var finalJson = JsonDocument.Parse(finalState.StandardOutput);
+        Assert.Empty(finalJson.RootElement.GetProperty("presets").EnumerateArray());
+        Assert.Equal(JsonValueKind.Null, finalJson.RootElement.GetProperty("globalPresetId").ValueKind);
+    }
+
     private const string ServiceStatus = """{"success":true,"requests":[],"service":{"processId":42,"version":"0.2.0","startedAt":"2026-01-01T00:00:00Z"}}""";
     private const string EmptyPresetMutationResponse = """{"success":true,"requests":[],"presets":{"presets":[],"globalPresetId":null,"hostPresetIds":{},"hostConfigs":{}}}""";
 
@@ -224,7 +263,105 @@ public sealed class CliEndToEndTests
         return Path.Combine(directory.FullName, "src", "Companion.Cli", "bin", configuration, "net10.0", "bapc.dll");
     }
 
+    private static string ServerAssemblyPath()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Companion.slnx")))
+            directory = directory.Parent;
+        if (directory is null) throw new DirectoryNotFoundException("Could not locate the Companion repository root.");
+        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name ?? "Release";
+        return Path.Combine(directory.FullName, "src", "Companion.Server", "bin", configuration, "net10.0", "Bap.Companion.Server.dll");
+    }
+
     private sealed record CliResult(int ExitCode, string StandardOutput, string StandardError);
+
+    private sealed class IsolatedCompanionServer : IAsyncDisposable
+    {
+        private readonly string directory;
+        private readonly Process process;
+        public string PipeName { get; }
+
+        private IsolatedCompanionServer(string directory, string pipeName, Process process)
+        {
+            this.directory = directory;
+            PipeName = pipeName;
+            this.process = process;
+        }
+
+        public static async Task<IsolatedCompanionServer> StartAsync()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), $"bapc-cli-e2e-{Guid.NewGuid():N}");
+            var components = Path.Combine(directory, "components", "clock");
+            Directory.CreateDirectory(components);
+            await File.WriteAllTextAsync(Path.Combine(components, "manifest.json"), """
+                { "protocol": { "name": "bap", "version": "0.1.0", "profile": "core" }, "id": "org.example.clock", "name": "Test clock", "version": "1.0.0", "role": "component", "capabilities": [], "entrypoints": { "default": "./index.html", "embedded": "./index.html" }, "modes": ["embedded"] }
+                """);
+
+            var serverAssembly = ServerAssemblyPath();
+            Assert.True(File.Exists(serverAssembly), $"Server assembly was not built: {serverAssembly}");
+            var pipeName = $"Bap.Cli.E2E.{Guid.NewGuid():N}";
+            var start = new ProcessStartInfo("dotnet")
+            {
+                WorkingDirectory = Path.GetDirectoryName(serverAssembly)!,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            start.ArgumentList.Add(serverAssembly);
+            start.ArgumentList.Add("--urls");
+            start.ArgumentList.Add("http://127.0.0.1:0");
+            start.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
+            start.Environment["BAPC_CONTROL_PIPE"] = pipeName;
+            start.Environment["BAP_SERVER_MUTEX_NAME"] = $"Local\\Bap.Cli.E2E.{Guid.NewGuid():N}";
+            start.Environment["BAP_PRESETS_PATH"] = Path.Combine(directory, "presets.json");
+            start.Environment["BAP_LOCAL_ROOTS"] = Path.Combine(directory, "components");
+            start.Environment["BAP_WORKSHOP_ROOTS"] = "";
+            start.Environment["BAP_DISCOVER_STEAM_WORKSHOP"] = "0";
+            var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start isolated Companion Server.");
+            var server = new IsolatedCompanionServer(directory, pipeName, process);
+            try
+            {
+                await server.WaitForReadyAsync();
+                return server;
+            }
+            catch
+            {
+                await server.DisposeAsync();
+                throw;
+            }
+        }
+
+        private async Task WaitForReadyAsync()
+        {
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(12);
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                if (process.HasExited)
+                    throw new InvalidOperationException($"Isolated Companion Server exited ({process.ExitCode}): {await process.StandardError.ReadToEndAsync()}");
+                try
+                {
+                    await using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                    await pipe.ConnectAsync(100);
+                    return;
+                }
+                catch (TimeoutException) { await Task.Delay(50); }
+                catch (IOException) { await Task.Delay(50); }
+            }
+            throw new TimeoutException("Isolated Companion Server did not create its control pipe within 12 seconds.");
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+            }
+            process.Dispose();
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
 
     private sealed class FakeControlService(string pipeName, params (string Operation, string Response)[] exchanges)
     {

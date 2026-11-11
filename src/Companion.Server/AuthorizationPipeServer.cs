@@ -16,7 +16,7 @@ internal sealed class AuthorizationPipeServer(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly DateTimeOffset ProcessStartedAt = DateTimeOffset.UtcNow;
-    private const string PipeName = CompanionControlChannel.PipeName;
+    private static readonly string PipeName = Environment.GetEnvironmentVariable("BAPC_CONTROL_PIPE") ?? CompanionControlChannel.PipeName;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
