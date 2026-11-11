@@ -75,6 +75,24 @@ try
                 foreach (var host in runtime)
                     Console.WriteLine($"{host.HostName} ({host.HostId}) — {host.Instances.Count} component instance(s), updated {host.UpdatedAt:O}");
             return 0;
+        case ["desktop", "set-config", var sessionId, var instanceId, var revisionText, var configText]:
+            if (!long.TryParse(revisionText, out var revision) || revision < 1)
+            {
+                Console.Error.WriteLine("Config revision must be a positive integer.");
+                return UsageError;
+            }
+            var config = ParseConfig(configText);
+            await client.SetRuntimeConfigAsync(sessionId, instanceId, config, revision);
+            Print(new { queued = true, sessionId, instanceId, revision }, json, output);
+            if (!json) Console.WriteLine($"Runtime config revision {revision} queued for component instance {instanceId}; verify the Host-reported snapshot to confirm application.");
+            return 0;
+        case ["desktop", "set-layout", var layoutSessionId, var layoutInstanceId, var layoutText]:
+            var layout = JsonSerializer.Deserialize<ComponentLayout>(layoutText, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                ?? throw new JsonException("Layout JSON must be an object.");
+            await client.SetRuntimeLayoutAsync(layoutSessionId, layoutInstanceId, layout);
+            Print(new { queued = true, sessionId = layoutSessionId, instanceId = layoutInstanceId, layout }, json, output);
+            if (!json) Console.WriteLine($"Runtime layout queued for component instance {layoutInstanceId}; verify the Host-reported snapshot to confirm application.");
+            return 0;
         case ["preset", "list"]:
             var presets = await client.GetPresetsAsync();
             Print(presets, json, output);
@@ -92,6 +110,11 @@ catch (Exception error) when (error is IOException or TimeoutException or Invali
 {
     Console.Error.WriteLine($"bapc: {error.Message}");
     return ServiceError;
+}
+catch (JsonException error)
+{
+    Console.Error.WriteLine($"bapc: invalid JSON argument: {error.Message}");
+    return UsageError;
 }
 catch (Exception error)
 {
@@ -158,6 +181,8 @@ static void PrintHelp()
     Console.WriteLine("  host list         List installed Host projects");
     Console.WriteLine("  host composition <key>  Show the effective composition for an installed Host catalog key");
     Console.WriteLine("  desktop status    Show live Host and component snapshots");
+    Console.WriteLine("  desktop set-config <session> <instance> <revision> <json-object>  Queue runtime config");
+    Console.WriteLine("  desktop set-layout <session> <instance> <layout-json>  Queue runtime layout");
     Console.WriteLine("  preset list       List configured presets");
     Console.WriteLine("  authorization pending  List Host authorization requests awaiting a decision");
     Console.WriteLine("  authorization approve <session> --permission <name> [--permission <name>] [--remember]");
@@ -257,4 +282,20 @@ static async Task<int> RunAuthorizationCommandAsync(string[] command, HostAuthor
 
     Console.Error.WriteLine("Invalid authorization command. Run 'bapc --help' for usage.");
     return UsageError;
+}
+
+static Dictionary<string, JsonElement> ParseConfig(string json)
+{
+    if (json.Length > 32 * 1024) throw new JsonException("Config JSON exceeds the 32 KiB command limit.");
+    using var document = JsonDocument.Parse(json);
+    if (document.RootElement.ValueKind != JsonValueKind.Object)
+        throw new JsonException("Config JSON must be an object.");
+    var config = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+    foreach (var property in document.RootElement.EnumerateObject())
+    {
+        if (string.IsNullOrWhiteSpace(property.Name) || property.Name.Length > 128)
+            throw new JsonException("Config keys must contain between 1 and 128 characters.");
+        config[property.Name] = property.Value.Clone();
+    }
+    return config;
 }

@@ -154,6 +154,51 @@ public sealed class DesktopTests
     }
 
     [Fact]
+    public async Task SharedControlClientQueuesRuntimeConfigAndLayoutCommands()
+    {
+        var name = $"Bap.Companion.Test.{Guid.NewGuid():N}";
+        var client = new HostAuthorizationClient(name);
+        var configServer = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var configExchange = Task.Run(async () =>
+        {
+            await using (configServer)
+            {
+                await configServer.WaitForConnectionAsync();
+                using var reader = new StreamReader(configServer, leaveOpen: true);
+                await using var writer = new StreamWriter(configServer) { AutoFlush = true };
+                using var request = JsonDocument.Parse(await reader.ReadLineAsync() ?? "{}");
+                Assert.Equal("runtime-config", request.RootElement.GetProperty("operation").GetString());
+                Assert.Equal(2L, request.RootElement.GetProperty("configRevision").GetInt64());
+                await writer.WriteLineAsync("{\"success\":true,\"requests\":[]}");
+            }
+        });
+        await client.SetRuntimeConfigAsync("session-1", "instance-1", new Dictionary<string, JsonElement>
+        {
+            ["label"] = JsonSerializer.SerializeToElement("test")
+        }, 2);
+        await configExchange;
+
+        var layoutServer = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var layoutExchange = Task.Run(async () =>
+        {
+            await using (layoutServer)
+            {
+                await layoutServer.WaitForConnectionAsync();
+                using var reader = new StreamReader(layoutServer, leaveOpen: true);
+                await using var writer = new StreamWriter(layoutServer) { AutoFlush = true };
+                using var request = JsonDocument.Parse(await reader.ReadLineAsync() ?? "{}");
+                Assert.Equal("runtime-layout", request.RootElement.GetProperty("operation").GetString());
+                Assert.Equal("manual", request.RootElement.GetProperty("layout").GetProperty("mode").GetString());
+                await writer.WriteLineAsync("{\"success\":true,\"requests\":[]}");
+            }
+        });
+        await client.SetRuntimeLayoutAsync("session-1", "instance-1", new ComponentLayout("manual", X: 0.2));
+        await layoutExchange;
+    }
+
+    [Fact]
     public void PreferencesPreserveExplicitStartupOptOutAndChinese()
     {
         var path = Path.Combine(Path.GetTempPath(), $"bap-desktop-{Guid.NewGuid():N}.json");
