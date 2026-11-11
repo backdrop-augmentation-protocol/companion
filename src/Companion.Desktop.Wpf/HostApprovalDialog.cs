@@ -6,7 +6,6 @@ using CheckBox = System.Windows.Controls.CheckBox;
 using Button = System.Windows.Controls.Button;
 using Orientation = System.Windows.Controls.Orientation;
 using Color = System.Windows.Media.Color;
-using Brushes = System.Windows.Media.Brushes;
 
 namespace Bap.Companion.Desktop.Wpf;
 
@@ -81,8 +80,7 @@ internal static class HostApprovalDialog
                 Tag = permission,
                 Content = PermissionLabel(permission, chinese),
                 IsChecked = false,
-                Margin = new Thickness(0, 5, 0, 5),
-                Foreground = Brushes.White
+                Margin = new Thickness(0, 5, 0, 5)
             };
             ApplyCheckBoxTheme(owner, checkBox);
             checkBox.Checked += (_, _) => { if (approveButton is not null) approveButton.IsEnabled = true; };
@@ -101,8 +99,7 @@ internal static class HostApprovalDialog
                 TextWrapping = TextWrapping.Wrap
             },
             IsChecked = true,
-            Margin = new Thickness(0, 14, 0, 0),
-            Foreground = Brushes.White
+            Margin = new Thickness(0, 14, 0, 0)
         };
         ApplyCheckBoxTheme(owner, rememberCheck);
         content.Children.Add(rememberCheck);
