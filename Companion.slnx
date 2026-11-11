@@ -10,5 +10,6 @@
     <Project Path="tests/Companion.Tests/Companion.Tests.csproj" />
     <Project Path="tests/Companion.Desktop.Tests/Companion.Desktop.Tests.csproj" />
     <Project Path="tests/Companion.Desktop.Wpf.Tests/Companion.Desktop.Wpf.Tests.csproj" />
+    <Project Path="tests/Companion.Cli.Tests/Companion.Cli.Tests.csproj" />
   </Folder>
 </Solution>

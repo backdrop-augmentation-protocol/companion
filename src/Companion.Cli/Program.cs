@@ -18,7 +18,8 @@ if (command.Length == 0 || command is ["--help"] or ["-h"] or ["help"])
 
 try
 {
-    var client = new HostAuthorizationClient();
+    var controlPipe = Environment.GetEnvironmentVariable("BAPC_CONTROL_PIPE") ?? CompanionControlChannel.PipeName;
+    var client = new HostAuthorizationClient(controlPipe);
     if (command is ["service", "status"])
     {
         var status = await client.GetServiceStatusAsync();
