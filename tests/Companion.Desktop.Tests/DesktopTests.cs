@@ -127,6 +127,33 @@ public sealed class DesktopTests
     }
 
     [Fact]
+    public async Task SharedControlClientRequestsEffectiveCompositionForInstalledHostKey()
+    {
+        var name = $"Bap.Companion.Test.{Guid.NewGuid():N}";
+        var client = new HostAuthorizationClient(name);
+        var composition = new EffectiveComposition("preset-1", 4, DateTimeOffset.UtcNow, "grid", null, []);
+        var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var exchange = Task.Run(async () =>
+        {
+            await using (server)
+            {
+                await server.WaitForConnectionAsync();
+                using var reader = new StreamReader(server, leaveOpen: true);
+                await using var writer = new StreamWriter(server) { AutoFlush = true };
+                using var request = JsonDocument.Parse(await reader.ReadLineAsync() ?? "{}");
+                Assert.Equal("host-composition", request.RootElement.GetProperty("operation").GetString());
+                Assert.Equal("workshop:123", request.RootElement.GetProperty("hostKey").GetString());
+                var response = JsonSerializer.Serialize(new AuthorizationControlResponse(true, [], Composition: composition), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                await writer.WriteLineAsync(response);
+            }
+        });
+
+        Assert.Equal("preset-1", (await client.GetHostCompositionAsync("workshop:123")).PresetId);
+        await exchange;
+    }
+
+    [Fact]
     public void PreferencesPreserveExplicitStartupOptOutAndChinese()
     {
         var path = Path.Combine(Path.GetTempPath(), $"bap-desktop-{Guid.NewGuid():N}.json");

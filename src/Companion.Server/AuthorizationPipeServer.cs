@@ -48,6 +48,14 @@ internal sealed class AuthorizationPipeServer(
             return new(true, [], CatalogItems: await catalog.DiscoverAsync(cancellationToken));
         if (request.Operation == "presets")
             return new(true, [], Presets: await presets.ReadAsync(cancellationToken));
+        if (request.Operation == "host-composition" && !string.IsNullOrWhiteSpace(request.HostKey) && request.HostKey.Length <= 256)
+        {
+            var state = await presets.ReadAsync(cancellationToken);
+            var items = await catalog.DiscoverAsync(cancellationToken);
+            if (!items.Any(item => item.Key == request.HostKey && item.Role == "host"))
+                return new(false, [], $"unknown Host catalog key: {request.HostKey}");
+            return new(true, [], Composition: EffectiveComponents.ResolveComposition(state, request.HostKey, items));
+        }
         if (request.Operation == "refresh-catalog")
         {
             var items = await catalog.DiscoverAsync(cancellationToken, force: true);

@@ -35,7 +35,8 @@ public sealed record AuthorizationControlRequest(
     string? InstanceId = null,
     Dictionary<string, System.Text.Json.JsonElement>? Config = null,
     long? ConfigRevision = null,
-    ComponentLayout? Layout = null);
+    ComponentLayout? Layout = null,
+    string? HostKey = null);
 
 public sealed record AuthorizationControlResponse(
     bool Success,
@@ -45,7 +46,8 @@ public sealed record AuthorizationControlResponse(
     IReadOnlyList<RuntimeHostSnapshot>? RuntimeHosts = null,
     IReadOnlyList<InstalledItem>? CatalogItems = null,
     PresetState? Presets = null,
-    CompanionServiceStatus? Service = null);
+    CompanionServiceStatus? Service = null,
+    EffectiveComposition? Composition = null);
 
 /// <summary>
 /// Holds explicit human decisions and optional per-user records for self-reported Host IDs.

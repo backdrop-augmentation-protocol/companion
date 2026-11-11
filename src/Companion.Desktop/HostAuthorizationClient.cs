@@ -22,6 +22,13 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
         (await SendAsync(new("presets"), cancellationToken)).Presets
             ?? throw new InvalidDataException("Companion service did not return preset state.");
 
+    public async Task<EffectiveComposition> GetHostCompositionAsync(string hostKey, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(hostKey)) throw new ArgumentException("A Host catalog key is required.", nameof(hostKey));
+        var response = await SendAsync(new("host-composition", HostKey: hostKey), cancellationToken);
+        return response.Composition ?? throw new IOException(response.Error ?? "Companion service did not return the Host composition.");
+    }
+
     public async Task<IReadOnlyList<TrustedHost>> GetTrustedHostsAsync(CancellationToken cancellationToken = default) =>
         (await SendAsync(new("trusted"), cancellationToken)).TrustedHosts ?? [];
 

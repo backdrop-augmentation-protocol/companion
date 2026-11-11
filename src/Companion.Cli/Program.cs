@@ -47,6 +47,23 @@ try
             await client.RefreshCatalogAsync();
             Console.WriteLine("Installed wallpaper catalog refreshed.");
             return 0;
+        case ["host", "list"]:
+            var hosts = (await client.GetCatalogAsync()).Where(item => item.Role == "host").ToArray();
+            Print(hosts, json, output);
+            if (!json)
+                foreach (var host in hosts)
+                    Console.WriteLine($"{host.Key,-24} {host.SourceKind,-8} {host.Status,-10} {host.Title} [{host.BapId ?? "unverified"}]");
+            return 0;
+        case ["host", "composition", var hostKey] when !string.IsNullOrWhiteSpace(hostKey):
+            var composition = await client.GetHostCompositionAsync(hostKey);
+            Print(composition, json, output);
+            if (!json)
+            {
+                Console.WriteLine($"Preset: {composition.PresetId} (revision {composition.Revision}) — {composition.Instances.Count} component instance(s)");
+                foreach (var instance in composition.Instances)
+                    Console.WriteLine($"{instance.InstanceId,-24} {instance.ComponentId,-40} {instance.Status,-10} {(instance.Enabled ? "enabled" : "disabled")}");
+            }
+            return 0;
         case ["desktop", "status"]:
             var runtime = await client.GetRuntimeSnapshotsAsync();
             Print(runtime, json, output);
@@ -135,6 +152,8 @@ static void PrintHelp()
     Console.WriteLine("  service start     Start the service if it is not already running");
     Console.WriteLine("  catalog list      List installed Wallpaper Engine projects");
     Console.WriteLine("  catalog refresh   Refresh the installed project catalog");
+    Console.WriteLine("  host list         List installed Host projects");
+    Console.WriteLine("  host composition <key>  Show the effective composition for an installed Host catalog key");
     Console.WriteLine("  desktop status    Show live Host and component snapshots");
     Console.WriteLine("  preset list       List configured presets");
     Console.WriteLine();
