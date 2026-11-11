@@ -64,6 +64,15 @@ try
                 foreach (var host in hosts)
                     Console.WriteLine($"{host.Key,-24} {host.SourceKind,-8} {host.Status,-10} {host.Title} [{host.BapId ?? "unverified"}]");
             return 0;
+        case ["host", "switch", var hostKey, ..]:
+            var monitorIndex = ParseMonitorIndex(command.Skip(3).ToArray());
+            var switchResult = await client.SwitchWallpaperAsync(hostKey, monitorIndex);
+            Print(switchResult, json, output);
+            if (!json)
+                Console.WriteLine(switchResult.Status == "confirmed"
+                    ? $"Wallpaper Engine is displaying {hostKey} on monitor {monitorIndex}."
+                    : $"Wallpaper Engine accepted the switch command for {hostKey} on monitor {monitorIndex}; current selection could not be confirmed.");
+            return 0;
         case ["host", "composition", var hostKey] when !string.IsNullOrWhiteSpace(hostKey):
             var composition = await client.GetHostCompositionAsync(hostKey);
             Print(composition, json, output);
@@ -121,6 +130,11 @@ catch (Exception error) when (error is IOException or TimeoutException or Invali
 catch (JsonException error)
 {
     Console.Error.WriteLine($"bapc: invalid JSON argument: {error.Message}");
+    return UsageError;
+}
+catch (ArgumentException error)
+{
+    Console.Error.WriteLine($"bapc: {error.Message}");
     return UsageError;
 }
 catch (Exception error)
@@ -187,6 +201,7 @@ static void PrintHelp()
     Console.WriteLine("  catalog list      List installed Wallpaper Engine projects");
     Console.WriteLine("  catalog refresh   Refresh the installed project catalog");
     Console.WriteLine("  host list         List installed Host projects");
+    Console.WriteLine("  host switch <key> [--monitor N]  Switch Wallpaper Engine to an installed Host wallpaper");
     Console.WriteLine("  host composition <key>  Show the effective composition for an installed Host catalog key");
     Console.WriteLine("  desktop status    Show live Host and component snapshots");
     Console.WriteLine("  desktop set-config <session> <instance> <revision> <json-object>  Queue runtime config");
@@ -306,4 +321,18 @@ static Dictionary<string, JsonElement> ParseConfig(string json)
         config[property.Name] = property.Value.Clone();
     }
     return config;
+}
+
+static int ParseMonitorIndex(string[] options)
+{
+    var monitor = 0;
+    for (var index = 0; index < options.Length; index++)
+    {
+        string? value = null;
+        if (options[index] == "--monitor" && index + 1 < options.Length) value = options[++index];
+        else if (options[index].StartsWith("--monitor=", StringComparison.Ordinal)) value = options[index]["--monitor=".Length..];
+        if (value is not null && int.TryParse(value, out monitor) && monitor is >= 0 and <= 31) continue;
+        throw new ArgumentException($"Invalid host switch option: {options[index]}. Expected --monitor N (0-31).");
+    }
+    return monitor;
 }

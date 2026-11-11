@@ -25,6 +25,7 @@ builder.Services.AddSingleton<HostAuthorizationQueue>();
 builder.Services.AddHostedService<AuthorizationPipeServer>();
 builder.Services.AddSingleton(_ => new JsonPresetStore(JsonPresetStore.DefaultPath));
 builder.Services.AddSingleton(_ => InstalledCatalog.FromEnvironment());
+builder.Services.AddSingleton<WallpaperEngineSwitcher>();
 builder.Services.AddSingleton<IWorkshopComponentSource>(_ => new WorkshopDirectorySource(() => WorkshopRoots.FromEnvironment()));
 builder.Services.AddSingleton<IConfigStore>(_ => new JsonConfigStore(Path.Combine(AppContext.BaseDirectory, "data", "config.json")));
 builder.Services.AddCors(options => options.AddPolicy("local-companion", policy => policy

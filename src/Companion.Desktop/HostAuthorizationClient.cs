@@ -62,6 +62,13 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
         if (!response.Success) throw new IOException(response.Error ?? "Companion could not refresh the installed catalog.");
     }
 
+    public async Task<WallpaperSwitchReceipt> SwitchWallpaperAsync(string hostKey, int monitorIndex = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await SendAsync(new("wallpaper-open", HostKey: hostKey, MonitorIndex: monitorIndex), cancellationToken);
+        return response.WallpaperSwitch ?? throw new IOException(response.Error ?? "Companion could not switch the Wallpaper Engine wallpaper.");
+    }
+
     public async Task<bool> RevokeTrustAsync(string id, CancellationToken cancellationToken = default) =>
         (await SendAsync(new("revoke", id), cancellationToken)).Success;
 

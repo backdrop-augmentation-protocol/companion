@@ -86,6 +86,34 @@ public sealed class DesktopTests
     }
 
     [Fact]
+    public async Task SharedControlClientRequestsHostWallpaperSwitch()
+    {
+        var name = $"Bap.Companion.Test.{Guid.NewGuid():N}";
+        var client = new HostAuthorizationClient(name);
+        var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var exchange = Task.Run(async () =>
+        {
+            await using (server)
+            {
+                await server.WaitForConnectionAsync();
+                using var reader = new StreamReader(server, leaveOpen: true);
+                await using var writer = new StreamWriter(server) { AutoFlush = true };
+                using var request = JsonDocument.Parse(await reader.ReadLineAsync() ?? "{}");
+                Assert.Equal("wallpaper-open", request.RootElement.GetProperty("operation").GetString());
+                Assert.Equal("local:host", request.RootElement.GetProperty("hostKey").GetString());
+                Assert.Equal(1, request.RootElement.GetProperty("monitorIndex").GetInt32());
+                await writer.WriteLineAsync("""{"success":true,"requests":[],"wallpaperSwitch":{"status":"confirmed","projectFile":"C:\\projects\\host\\project.json","monitorIndex":1,"currentWallpaper":"C:\\projects\\host\\index.html"}}""");
+            }
+        });
+
+        var result = await client.SwitchWallpaperAsync("local:host", 1);
+        await exchange;
+        Assert.Equal("confirmed", result.Status);
+        Assert.Equal(1, result.MonitorIndex);
+    }
+
+    [Fact]
     public async Task SharedControlClientReadsServiceStatusCatalogPresetsAndRuntimeSnapshots()
     {
         var name = $"Bap.Companion.Test.{Guid.NewGuid():N}";

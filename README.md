@@ -51,6 +51,14 @@ automatic launch starts minimized to the tray.
 The service runs without a console window. The current and previous rolling
 logs are in `%LOCALAPPDATA%\BAP Companion\logs` and can be opened from Settings.
 
+The `bapc` CLI is packaged beside the desktop app and uses the same Companion
+service. `bapc host list` shows installed Web wallpapers;
+`bapc host switch <catalog-key> [--monitor N]` switches Wallpaper Engine to a
+selected project through WE's official local control command. `bapc
+authorization pending` lists requests, and `bapc authorization approve
+<session> --permission <name> [--permission <name>] [--remember]` explicitly
+approves only requested permissions. Use `bapc --help` for all commands.
+
 Run the service alone with `dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311`.
 The service accepts requests only from loopback clients using a loopback Host
 name, even if its listening URL is configured more broadly.

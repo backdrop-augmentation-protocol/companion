@@ -10,6 +10,7 @@ internal sealed class AuthorizationPipeServer(
     RuntimeDesktopStore runtime,
     InstalledCatalog catalog,
     JsonPresetStore presets,
+    WallpaperEngineSwitcher wallpaperSwitcher,
     IHostApplicationLifetime applicationLifetime,
     ILogger<AuthorizationPipeServer> logger) : BackgroundService
 {
@@ -71,6 +72,19 @@ internal sealed class AuthorizationPipeServer(
             var items = await catalog.DiscoverAsync(cancellationToken, force: true);
             logger.LogInformation("Installed catalog refreshed from Companion UI; discovered {ItemCount} items", items.Count);
             return new(true, []);
+        }
+        if (request.Operation == "wallpaper-open" && !string.IsNullOrWhiteSpace(request.HostKey) && request.MonitorIndex is >= 0 and <= 31)
+        {
+            try
+            {
+                var result = await wallpaperSwitcher.OpenAsync(request.HostKey, request.MonitorIndex.Value, cancellationToken);
+                return new(true, [], WallpaperSwitch: result);
+            }
+            catch (Exception error) when (error is IOException or TimeoutException or InvalidOperationException or ArgumentException)
+            {
+                logger.LogWarning(error, "Wallpaper switch request failed for catalog key {HostKey}", request.HostKey);
+                return new(false, [], error.Message);
+            }
         }
         return request.Operation switch
         {

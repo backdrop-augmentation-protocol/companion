@@ -10,6 +10,7 @@ internal sealed class MainForm : Form
     private readonly CompanionLog log;
     private readonly int port;
     private readonly DesktopSettings settings;
+    private readonly HostAuthorizationClient controlClient = new();
     private PresetState state = new([], null, new Dictionary<string, string>());
     private IReadOnlyList<InstalledItem> items = [];
     private readonly CatalogView catalogView;
@@ -27,7 +28,7 @@ internal sealed class MainForm : Form
         this.log = log;
         this.port = port;
         this.settings = settings;
-        catalogView = new CatalogView(key => L(key), WallpaperEngineControl.OpenAsync);
+        catalogView = new CatalogView(key => L(key), SwitchWallpaperAsync);
         Text = "BAP Companion";
         Font = new Font("Segoe UI", 10);
         BackColor = UiTheme.Background;
@@ -62,6 +63,12 @@ internal sealed class MainForm : Form
     }
 
     private string L(string key, params object[] args) => UiStrings.Get(key, settings.Language, args);
+
+    private async Task<WallpaperSwitchResult> SwitchWallpaperAsync(InstalledItem item, int monitor)
+    {
+        var result = await controlClient.SwitchWallpaperAsync(item.Key, monitor);
+        return result.Status == "confirmed" ? WallpaperSwitchResult.Confirmed : WallpaperSwitchResult.CommandAccepted;
+    }
 
     private void ApplyLanguage()
     {

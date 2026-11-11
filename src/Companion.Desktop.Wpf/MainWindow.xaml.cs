@@ -505,8 +505,9 @@ public partial class MainWindow : Window
         SwitchHostButton.IsEnabled = false;
         try
         {
-            var result = await WallpaperEngineControl.OpenAsync(selectedItem, EffectiveDisplayIndex);
-            SwitchStatus.Text = L(result == WallpaperSwitchResult.Confirmed ? "switchVerified" : "switchSent");
+            var result = await (authorizationClient ?? throw new InvalidOperationException("The Companion service client is unavailable."))
+                .SwitchWallpaperAsync(selectedItem.Key, EffectiveDisplayIndex);
+            SwitchStatus.Text = L(result.Status == "confirmed" ? "switchVerified" : "switchSent");
         }
         finally { SwitchHostButton.IsEnabled = true; }
     });
@@ -519,8 +520,9 @@ public partial class MainWindow : Window
         PresetSwitchHostButton.IsEnabled = false;
         try
         {
-            var result = await WallpaperEngineControl.OpenAsync(host, EffectiveDisplayIndex);
-            PresetSwitchHostStatus.Text = L(result == WallpaperSwitchResult.Confirmed ? "switchVerified" : "switchSent");
+            var result = await (authorizationClient ?? throw new InvalidOperationException("The Companion service client is unavailable."))
+                .SwitchWallpaperAsync(host.Key, EffectiveDisplayIndex);
+            PresetSwitchHostStatus.Text = L(result.Status == "confirmed" ? "switchVerified" : "switchSent");
             activeHostKey = await FindActiveHostKeyAsync(items);
             RenderPresetHosts(host.Key);
         }

@@ -36,7 +36,8 @@ public sealed record AuthorizationControlRequest(
     Dictionary<string, System.Text.Json.JsonElement>? Config = null,
     long? ConfigRevision = null,
     ComponentLayout? Layout = null,
-    string? HostKey = null);
+    string? HostKey = null,
+    int? MonitorIndex = null);
 
 public sealed record AuthorizationControlResponse(
     bool Success,
@@ -47,7 +48,10 @@ public sealed record AuthorizationControlResponse(
     IReadOnlyList<InstalledItem>? CatalogItems = null,
     PresetState? Presets = null,
     CompanionServiceStatus? Service = null,
-    EffectiveComposition? Composition = null);
+    EffectiveComposition? Composition = null,
+    WallpaperSwitchReceipt? WallpaperSwitch = null);
+
+public sealed record WallpaperSwitchReceipt(string Status, string ProjectFile, int MonitorIndex, string? CurrentWallpaper);
 
 /// <summary>
 /// Holds explicit human decisions and optional per-user records for self-reported Host IDs.
