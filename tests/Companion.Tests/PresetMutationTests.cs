@@ -6,19 +6,17 @@ namespace Bap.Companion.Tests;
 public sealed class PresetMutationTests
 {
     [Fact]
-    public void CreateAndDeletePresetKeepBindingsConsistent()
+    public void CreateAndDeletePresetClearsGlobalReference()
     {
         var state = State();
         var created = PresetSelection.CreatePreset(state, "evening", "  Evening  ");
         Assert.Equal("Evening", Assert.Single(created.Presets).Name);
 
         created = PresetSelection.SetGlobalPreset(created, "evening");
-        created = PresetSelection.SetHostPreset(created, "local:host", "evening");
         var deleted = PresetSelection.DeletePreset(created, "evening");
 
         Assert.Empty(deleted.Presets);
         Assert.Null(deleted.GlobalPresetId);
-        Assert.Empty(deleted.HostPresetIds);
     }
 
     [Fact]
@@ -48,21 +46,6 @@ public sealed class PresetMutationTests
         Assert.Throws<InvalidOperationException>(() => PresetSelection.AddComponent(state, "daily", item, "clock-b"));
         Assert.Throws<InvalidOperationException>(() => PresetSelection.AddComponent(state, "daily", item with { Role = "host" }, "host-a"));
         Assert.Single(state.Presets[0].Components);
-    }
-
-    [Fact]
-    public void HostBindingAndGlobalPresetCanBeSetAndClearedIndependently()
-    {
-        var state = State("daily", "focus");
-        state = PresetSelection.SetGlobalPreset(state, "daily");
-        state = PresetSelection.SetHostPreset(state, "workshop:host", "focus");
-
-        Assert.Equal("daily", PresetSelection.Resolve(state, "local:host")?.Id);
-        Assert.Equal("focus", PresetSelection.Resolve(state, "workshop:host")?.Id);
-
-        state = PresetSelection.ClearHostPreset(state, "workshop:host");
-        state = PresetSelection.SetGlobalPreset(state, null);
-        Assert.Null(PresetSelection.Resolve(state, "workshop:host"));
     }
 
     private static PresetState State(params string[] ids) => new(

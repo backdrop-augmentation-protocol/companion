@@ -74,6 +74,8 @@ internal sealed class AuthorizationPipeServer(
                 return new(false, [], error.Message);
             }
         }
+        if (request.Operation.StartsWith("preset-", StringComparison.Ordinal))
+            return await MutatePresetAsync(request, cancellationToken);
         if (request.Operation == "host-composition" && !string.IsNullOrWhiteSpace(request.HostKey) && request.HostKey.Length <= 256)
         {
             var state = await presets.ReadAsync(cancellationToken);
@@ -120,6 +122,55 @@ internal sealed class AuthorizationPipeServer(
             _ => new(false, [], "unsupported operation")
         };
     }
+
+    private async Task<AuthorizationControlResponse> MutatePresetAsync(AuthorizationControlRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var state = await presets.ReadAsync(cancellationToken);
+            PresetState updated;
+            switch (request.Operation)
+            {
+                case "preset-create" when ValidText(request.PresetId, 128) && ValidText(request.Name, 128):
+                    updated = PresetSelection.CreatePreset(state, request.PresetId!, request.Name!);
+                    break;
+                case "preset-delete" when ValidText(request.PresetId, 128):
+                    updated = PresetSelection.DeletePreset(state, request.PresetId!);
+                    break;
+                case "preset-component-add" when ValidText(request.PresetId, 128) && ValidText(request.ComponentKey, 256) && ValidText(request.InstanceId, 128):
+                {
+                    var catalogItems = await catalog.DiscoverAsync(cancellationToken);
+                    var component = catalogItems.FirstOrDefault(item => item.Key == request.ComponentKey);
+                    if (component is null) return new(false, [], $"component catalog key was not found: {request.ComponentKey}");
+                    updated = PresetSelection.AddComponent(state, request.PresetId!, component, request.InstanceId!);
+                    var limitErrors = PresetSelection.ValidateInstanceLimitIncreases(state, updated, catalogItems);
+                    if (limitErrors.Count > 0) return new(false, [], string.Join("; ", limitErrors));
+                    break;
+                }
+                case "preset-component-remove" when ValidText(request.PresetId, 128) && ValidText(request.InstanceId, 128):
+                    updated = PresetSelection.RemoveComponent(state, request.PresetId!, request.InstanceId!);
+                    break;
+                case "preset-component-move" when ValidText(request.PresetId, 128) && ValidText(request.InstanceId, 128) && request.DestinationIndex is >= 0 and <= 10000:
+                    updated = PresetSelection.MoveComponent(state, request.PresetId!, request.InstanceId!, request.DestinationIndex.Value);
+                    break;
+                case "preset-global-set" when request.PresetId is null || ValidText(request.PresetId, 128):
+                    updated = PresetSelection.SetGlobalPreset(state, request.PresetId);
+                    break;
+                default:
+                    return new(false, [], "invalid preset mutation request");
+            }
+
+            await presets.WriteAsync(updated, cancellationToken);
+            return new(true, [], Presets: await presets.ReadAsync(cancellationToken));
+        }
+        catch (Exception error) when (error is ArgumentException or KeyNotFoundException or InvalidOperationException or IOException or InvalidDataException)
+        {
+            return new(false, [], error.Message);
+        }
+    }
+
+    private static bool ValidText(string? value, int maximumLength) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= maximumLength;
 
     private AuthorizationControlResponse SetRuntimeConfig(AuthorizationControlRequest request)
     {

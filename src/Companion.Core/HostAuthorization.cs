@@ -39,7 +39,10 @@ public sealed record AuthorizationControlRequest(
     string? HostKey = null,
     int? MonitorIndex = null,
     string? PresetId = null,
-    bool? ComponentEnabled = null);
+    bool? ComponentEnabled = null,
+    string? Name = null,
+    string? ComponentKey = null,
+    int? DestinationIndex = null);
 
 public sealed record AuthorizationControlResponse(
     bool Success,

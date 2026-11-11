@@ -124,23 +124,6 @@ public static class PresetSelection
         return ReplacePreset(state, presetIndex, preset with { Components = reordered });
     }
 
-    public static PresetState SetHostPreset(PresetState state, string hostKey, string presetId)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        if (string.IsNullOrWhiteSpace(hostKey)) throw new ArgumentException("A Host catalog key is required.", nameof(hostKey));
-        if (!state.Presets.Any(preset => preset.Id == presetId)) throw new KeyNotFoundException($"Preset was not found: {presetId}");
-        var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal) { [hostKey] = presetId };
-        return state with { HostPresetIds = bindings };
-    }
-
-    public static PresetState ClearHostPreset(PresetState state, string hostKey)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        var bindings = new Dictionary<string, string>(state.HostPresetIds, StringComparer.Ordinal);
-        if (!bindings.Remove(hostKey)) throw new KeyNotFoundException($"No preset is bound to Host '{hostKey}'.");
-        return state with { HostPresetIds = bindings };
-    }
-
     public static PresetState SetGlobalPreset(PresetState state, string? presetId)
     {
         ArgumentNullException.ThrowIfNull(state);

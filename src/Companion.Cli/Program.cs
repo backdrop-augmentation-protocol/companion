@@ -56,7 +56,8 @@ try
             return 0;
         case ["catalog", "refresh"]:
             await client.RefreshCatalogAsync();
-            Console.WriteLine("Installed wallpaper catalog refreshed.");
+            if (json) Print(new { refreshed = true }, true, output);
+            else Console.WriteLine("Installed wallpaper catalog refreshed.");
             return 0;
         case ["host", "list"]:
             var hosts = (await client.GetCatalogAsync()).Where(item => item.Role == "host").ToArray();
@@ -129,6 +130,41 @@ try
                 .Components.First(component => component.InstanceId == instanceId);
             Print(new { presetId, instanceId, enabled = updatedInstance.Enabled }, json, output);
             if (!json) Console.WriteLine($"Component instance {instanceId} in preset {presetId} is {(updatedInstance.Enabled ? "enabled" : "disabled")}.");
+            return 0;
+        case ["preset", "create", var createId, ..] when command.Length > 3:
+            var created = await client.CreatePresetAsync(createId, string.Join(' ', command.Skip(3)));
+            Print(created, json, output);
+            if (!json) Console.WriteLine($"Created preset {createId}.");
+            return 0;
+        case ["preset", "delete", var deleteId]:
+            var deleted = await client.DeletePresetAsync(deleteId);
+            Print(deleted, json, output);
+            if (!json) Console.WriteLine($"Deleted preset {deleteId}.");
+            return 0;
+        case ["preset", "component", "add", var addPresetId, var componentKey, var newInstanceId]:
+            var withComponent = await client.AddPresetComponentAsync(addPresetId, componentKey, newInstanceId);
+            Print(withComponent, json, output);
+            if (!json) Console.WriteLine($"Added {componentKey} as instance {newInstanceId} to preset {addPresetId}.");
+            return 0;
+        case ["preset", "component", "remove", var removePresetId, var removeInstanceId]:
+            var withoutComponent = await client.RemovePresetComponentAsync(removePresetId, removeInstanceId);
+            Print(withoutComponent, json, output);
+            if (!json) Console.WriteLine($"Removed component instance {removeInstanceId} from preset {removePresetId}.");
+            return 0;
+        case ["preset", "component", "move", var movePresetId, var moveInstanceId, var destinationText]:
+            if (!int.TryParse(destinationText, out var destinationIndex) || destinationIndex < 0)
+            {
+                Console.Error.WriteLine("Destination index must be a nonnegative integer (zero-based).");
+                return UsageError;
+            }
+            var reordered = await client.MovePresetComponentAsync(movePresetId, moveInstanceId, destinationIndex);
+            Print(reordered, json, output);
+            if (!json) Console.WriteLine($"Moved component instance {moveInstanceId} to index {destinationIndex} in preset {movePresetId}.");
+            return 0;
+        case ["preset", "global", "set", var globalPresetId]:
+            var global = await client.SetGlobalPresetAsync(globalPresetId == "none" ? null : globalPresetId);
+            Print(global, json, output);
+            if (!json) Console.WriteLine(globalPresetId == "none" ? "Cleared the global preset." : $"Set {globalPresetId} as the global preset.");
             return 0;
         default:
             PrintHelp();
@@ -220,7 +256,13 @@ static void PrintHelp()
     Console.WriteLine("  desktop set-config <session> <instance> <revision> <json-object>  Queue runtime config");
     Console.WriteLine("  desktop set-layout <session> <instance> <layout-json>  Queue runtime layout");
     Console.WriteLine("  preset list       List configured presets");
+    Console.WriteLine("  preset create <id> <name>  Create a preset");
+    Console.WriteLine("  preset delete <id>  Delete a preset and clear its bindings");
+    Console.WriteLine("  preset component add <preset> <catalog-key> <instance-id>");
+    Console.WriteLine("  preset component remove <preset> <instance-id>");
+    Console.WriteLine("  preset component move <preset> <instance-id> <zero-based-index>");
     Console.WriteLine("  preset component set-enabled <preset-id> <instance-id> <true|false>  Enable or disable one preset component instance");
+    Console.WriteLine("  preset global set <preset-id|none>");
     Console.WriteLine("  authorization pending  List Host authorization requests awaiting a decision");
     Console.WriteLine("  authorization approve <session> --permission <name> [--permission <name>] [--remember]");
     Console.WriteLine("  authorization deny <session>  Deny a pending Host request");

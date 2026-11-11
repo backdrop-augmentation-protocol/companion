@@ -37,6 +37,36 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
         return response.Presets ?? await GetPresetsAsync(cancellationToken);
     }
 
+    public async Task<PresetState> CreatePresetAsync(string presetId, string name, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-create", PresetId: presetId, Name: name), cancellationToken);
+
+    public async Task<PresetState> DeletePresetAsync(string presetId, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-delete", PresetId: presetId), cancellationToken);
+
+    public async Task<PresetState> AddPresetComponentAsync(string presetId, string componentKey, string instanceId,
+        CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-component-add", PresetId: presetId, ComponentKey: componentKey,
+            InstanceId: instanceId), cancellationToken);
+
+    public async Task<PresetState> RemovePresetComponentAsync(string presetId, string instanceId,
+        CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-component-remove", PresetId: presetId, InstanceId: instanceId), cancellationToken);
+
+    public async Task<PresetState> MovePresetComponentAsync(string presetId, string instanceId, int destinationIndex,
+        CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-component-move", PresetId: presetId, InstanceId: instanceId,
+            DestinationIndex: destinationIndex), cancellationToken);
+
+    public async Task<PresetState> SetGlobalPresetAsync(string? presetId, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-global-set", PresetId: presetId), cancellationToken);
+
+    private async Task<PresetState> SendPresetMutationAsync(AuthorizationControlRequest request, CancellationToken cancellationToken)
+    {
+        var response = await SendAsync(request, cancellationToken);
+        if (!response.Success) throw new IOException(response.Error ?? "Companion could not update the preset state.");
+        return response.Presets ?? await GetPresetsAsync(cancellationToken);
+    }
+
     public async Task<EffectiveComposition> GetHostCompositionAsync(string hostKey, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(hostKey)) throw new ArgumentException("A Host catalog key is required.", nameof(hostKey));

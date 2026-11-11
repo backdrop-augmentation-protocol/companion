@@ -60,6 +60,11 @@ authorization pending` lists requests, and `bapc authorization approve
 approves only requested permissions. Use `bapc --help` for all commands.
 `bapc preset component set-enabled <preset-id> <instance-id> <true|false>` toggles one
 component entry in a preset without changing its subscription or other instances.
+Preset structure can also be managed with `preset create <id> <name>`,
+`preset delete <id>`, `preset component add/remove/move`, and
+`preset global set <preset-id|none>`.
+Component additions use an installed catalog key and an explicit instance ID;
+component moves use a zero-based destination index. Run `bapc --help` for syntax.
 
 Run the service alone with `dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311`.
 The service accepts requests only from loopback clients using a loopback Host
