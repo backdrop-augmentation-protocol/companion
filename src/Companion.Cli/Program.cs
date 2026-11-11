@@ -32,6 +32,13 @@ try
         Print(await client.GetServiceStatusAsync(), json, output);
         return 0;
     }
+    if (command is ["service", "stop"])
+    {
+        await client.StopServiceAsync();
+        if (json) Print(new { stopped = true }, true, output);
+        else Console.WriteLine("Companion service stop requested.");
+        return 0;
+    }
 
     await EnsureServiceAsync(client);
     if (command[0] == "authorization")
@@ -176,6 +183,7 @@ static void PrintHelp()
     Console.WriteLine("Commands:");
     Console.WriteLine("  service status    Show the shared Companion service status");
     Console.WriteLine("  service start     Start the service if it is not already running");
+    Console.WriteLine("  service stop      Stop the shared service; active wallpaper sessions will disconnect");
     Console.WriteLine("  catalog list      List installed Wallpaper Engine projects");
     Console.WriteLine("  catalog refresh   Refresh the installed project catalog");
     Console.WriteLine("  host list         List installed Host projects");

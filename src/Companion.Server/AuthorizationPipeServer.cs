@@ -10,6 +10,7 @@ internal sealed class AuthorizationPipeServer(
     RuntimeDesktopStore runtime,
     InstalledCatalog catalog,
     JsonPresetStore presets,
+    IHostApplicationLifetime applicationLifetime,
     ILogger<AuthorizationPipeServer> logger) : BackgroundService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -44,6 +45,15 @@ internal sealed class AuthorizationPipeServer(
         if (request is null) return new(false, [], "invalid request");
         if (request.Operation == "service-status")
             return new(true, [], Service: new(Environment.ProcessId, typeof(AuthorizationPipeServer).Assembly.GetName().Version?.ToString() ?? "unknown", ProcessStartedAt));
+        if (request.Operation == "service-stop")
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(250);
+                applicationLifetime.StopApplication();
+            }, CancellationToken.None);
+            return new(true, []);
+        }
         if (request.Operation == "catalog-list")
             return new(true, [], CatalogItems: await catalog.DiscoverAsync(cancellationToken));
         if (request.Operation == "presets")

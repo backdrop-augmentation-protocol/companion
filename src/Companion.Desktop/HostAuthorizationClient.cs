@@ -15,6 +15,12 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
         (await SendAsync(new("service-status"), cancellationToken)).Service
             ?? throw new InvalidDataException("Companion service did not return its status.");
 
+    public async Task StopServiceAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await SendAsync(new("service-stop"), cancellationToken);
+        if (!response.Success) throw new IOException(response.Error ?? "Companion service rejected the stop request.");
+    }
+
     public async Task<IReadOnlyList<InstalledItem>> GetCatalogAsync(CancellationToken cancellationToken = default) =>
         (await SendAsync(new("catalog-list"), cancellationToken)).CatalogItems ?? [];
 
