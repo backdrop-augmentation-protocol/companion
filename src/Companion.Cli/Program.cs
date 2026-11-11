@@ -117,6 +117,18 @@ try
                 foreach (var preset in presets.Presets)
                     Console.WriteLine($"{preset.Id,-24} {preset.Name} — {preset.Components.Count} component instance(s)");
             return 0;
+        case ["preset", "component", "set-enabled", var presetId, var instanceId, var enabledText]:
+            if (!bool.TryParse(enabledText, out var enabled))
+            {
+                Console.Error.WriteLine("Enabled must be 'true' or 'false'.");
+                return UsageError;
+            }
+            var updatedPresets = await client.SetPresetComponentEnabledAsync(presetId, instanceId, enabled);
+            var updatedInstance = updatedPresets.Presets.First(preset => preset.Id == presetId)
+                .Components.First(component => component.InstanceId == instanceId);
+            Print(new { presetId, instanceId, enabled = updatedInstance.Enabled }, json, output);
+            if (!json) Console.WriteLine($"Component instance {instanceId} in preset {presetId} is {(updatedInstance.Enabled ? "enabled" : "disabled")}.");
+            return 0;
         default:
             PrintHelp();
             return UsageError;
@@ -207,6 +219,7 @@ static void PrintHelp()
     Console.WriteLine("  desktop set-config <session> <instance> <revision> <json-object>  Queue runtime config");
     Console.WriteLine("  desktop set-layout <session> <instance> <layout-json>  Queue runtime layout");
     Console.WriteLine("  preset list       List configured presets");
+    Console.WriteLine("  preset component set-enabled <preset-id> <instance-id> <true|false>  Enable or disable one preset component instance");
     Console.WriteLine("  authorization pending  List Host authorization requests awaiting a decision");
     Console.WriteLine("  authorization approve <session> --permission <name> [--permission <name>] [--remember]");
     Console.WriteLine("  authorization deny <session>  Deny a pending Host request");

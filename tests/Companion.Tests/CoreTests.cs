@@ -119,6 +119,24 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public void SetComponentEnabledChangesOnlyTheRequestedPresetInstance()
+    {
+        var state = new PresetState(
+            [new("work", "Work", [new("org.example.clock", InstanceId: "clock-a"), new("org.example.clock", InstanceId: "clock-b")]),
+             new("home", "Home", [new("org.example.clock", InstanceId: "clock-c")])],
+            null, new Dictionary<string, string>());
+
+        var updated = PresetSelection.SetComponentEnabled(state, "work", "clock-b", false);
+
+        Assert.True(updated.Presets[0].Components[0].Enabled);
+        Assert.False(updated.Presets[0].Components[1].Enabled);
+        Assert.True(updated.Presets[1].Components[0].Enabled);
+        Assert.True(state.Presets[0].Components[1].Enabled);
+        Assert.Throws<KeyNotFoundException>(() => PresetSelection.SetComponentEnabled(state, "missing", "clock-a", false));
+        Assert.Throws<KeyNotFoundException>(() => PresetSelection.SetComponentEnabled(state, "work", "missing", false));
+    }
+
+    [Fact]
     public void LegacyBapHostBindingsMigrateToEveryInstalledProjectCopy()
     {
         var state = new PresetState([new("daily", "Daily", [])], null,

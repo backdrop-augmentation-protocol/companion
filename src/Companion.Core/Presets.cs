@@ -41,6 +41,25 @@ public sealed record PresetState(
 
 public static class PresetSelection
 {
+    public static PresetState SetComponentEnabled(PresetState state, string presetId, string instanceId, bool enabled)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (string.IsNullOrWhiteSpace(presetId)) throw new ArgumentException("A preset ID is required.", nameof(presetId));
+        if (string.IsNullOrWhiteSpace(instanceId)) throw new ArgumentException("A component instance ID is required.", nameof(instanceId));
+        var presetIndex = state.Presets.ToList().FindIndex(preset => preset.Id == presetId);
+        if (presetIndex < 0) throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        var preset = state.Presets[presetIndex];
+        var instanceIndex = preset.Components.ToList().FindIndex(component => component.InstanceId == instanceId);
+        if (instanceIndex < 0) throw new KeyNotFoundException($"Component instance '{instanceId}' was not found in preset '{presetId}'.");
+        if (preset.Components[instanceIndex].Enabled == enabled) return state;
+
+        var components = preset.Components.ToArray();
+        components[instanceIndex] = components[instanceIndex] with { Enabled = enabled };
+        var presets = state.Presets.ToArray();
+        presets[presetIndex] = preset with { Components = components };
+        return state with { Presets = presets };
+    }
+
     public static IReadOnlyList<string> ValidateInstanceLimits(ComponentPreset preset, IReadOnlyList<InstalledItem> items)
     {
         var errors = new List<string>();

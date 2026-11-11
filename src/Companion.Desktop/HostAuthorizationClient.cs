@@ -28,6 +28,15 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
         (await SendAsync(new("presets"), cancellationToken)).Presets
             ?? throw new InvalidDataException("Companion service did not return preset state.");
 
+    public async Task<PresetState> SetPresetComponentEnabledAsync(string presetId, string instanceId, bool enabled,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await SendAsync(new("preset-component-enabled", InstanceId: instanceId,
+            PresetId: presetId, ComponentEnabled: enabled), cancellationToken);
+        if (!response.Success) throw new IOException(response.Error ?? "Companion could not update the preset component instance.");
+        return response.Presets ?? await GetPresetsAsync(cancellationToken);
+    }
+
     public async Task<EffectiveComposition> GetHostCompositionAsync(string hostKey, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(hostKey)) throw new ArgumentException("A Host catalog key is required.", nameof(hostKey));

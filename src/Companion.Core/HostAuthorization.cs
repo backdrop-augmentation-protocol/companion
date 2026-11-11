@@ -37,7 +37,9 @@ public sealed record AuthorizationControlRequest(
     long? ConfigRevision = null,
     ComponentLayout? Layout = null,
     string? HostKey = null,
-    int? MonitorIndex = null);
+    int? MonitorIndex = null,
+    string? PresetId = null,
+    bool? ComponentEnabled = null);
 
 public sealed record AuthorizationControlResponse(
     bool Success,

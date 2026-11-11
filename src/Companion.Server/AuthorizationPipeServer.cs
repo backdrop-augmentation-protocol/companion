@@ -59,6 +59,21 @@ internal sealed class AuthorizationPipeServer(
             return new(true, [], CatalogItems: await catalog.DiscoverAsync(cancellationToken));
         if (request.Operation == "presets")
             return new(true, [], Presets: await presets.ReadAsync(cancellationToken));
+        if (request.Operation == "preset-component-enabled" && !string.IsNullOrWhiteSpace(request.PresetId) &&
+            !string.IsNullOrWhiteSpace(request.InstanceId) && request.ComponentEnabled is not null)
+        {
+            try
+            {
+                var state = await presets.ReadAsync(cancellationToken);
+                var updated = PresetSelection.SetComponentEnabled(state, request.PresetId, request.InstanceId, request.ComponentEnabled.Value);
+                await presets.WriteAsync(updated, cancellationToken);
+                return new(true, [], Presets: await presets.ReadAsync(cancellationToken));
+            }
+            catch (Exception error) when (error is ArgumentException or KeyNotFoundException or IOException or InvalidDataException)
+            {
+                return new(false, [], error.Message);
+            }
+        }
         if (request.Operation == "host-composition" && !string.IsNullOrWhiteSpace(request.HostKey) && request.HostKey.Length <= 256)
         {
             var state = await presets.ReadAsync(cancellationToken);

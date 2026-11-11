@@ -34,7 +34,7 @@ Companion 是可选服务，不取代 Wallpaper Engine 作为渲染宿主。
 设置页提供英文与简体中文，默认英文；首次运行默认启用当前用户级开机自启，可随时取消勾选。自动启动时进入托盘。服务不弹控制台窗口，滚动日志位于
 `%LOCALAPPDATA%\BAP Companion\logs`，可从设置页打开。
 
-打包目录中的 `bapc` CLI 与桌面应用共用同一个 Companion 服务。`bapc host list` 列出已安装的 Web 壁纸；`bapc host switch <catalog-key> [--monitor N]` 通过 WE 官方本机控制命令切换壁纸。`bapc authorization pending` 查看待批准请求；`bapc authorization approve <session> --permission <name> [--permission <name>] [--remember]` 仅批准请求中明确申请的权限。运行 `bapc --help` 查看全部命令。
+打包目录中的 `bapc` CLI 与桌面应用共用同一个 Companion 服务。`bapc host list` 列出已安装的 Web 壁纸；`bapc host switch <catalog-key> [--monitor N]` 通过 WE 官方本机控制命令切换壁纸。`bapc authorization pending` 查看待批准请求；`bapc authorization approve <session> --permission <name> [--permission <name>] [--remember]` 仅批准请求中明确申请的权限。`bapc preset component set-enabled <preset-id> <instance-id> <true|false>` 可独立启用或禁用预设中的一个组件实例，不会修改订阅状态或其他实例。运行 `bapc --help` 查看全部命令。
 
 单独启动服务时使用 `dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311`。
 即使将监听地址配置得更宽，服务也只接受来自回环地址、且 Host 名称为回环地址的请求。
