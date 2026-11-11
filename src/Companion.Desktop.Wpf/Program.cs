@@ -171,20 +171,11 @@ internal sealed class CompanionLifetime : IDisposable
         {
             WorkingDirectory = Path.GetDirectoryName(path),
             UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
+            CreateNoWindow = true
         };
         start.ArgumentList.Add("--urls");
         start.ArgumentList.Add($"http://127.0.0.1:{port}");
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion Server.");
-        process.EnableRaisingEvents = true;
-        process.Exited += (_, _) =>
-        {
-            try { log.Write("desktop", $"Companion Server process exited; processId={process.Id}; exitCode={process.ExitCode}; shutdownReason={shutdownReason}"); }
-            catch (InvalidOperationException error) { log.Write("desktop-error", $"Could not read Companion Server exit details: {error.Message}"); }
-        };
-        log.Capture(process);
         var deadline = DateTimeOffset.UtcNow.AddSeconds(8);
         while (DateTimeOffset.UtcNow < deadline)
         {

@@ -11,6 +11,8 @@ using var serviceMutex = new Mutex(true, @"Local\BAP.Companion.Server", out var 
 if (!firstServiceInstance) return;
 // The browser WebSocket carries a short-lived bearer token in its URL.
 // Do not write full request URLs, including that token, to routine logs.
+builder.Logging.ClearProviders();
+builder.Logging.AddProvider(new CompanionFileLoggerProvider());
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 builder.Services.AddSingleton(new CompanionOptions
 {
