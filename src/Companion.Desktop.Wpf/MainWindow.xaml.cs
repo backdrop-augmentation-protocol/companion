@@ -250,13 +250,17 @@ public partial class MainWindow : Window
                     .OrderByDescending(candidate => candidate.UpdatedAt).FirstOrDefault()
                 : null;
             var previousInstanceId = selectedRuntimeComponent?.Instance.InstanceId;
+            var instanceNumbers = new Dictionary<string, int>(StringComparer.Ordinal);
             var choices = snapshot?.Instances.Select(instance =>
             {
+                var instanceNumber = instanceNumbers.GetValueOrDefault(instance.ComponentId) + 1;
+                instanceNumbers[instance.ComponentId] = instanceNumber;
+                var instanceLabel = L("instanceNumber", instanceNumber);
                 var item = items.FirstOrDefault(candidate => candidate.Role == "component" && candidate.BapId == instance.ComponentId &&
                     (instance.SourceKey is null || candidate.Key == instance.SourceKey));
                 return new RuntimeComponentChoice(snapshot, instance, item,
-                    item?.Title ?? instance.ComponentId, instance.InstanceId,
-                    RuntimeStateText(instance.State) + " · " + instance.InstanceId, LoadPreview(item?.PreviewPath),
+                    item?.Title ?? instance.ComponentId, instance.InstanceId, instanceLabel,
+                    RuntimeStateText(instance.State) + " · " + instanceLabel, LoadPreview(item?.PreviewPath),
                     item?.PreviewPath is null ? L("noPreview") : "");
             }).ToArray() ?? [];
             DesktopComponentsList.ItemsSource = choices;
@@ -615,15 +619,19 @@ public partial class MainWindow : Window
         try
         {
             SelectedComponents.SelectedItem = null;
+            var instanceNumbers = new Dictionary<string, int>(StringComparer.Ordinal);
             SelectedComponents.ItemsSource = (SelectedPreset?.Components ?? [])
                 .Select(component =>
                 {
+                    var instanceNumber = instanceNumbers.GetValueOrDefault(component.ComponentId) + 1;
+                    instanceNumbers[component.ComponentId] = instanceNumber;
+                    var instanceLabel = L("instanceNumber", instanceNumber);
                     var item = items.FirstOrDefault(candidate => candidate.BapId == component.ComponentId &&
                         (component.SourceKey is null || candidate.Key == component.SourceKey));
                     return new ComponentChoice(component,
                         item?.Title ?? component.ComponentId,
                         item is null ? L("missing") : L(item.SourceKind),
-                        $"{(item is null ? L("missing") : L(item.Status))} · {L("instance")}: {component.InstanceId}",
+                        $"{(item is null ? L("missing") : L(item.Status))} · {instanceLabel}", instanceLabel,
                         LoadPreview(item?.PreviewPath), item?.PreviewPath is null ? L("noPreview") : "");
                 }).ToArray();
             SelectedComponents.SelectedItem = SelectedComponents.Items.Cast<ComponentChoice>()
@@ -905,8 +913,8 @@ public partial class MainWindow : Window
             }
 
             PropertyHint.Text = runtimeMode
-                ? $"{item.Title} · {runtimeComponent!.Instance.InstanceId}\n{L("runtimePropertiesHint")}"
-                : $"{item.Title} · values for this instance in the selected preset";
+                ? $"{item.Title} · {runtimeComponent!.InstanceLabel}\n{L("runtimePropertiesHint")}"
+                : $"{item.Title} · {(SelectedComponents.SelectedItem as ComponentChoice)?.InstanceLabel} · values for this instance in the selected preset";
             var effectiveValues = definitions.ToDictionary(definition => definition.Key,
                 definition => config is not null && config.TryGetValue(definition.Key, out var configured) &&
                     WallpaperPropertyReader.IsValidValue(definition, configured) ? configured : definition.DefaultValue,
@@ -1683,11 +1691,11 @@ public partial class MainWindow : Window
     private sealed record CatalogEntry(InstalledItem Item, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
     private sealed record PresetChoice(ComponentPreset Preset, string DisabledLabel)
     { public override string ToString() => Preset.Enabled ? Preset.Name : $"{Preset.Name} ({DisabledLabel})"; }
-    private sealed record ComponentChoice(PresetComponent Component, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
+    private sealed record ComponentChoice(PresetComponent Component, string Title, string Source, string Summary, string InstanceLabel, ImageSource? Preview, string NoPreview);
     private static bool IsUnverifiedHost(InstalledItem item) => item.BapId is null || item.Status != "valid";
     private sealed record PresetHostChoice(string? HostKey, string Title, string Source, string Summary, ImageSource? Preview, string NoPreview, bool IsGlobal, bool IsCurrent = false);
     private sealed record RuntimeComponentChoice(RuntimeHostSnapshot Snapshot, RuntimeComponentInstance Instance, InstalledItem? Item,
-        string Title, string Source, string Summary, ImageSource? Preview, string NoPreview);
+        string Title, string Source, string InstanceLabel, string Summary, ImageSource? Preview, string NoPreview);
     private sealed record PropertyEditContext(string Scope, string OwnerKey, string? InstanceId,
         WallpaperPropertyDefinition Definition, string? SessionId = null);
     private sealed record LayoutEditContext(string InstanceId, string Field, string? SessionId = null);

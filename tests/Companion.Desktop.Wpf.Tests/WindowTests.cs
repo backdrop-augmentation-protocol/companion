@@ -259,6 +259,12 @@ public sealed class WindowTests
                 window.UpdateLayout();
                 Assert.Equal(2, window.SelectedComponents.Items.Count);
                 Assert.Equal(0, window.SelectedComponents.SelectedIndex);
+                var presetComponentSummaries = window.SelectedComponents.Items.Cast<object>()
+                    .Select(choice => choice.GetType().GetProperty("Summary")?.GetValue(choice)?.ToString()).ToArray();
+                Assert.Contains("Instance 1", presetComponentSummaries[0]);
+                Assert.Contains("Instance 2", presetComponentSummaries[1]);
+                Assert.DoesNotContain("instance-a", string.Join(" ", presetComponentSummaries));
+                Assert.DoesNotContain("instance-b", string.Join(" ", presetComponentSummaries));
                 Assert.False(window.PropertyScrollViewer.IsVisible);
                 var runtimeConfig = System.Text.Json.JsonDocument.Parse("""{"mode":"two","appearance":"custom"}""").RootElement
                     .EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
@@ -286,6 +292,10 @@ public sealed class WindowTests
                 Assert.Equal(Visibility.Visible, window.InstancePropertyPanel.Visibility);
                 window.DesktopComponentsList.SelectedIndex = 0;
                 window.UpdateLayout();
+                var runtimeChoice = window.DesktopComponentsList.Items[0]!;
+                Assert.Equal("Instance 1", runtimeChoice.GetType().GetProperty("InstanceLabel")?.GetValue(runtimeChoice));
+                Assert.DoesNotContain("instance-a", runtimeChoice.GetType().GetProperty("Summary")?.GetValue(runtimeChoice)?.ToString());
+                Assert.Contains("Instance 1", window.PropertyHint.Text);
                 Assert.True(window.InstancePropertyPanel.Children.Count > 0, window.PropertyHint.Text);
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.TextBlock>(), label => label.Text == "Color scheme");
                 Assert.Contains(window.InstancePropertyPanel.Children.OfType<System.Windows.Controls.Button>(), button => button.ToolTip?.ToString() == "Choose color");

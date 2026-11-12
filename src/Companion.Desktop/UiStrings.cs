@@ -12,6 +12,7 @@ internal static class UiStrings
         ["desktopWaiting"] = ("Waiting for the Host to report its live component inventory.", "\u6b63\u5728\u7b49\u5f85\u5bbf\u4e3b\u62a5\u544a\u5b9e\u65f6\u7ec4\u4ef6\u5217\u8868\u3002"),
         ["desktopNoComponents"] = ("No components are currently mounted.", "\u5f53\u524d\u6ca1\u6709\u5df2\u6302\u8f7d\u7684\u7ec4\u4ef6\u3002"),
         ["runtimePropertiesHint"] = ("Live values for this running instance. Changes do not modify a preset.", "\u6b64\u5b9e\u4f8b\u7684\u5b9e\u65f6\u5c5e\u6027\u3002\u4fee\u6539\u4e0d\u4f1a\u5f71\u54cd\u9884\u8bbe\u3002"),
+        ["instanceNumber"] = ("Instance {0}", "\u5b9e\u4f8b {0}"),
         ["componentProperties"] = ("Component properties", "\u7ec4\u4ef6\u5c5e\u6027"),
         ["hostProperties"] = ("Host properties", "\u5bbf\u4e3b\u5c5e\u6027"),
         ["appSubtitle"] = ("Wallpaper Manager", "壁纸管理器"),
