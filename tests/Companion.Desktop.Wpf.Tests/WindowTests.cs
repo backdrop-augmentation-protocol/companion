@@ -56,6 +56,25 @@ public sealed class WindowTests
                         : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<profile><steamID>Creator Name</steamID></profile>", Encoding.UTF8, "application/xml") }));
                 var window = new MainWindow(log, 4312, settings, creatorLookup: new SteamWorkshopCreatorLookup(creatorHttpClient), presetStore: presetStore);
                 window.Show();
+                foreach (var choice in new object[]
+                {
+                    new LayoutDisplayChoice("automatic", "Automatic"),
+                    new PropertyDisplayChoice("focus", "Focus")
+                })
+                {
+                    var combo = new System.Windows.Controls.ComboBox
+                    {
+                        Style = (System.Windows.Style)window.FindResource(typeof(System.Windows.Controls.ComboBox)),
+                        DisplayMemberPath = "Label",
+                        ItemsSource = new[] { choice },
+                        SelectedIndex = 0
+                    };
+                    Assert.True(combo.ApplyTemplate());
+                    var selectedValuePresenter = Assert.IsType<System.Windows.Controls.ContentPresenter>(
+                        combo.Template.FindName("ContentSite", combo));
+                    Assert.Same(combo.ItemTemplateSelector, selectedValuePresenter.ContentTemplateSelector);
+                    Assert.NotNull(selectedValuePresenter.ContentTemplateSelector);
+                }
                 var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(window);
                 Assert.NotNull(chrome);
                 Assert.Equal(42, chrome.CaptionHeight);
@@ -431,4 +450,7 @@ public sealed class WindowTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(respond(request));
     }
+
+    private sealed record LayoutDisplayChoice(string Value, string Label);
+    private sealed record PropertyDisplayChoice(string Value, string Label);
 }
