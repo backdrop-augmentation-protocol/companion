@@ -220,6 +220,9 @@ public sealed class CliEndToEndTests
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "add", "global", componentKey, "clock-global"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "move", "e2e", "clock-b", "0"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "component", "set-enabled", "e2e", "clock-b", "false"], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "set-property", "e2e", "clock-a", "caption", "\"Desk\""], server.PipeName)).ExitCode);
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "set-layout", "e2e", "clock-a",
+            "{\"mode\":\"manual\",\"anchor\":\"top-left\",\"x\":0.12,\"y\":0.1,\"width\":0.3,\"height\":0.2,\"scale\":1,\"rotation\":0,\"opacity\":1,\"zIndex\":4,\"locked\":false}"], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "host", "add", "e2e", hostKey], server.PipeName)).ExitCode);
         Assert.Equal(0, (await RunCliAsync(["preset", "host", "add", "higher", hostKey], server.PipeName)).ExitCode);
         var deniedUnverified = await RunCliAsync(["preset", "host", "add", "higher", unverifiedHostKey], server.PipeName);
@@ -262,6 +265,9 @@ public sealed class CliEndToEndTests
             Assert.Equal("clock-b", components[0].GetProperty("instanceId").GetString());
             Assert.False(components[0].GetProperty("enabled").GetBoolean());
             Assert.Equal("clock-a", components[1].GetProperty("instanceId").GetString());
+            Assert.Equal("Desk", components[1].GetProperty("config").GetProperty("caption").GetString());
+            Assert.Equal(0.12, components[1].GetProperty("layout").GetProperty("x").GetDouble());
+            Assert.Equal(4, components[1].GetProperty("layout").GetProperty("zIndex").GetInt32());
             Assert.Equal("global", presets[0].GetProperty("id").GetString());
             Assert.True(e2ePreset.GetProperty("enabled").GetBoolean());
             var hostBindings = changedJson.RootElement.GetProperty("hostPresetIds").GetProperty(hostKey);
@@ -358,6 +364,11 @@ public sealed class CliEndToEndTests
             var directory = Path.Combine(Path.GetTempPath(), $"bapc-cli-e2e-{Guid.NewGuid():N}");
             var components = Path.Combine(directory, "components", "clock");
             Directory.CreateDirectory(components);
+            await File.WriteAllTextAsync(Path.Combine(components, "project.json"), """
+                { "type": "web", "title": "Test clock", "general": { "properties": {
+                  "caption": { "type": "textinput", "text": "Caption", "value": "Clock" }
+                } } }
+                """);
             var host = Path.Combine(directory, "components", "host");
             Directory.CreateDirectory(host);
             await File.WriteAllTextAsync(Path.Combine(host, "project.json"), """{"type":"web","title":"Verified test host"}""");

@@ -266,6 +266,45 @@ public static class PresetSelection
         return state with { Presets = presets };
     }
 
+    public static PresetState SetComponentProperty(PresetState state, string presetId, string instanceId,
+        string propertyKey, JsonElement value)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (string.IsNullOrWhiteSpace(presetId)) throw new ArgumentException("A preset ID is required.", nameof(presetId));
+        if (string.IsNullOrWhiteSpace(instanceId)) throw new ArgumentException("A component instance ID is required.", nameof(instanceId));
+        if (string.IsNullOrWhiteSpace(propertyKey) || propertyKey.Length > 128) throw new ArgumentException("A valid component property key is required.", nameof(propertyKey));
+        var presetIndex = state.Presets.ToList().FindIndex(preset => preset.Id == presetId);
+        if (presetIndex < 0) throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        var preset = state.Presets[presetIndex];
+        var instanceIndex = preset.Components.ToList().FindIndex(component => component.InstanceId == instanceId);
+        if (instanceIndex < 0) throw new KeyNotFoundException($"Component instance '{instanceId}' was not found in preset '{presetId}'.");
+        var components = preset.Components.ToArray();
+        var current = components[instanceIndex];
+        var config = new Dictionary<string, JsonElement>(current.Config ?? [], StringComparer.Ordinal)
+        {
+            [propertyKey] = value.Clone()
+        };
+        components[instanceIndex] = current with { Config = config };
+        return ReplacePreset(state, presetIndex, preset with { Components = components });
+    }
+
+    public static PresetState SetComponentLayout(PresetState state, string presetId, string instanceId, ComponentLayout layout)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(layout);
+        if (string.IsNullOrWhiteSpace(presetId)) throw new ArgumentException("A preset ID is required.", nameof(presetId));
+        if (string.IsNullOrWhiteSpace(instanceId)) throw new ArgumentException("A component instance ID is required.", nameof(instanceId));
+        if (!ValidateLayout(layout)) throw new ArgumentException("Component layout is invalid.", nameof(layout));
+        var presetIndex = state.Presets.ToList().FindIndex(preset => preset.Id == presetId);
+        if (presetIndex < 0) throw new KeyNotFoundException($"Preset was not found: {presetId}");
+        var preset = state.Presets[presetIndex];
+        var instanceIndex = preset.Components.ToList().FindIndex(component => component.InstanceId == instanceId);
+        if (instanceIndex < 0) throw new KeyNotFoundException($"Component instance '{instanceId}' was not found in preset '{presetId}'.");
+        var components = preset.Components.ToArray();
+        components[instanceIndex] = components[instanceIndex] with { Layout = layout };
+        return ReplacePreset(state, presetIndex, preset with { Components = components });
+    }
+
     public static IReadOnlyList<string> ValidateInstanceLimits(ComponentPreset preset, IReadOnlyList<InstalledItem> items)
     {
         var errors = new List<string>();

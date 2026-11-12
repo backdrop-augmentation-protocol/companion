@@ -156,6 +156,33 @@ internal sealed class AuthorizationPipeServer(
                 case "preset-component-remove" when ValidText(request.PresetId, 128) && ValidText(request.InstanceId, 128):
                     updated = PresetSelection.RemoveComponent(state, request.PresetId!, request.InstanceId!);
                     break;
+                case "preset-component-property" when ValidText(request.PresetId, 128) && ValidText(request.InstanceId, 128) &&
+                                                        ValidText(request.PropertyKey, 128) && request.PropertyValue is not null:
+                {
+                    var preset = state.Presets.FirstOrDefault(candidate => candidate.Id == request.PresetId);
+                    var instance = preset?.Components.FirstOrDefault(candidate => candidate.InstanceId == request.InstanceId);
+                    if (instance is null) return new(false, [], $"component instance was not found in preset: {request.InstanceId}");
+                    var catalogItems = await catalog.DiscoverAsync(cancellationToken);
+                    var component = catalogItems.FirstOrDefault(item => item.Role == "component" && item.BapId == instance.ComponentId &&
+                        (instance.SourceKey is null || item.Key == instance.SourceKey));
+                    if (component is null) return new(false, [], $"installed component was not found: {instance.ComponentId}");
+                    var definitions = component.Properties ?? [];
+                    var definition = definitions.FirstOrDefault(property => property.Key == request.PropertyKey);
+                    if (definition is null) return new(false, [], $"component property was not found: {request.PropertyKey}");
+                    if (!definition.ConditionSupported || !WallpaperPropertyReader.IsValidValue(definition, request.PropertyValue!.Value))
+                        return new(false, [], $"component property value is invalid or not currently editable: {request.PropertyKey}");
+                    var config = instance.Config ?? [];
+                    var effectiveValues = definitions.ToDictionary(property => property.Key,
+                        property => config.TryGetValue(property.Key, out var configured) && WallpaperPropertyReader.IsValidValue(property, configured)
+                            ? configured : property.DefaultValue, StringComparer.Ordinal);
+                    if (!WallpaperPropertyReader.IsConditionMet(definition, effectiveValues))
+                        return new(false, [], $"component property is currently hidden by its display condition: {request.PropertyKey}");
+                    updated = PresetSelection.SetComponentProperty(state, request.PresetId!, request.InstanceId!, request.PropertyKey!, request.PropertyValue.Value);
+                    break;
+                }
+                case "preset-component-layout" when ValidText(request.PresetId, 128) && ValidText(request.InstanceId, 128) && request.Layout is not null:
+                    updated = PresetSelection.SetComponentLayout(state, request.PresetId!, request.InstanceId!, request.Layout);
+                    break;
                 case "preset-component-move" when ValidText(request.PresetId, 128) && ValidText(request.InstanceId, 128) && request.DestinationIndex is >= 0 and <= 10000:
                     updated = PresetSelection.MoveComponent(state, request.PresetId!, request.InstanceId!, request.DestinationIndex.Value);
                     break;

@@ -37,6 +37,16 @@ public sealed class HostAuthorizationClient(string pipeName = CompanionControlCh
         return response.Presets ?? await GetPresetsAsync(cancellationToken);
     }
 
+    public async Task<PresetState> SetPresetComponentPropertyAsync(string presetId, string instanceId,
+        string propertyKey, JsonElement value, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-component-property", PresetId: presetId, InstanceId: instanceId,
+            PropertyKey: propertyKey, PropertyValue: value.Clone()), cancellationToken);
+
+    public async Task<PresetState> SetPresetComponentLayoutAsync(string presetId, string instanceId,
+        ComponentLayout layout, CancellationToken cancellationToken = default) =>
+        await SendPresetMutationAsync(new("preset-component-layout", PresetId: presetId, InstanceId: instanceId,
+            Layout: layout), cancellationToken);
+
     public async Task<PresetState> CreatePresetAsync(string presetId, string name, CancellationToken cancellationToken = default) =>
         await SendPresetMutationAsync(new("preset-create", PresetId: presetId, Name: name), cancellationToken);
 

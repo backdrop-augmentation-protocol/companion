@@ -179,6 +179,23 @@ try
             Print(new { presetId, instanceId, enabled = updatedInstance.Enabled }, json, output);
             if (!json) Console.WriteLine($"Component instance {instanceId} in preset {presetId} is {(updatedInstance.Enabled ? "enabled" : "disabled")}.");
             return 0;
+        case ["preset", "component", "set-property", var propertyPresetId, var propertyPresetInstanceId, var presetPropertyKey, var presetPropertyValue]:
+            using (var parsedPresetValue = JsonDocument.Parse(presetPropertyValue))
+            {
+                var changedProperty = await client.SetPresetComponentPropertyAsync(propertyPresetId,
+                    propertyPresetInstanceId, presetPropertyKey, parsedPresetValue.RootElement);
+                Print(new { presetId = propertyPresetId, instanceId = propertyPresetInstanceId, propertyKey = presetPropertyKey,
+                    value = parsedPresetValue.RootElement.Clone() }, json, output);
+                if (!json) Console.WriteLine($"Set property {presetPropertyKey} for component instance {propertyPresetInstanceId} in preset {propertyPresetId}.");
+            }
+            return 0;
+        case ["preset", "component", "set-layout", var layoutPresetId, var layoutPresetInstanceId, var presetLayoutText]:
+            var presetLayout = JsonSerializer.Deserialize<ComponentLayout>(presetLayoutText, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                ?? throw new JsonException("Layout JSON must be an object.");
+            await client.SetPresetComponentLayoutAsync(layoutPresetId, layoutPresetInstanceId, presetLayout);
+            Print(new { presetId = layoutPresetId, instanceId = layoutPresetInstanceId, layout = presetLayout }, json, output);
+            if (!json) Console.WriteLine($"Set layout for component instance {layoutPresetInstanceId} in preset {layoutPresetId}.");
+            return 0;
         case ["preset", "create", var createId, ..] when command.Length > 3:
             var created = await client.CreatePresetAsync(createId, string.Join(' ', command.Skip(3)));
             Print(created, json, output);
@@ -362,6 +379,8 @@ static void PrintHelp()
     Console.WriteLine("  preset component remove <preset> <instance-id>");
     Console.WriteLine("  preset component move <preset> <instance-id> <zero-based-index>");
     Console.WriteLine("  preset component set-enabled <preset-id> <instance-id> <true|false>  Enable or disable one preset component instance");
+    Console.WriteLine("  preset component set-property <preset-id> <instance-id> <key> <json-value>  Set one declared component property");
+    Console.WriteLine("  preset component set-layout <preset-id> <instance-id> <layout-json>  Set one component instance layout");
     Console.WriteLine("  preset global set <preset-id|none>");
     Console.WriteLine("  authorization pending  List Host authorization requests awaiting a decision");
     Console.WriteLine("  authorization approve <session> --permission <name> [--permission <name>] [--remember]");
