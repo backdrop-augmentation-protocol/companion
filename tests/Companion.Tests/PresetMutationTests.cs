@@ -59,6 +59,23 @@ public sealed class PresetMutationTests
     }
 
     [Fact]
+    public async Task MultipleHostPresetBindingsAreReadFromCurrentArrayFormat()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"bap-preset-bindings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "presets.json");
+        await File.WriteAllTextAsync(path, """{"presets":[{"id":"first","name":"First","components":[],"layoutMode":"grid","grid":{"columns":2},"revision":0,"updatedAt":"2026-01-01T00:00:00Z","enabled":true},{"id":"second","name":"Second","components":[],"layoutMode":"grid","grid":{"columns":2},"revision":0,"updatedAt":"2026-01-01T00:00:00Z","enabled":true}],"globalPresetId":null,"hostPresetIds":{"local:host":["first","second"]}}""");
+        try
+        {
+            var state = await new JsonPresetStore(path).ReadAsync();
+
+            Assert.Equal(["first", "second"], state.HostPresetIds["local:host"]);
+            Assert.Empty(Directory.GetFiles(directory, "presets.json.pre-instance-migration-*.bak"));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void ComponentAddRemoveAndMovePreserveInstanceAndAutomaticOrder()
     {
         var state = State("daily");
