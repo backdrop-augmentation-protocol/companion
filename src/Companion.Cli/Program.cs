@@ -101,7 +101,8 @@ try
             Print(new { refreshed = true, runtimeHosts = refreshedRuntime }, json, output);
             if (!json) Console.WriteLine($"Desktop catalog refreshed; {refreshedRuntime.Count} Host runtime snapshot(s) available.");
             return 0;
-        case ["desktop", "component", "set-property", var propertySessionId, var propertyInstanceId, var propertyKey, var propertyValue]:
+        case ["desktop", "component", "set-property", var propertySessionId, var propertyInstanceId, var propertyKey, ..] when command.Length >= 7:
+            var propertyValue = await ReadJsonInputAsync(command, 6);
             var snapshots = await client.GetRuntimeSnapshotsAsync();
             var selectedRuntimeHost = snapshots.FirstOrDefault(host => host.SessionId == propertySessionId)
                 ?? throw new InvalidOperationException($"Runtime Host session was not found: {propertySessionId}");
@@ -125,7 +126,8 @@ try
                 if (!json) Console.WriteLine($"Runtime property {propertyKey} queued for component instance {propertyInstanceId}.");
             }
             return 0;
-        case ["desktop", "host", "set-property", var hostPropertyKey, var hostPropertyValue]:
+        case ["desktop", "host", "set-property", var hostPropertyKey, ..] when command.Length >= 5:
+            var hostPropertyValue = await ReadJsonInputAsync(command, 4);
             var desktopSettings = CreateDesktopSettings();
             var displayIndex = desktopSettings.DisplayIndex;
             using (var parsedHostValue = JsonDocument.Parse(hostPropertyValue))
@@ -135,18 +137,19 @@ try
                 if (!json) Console.WriteLine($"Applied Host property {receipt.PropertyKey} to {receipt.HostTitle} on display {receipt.MonitorIndex}.");
             }
             return 0;
-        case ["desktop", "set-config", var sessionId, var instanceId, var revisionText, var configText]:
+        case ["desktop", "set-config", var sessionId, var instanceId, var revisionText, ..] when command.Length >= 6:
             if (!long.TryParse(revisionText, out var revision) || revision < 1)
             {
                 Console.Error.WriteLine("Config revision must be a positive integer.");
                 return UsageError;
             }
-            var config = ParseConfig(configText);
+            var config = ParseConfig(await ReadJsonInputAsync(command, 5));
             await client.SetRuntimeConfigAsync(sessionId, instanceId, config, revision);
             Print(new { queued = true, sessionId, instanceId, revision }, json, output);
             if (!json) Console.WriteLine($"Runtime config revision {revision} queued for component instance {instanceId}; verify the Host-reported snapshot to confirm application.");
             return 0;
-        case ["desktop", "set-layout", var layoutSessionId, var layoutInstanceId, var layoutText]:
+        case ["desktop", "set-layout", var layoutSessionId, var layoutInstanceId, ..] when command.Length >= 5:
+            var layoutText = await ReadJsonInputAsync(command, 4);
             var layout = JsonSerializer.Deserialize<ComponentLayout>(layoutText, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                 ?? throw new JsonException("Layout JSON must be an object.");
             await client.SetRuntimeLayoutAsync(layoutSessionId, layoutInstanceId, layout);
@@ -179,7 +182,8 @@ try
             Print(new { presetId, instanceId, enabled = updatedInstance.Enabled }, json, output);
             if (!json) Console.WriteLine($"Component instance {instanceId} in preset {presetId} is {(updatedInstance.Enabled ? "enabled" : "disabled")}.");
             return 0;
-        case ["preset", "component", "set-property", var propertyPresetId, var propertyPresetInstanceId, var presetPropertyKey, var presetPropertyValue]:
+        case ["preset", "component", "set-property", var propertyPresetId, var propertyPresetInstanceId, var presetPropertyKey, ..] when command.Length >= 7:
+            var presetPropertyValue = await ReadJsonInputAsync(command, 6);
             using (var parsedPresetValue = JsonDocument.Parse(presetPropertyValue))
             {
                 var changedProperty = await client.SetPresetComponentPropertyAsync(propertyPresetId,
@@ -189,7 +193,8 @@ try
                 if (!json) Console.WriteLine($"Set property {presetPropertyKey} for component instance {propertyPresetInstanceId} in preset {propertyPresetId}.");
             }
             return 0;
-        case ["preset", "component", "set-layout", var layoutPresetId, var layoutPresetInstanceId, var presetLayoutText]:
+        case ["preset", "component", "set-layout", var layoutPresetId, var layoutPresetInstanceId, ..] when command.Length >= 6:
+            var presetLayoutText = await ReadJsonInputAsync(command, 5);
             var presetLayout = JsonSerializer.Deserialize<ComponentLayout>(presetLayoutText, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                 ?? throw new JsonException("Layout JSON must be an object.");
             await client.SetPresetComponentLayoutAsync(layoutPresetId, layoutPresetInstanceId, presetLayout);
@@ -359,10 +364,10 @@ static void PrintHelp()
     Console.WriteLine("  host composition <key>  Show the effective composition for an installed Host catalog key");
     Console.WriteLine("  desktop status    Show live Host and component snapshots");
     Console.WriteLine("  desktop refresh   Refresh installed projects and read live runtime snapshots");
-    Console.WriteLine("  desktop component set-property <session> <instance> <key> <json-value>  Set one live component property");
-    Console.WriteLine("  desktop host set-property <key> <json-value>  Apply and save one property for the active Host");
-    Console.WriteLine("  desktop set-config <session> <instance> <revision> <json-object>  Queue runtime config");
-    Console.WriteLine("  desktop set-layout <session> <instance> <layout-json>  Queue runtime layout");
+    Console.WriteLine("  desktop component set-property <session> <instance> <key> <json> | --input-file <path> | --input -");
+    Console.WriteLine("  desktop host set-property <key> <json> | --input-file <path> | --input -");
+    Console.WriteLine("  desktop set-config <session> <instance> <revision> <json> | --input-file <path> | --input -");
+    Console.WriteLine("  desktop set-layout <session> <instance> <json> | --input-file <path> | --input -");
     Console.WriteLine("  settings show     Show non-language application settings");
     Console.WriteLine("  settings startup get|set <true|false>  Read or change Windows startup behavior");
     Console.WriteLine("  settings display get|set <index>  Read or change the selected display (zero-based)");
@@ -379,8 +384,8 @@ static void PrintHelp()
     Console.WriteLine("  preset component remove <preset> <instance-id>");
     Console.WriteLine("  preset component move <preset> <instance-id> <zero-based-index>");
     Console.WriteLine("  preset component set-enabled <preset-id> <instance-id> <true|false>  Enable or disable one preset component instance");
-    Console.WriteLine("  preset component set-property <preset-id> <instance-id> <key> <json-value>  Set one declared component property");
-    Console.WriteLine("  preset component set-layout <preset-id> <instance-id> <layout-json>  Set one component instance layout");
+    Console.WriteLine("  preset component set-property <preset-id> <instance-id> <key> <json> | --input-file <path> | --input -");
+    Console.WriteLine("  preset component set-layout <preset-id> <instance-id> <json> | --input-file <path> | --input -");
     Console.WriteLine("  preset global set <preset-id|none>");
     Console.WriteLine("  authorization pending  List Host authorization requests awaiting a decision");
     Console.WriteLine("  authorization approve <session> --permission <name> [--permission <name>] [--remember]");
@@ -389,6 +394,7 @@ static void PrintHelp()
     Console.WriteLine("  authorization revoke <host-id>  Revoke remembered trust and active sessions");
     Console.WriteLine();
     Console.WriteLine("Use --json for machine-readable output. Data commands start the service when needed.");
+    Console.WriteLine("For JSON payloads, use --input-file <path> or --input - (read from stdin) when inline shell quoting is unreliable.");
 }
 
 static DesktopSettings CreateDesktopSettings() => new(
@@ -561,6 +567,54 @@ static Dictionary<string, JsonElement> ParseConfig(string json)
         config[property.Name] = property.Value.Clone();
     }
     return config;
+}
+
+static async Task<string> ReadJsonInputAsync(string[] command, int inputIndex)
+{
+    const int maximumCharacters = 32 * 1024;
+    var remaining = command.Length - inputIndex;
+    if (remaining == 1)
+    {
+        if (command[inputIndex].Length > maximumCharacters)
+            throw new JsonException("JSON input exceeds the 32 KiB character limit.");
+        return command[inputIndex];
+    }
+
+    if (remaining == 2 && command[inputIndex] == "--input-file" && !string.IsNullOrWhiteSpace(command[inputIndex + 1]))
+    {
+        var path = command[inputIndex + 1];
+        try
+        {
+            var file = new FileInfo(path);
+            if (file.Length > maximumCharacters * 4L)
+                throw new JsonException("JSON input file exceeds the 32 KiB character limit.");
+            var content = await File.ReadAllTextAsync(path);
+            if (content.Length > maximumCharacters)
+                throw new JsonException("JSON input file exceeds the 32 KiB character limit.");
+            return content;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw new ArgumentException($"Could not read JSON input file '{path}': {error.Message}");
+        }
+    }
+
+    if (remaining == 2 && command[inputIndex] == "--input" && command[inputIndex + 1] == "-")
+    {
+        var content = new System.Text.StringBuilder();
+        var buffer = new char[4096];
+        while (true)
+        {
+            var read = await Console.In.ReadAsync(buffer.AsMemory());
+            if (read == 0) break;
+            if (content.Length + read > maximumCharacters)
+                throw new JsonException("JSON input from stdin exceeds the 32 KiB character limit.");
+            content.Append(buffer, 0, read);
+        }
+        return content.ToString();
+    }
+
+    throw new ArgumentException("Provide exactly one JSON payload, --input-file <path>, or --input -.");
 }
 
 static int ParseMonitorIndex(string[] options)

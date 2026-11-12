@@ -290,6 +290,61 @@ public sealed class CliEndToEndTests
         Assert.Equal(JsonValueKind.Null, finalJson.RootElement.GetProperty("globalPresetId").ValueKind);
     }
 
+    [Fact]
+    public async Task WindowsPowerShell51CanSetPresetLayoutFromJsonFile()
+    {
+        await using var server = await IsolatedCompanionServer.StartAsync();
+        Assert.Equal(0, (await RunCliAsync(["preset", "create", "ps51", "PowerShell"], server.PipeName)).ExitCode);
+        var catalog = await RunCliAsync(["catalog", "list", "--json"], server.PipeName);
+        using var catalogJson = JsonDocument.Parse(catalog.StandardOutput);
+        var componentKey = catalogJson.RootElement.EnumerateArray().Single(item => item.GetProperty("title").GetString() == "Test clock")
+            .GetProperty("key").GetString()!;
+        Assert.Equal(0, (await RunCliAsync(["preset", "component", "add", "ps51", componentKey, "clock-ps51"], server.PipeName)).ExitCode);
+
+        var layoutPath = Path.Combine(Path.GetTempPath(), $"bapc-layout-{Guid.NewGuid():N}.json");
+        const string layoutJson = "{\"mode\":\"manual\",\"anchor\":\"center\",\"x\":0.31,\"y\":0.42,\"width\":0.3,\"height\":0.4,\"scale\":1,\"rotation\":0,\"opacity\":1,\"zIndex\":2,\"locked\":false}";
+        await File.WriteAllTextAsync(layoutPath, layoutJson);
+        try
+        {
+            var exe = Path.Combine(Path.GetDirectoryName(CliAssemblyPath())!, "bapc.exe");
+            var escapedExe = exe.Replace("'", "''", StringComparison.Ordinal);
+            var escapedPath = layoutPath.Replace("'", "''", StringComparison.Ordinal);
+            var script = $"& '{escapedExe}' preset component set-layout ps51 clock-ps51 --input-file '{escapedPath}' --json; exit $LASTEXITCODE";
+            var result = await RunWindowsPowerShellAsync(script, server.PipeName);
+
+            Assert.True(result.ExitCode == 0, $"PowerShell invocation failed. stdout: {result.StandardOutput}\nstderr: {result.StandardError}");
+            using var resultJson = JsonDocument.Parse(result.StandardOutput);
+            Assert.Equal(0.31, resultJson.RootElement.GetProperty("layout").GetProperty("x").GetDouble());
+
+            var stored = await RunCliAsync(["preset", "list", "--json"], server.PipeName);
+            using var storedJson = JsonDocument.Parse(stored.StandardOutput);
+            var instance = storedJson.RootElement.GetProperty("presets")[0].GetProperty("components")[0];
+            Assert.Equal(0.31, instance.GetProperty("layout").GetProperty("x").GetDouble());
+        }
+        finally
+        {
+            File.Delete(layoutPath);
+        }
+    }
+
+    [Fact]
+    public async Task RuntimeLayoutCanBeReadFromStandardInput()
+    {
+        var service = new FakeControlService(
+            ("service-status", ServiceStatus),
+            ("runtime-layout", """{"success":true,"requests":[]}"""));
+        const string layoutJson = "{\"mode\":\"manual\",\"anchor\":\"center\",\"x\":0.22,\"y\":0.33,\"width\":0.3,\"height\":0.4,\"scale\":1,\"rotation\":0,\"opacity\":1,\"zIndex\":0,\"locked\":false}";
+
+        var run = RunCliAsync(["desktop", "set-layout", "session-1", "clock-1", "--input", "-"], service.PipeName, layoutJson);
+        var requests = service.ServeAsync(2);
+        var result = await run;
+        var observed = await requests;
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(new[] { "service-status", "runtime-layout" }, observed.Select(Operation));
+        Assert.Equal(0.22, observed[1].GetProperty("layout").GetProperty("x").GetDouble());
+    }
+
     private const string ServiceStatus = """{"success":true,"requests":[],"service":{"processId":42,"version":"0.2.0","startedAt":"2026-01-01T00:00:00Z"}}""";
     private const string EmptyPresetMutationResponse = """{"success":true,"requests":[],"presets":{"presets":[],"globalPresetId":null,"hostPresetIds":{},"hostConfigs":{}}}""";
 
@@ -300,7 +355,7 @@ public sealed class CliEndToEndTests
 
     private static async Task<CliResult> RunCliAsync(params string[] arguments) => await RunCliAsync(arguments, null);
 
-    private static async Task<CliResult> RunCliAsync(string[] arguments, string? pipeName)
+    private static async Task<CliResult> RunCliAsync(string[] arguments, string? pipeName, string? standardInput = null)
     {
         var assembly = CliAssemblyPath();
         Assert.True(File.Exists(assembly), $"CLI assembly was not built: {assembly}");
@@ -309,6 +364,7 @@ public sealed class CliEndToEndTests
             WorkingDirectory = Path.GetDirectoryName(assembly)!,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = standardInput is not null,
             UseShellExecute = false,
             CreateNoWindow = true
         };
@@ -317,6 +373,35 @@ public sealed class CliEndToEndTests
         if (pipeName is not null) start.Environment["BAPC_CONTROL_PIPE"] = pipeName;
 
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start the BAPC CLI test process.");
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        if (standardInput is not null)
+        {
+            await process.StandardInput.WriteAsync(standardInput);
+            process.StandardInput.Close();
+        }
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+        await process.WaitForExitAsync(timeout.Token);
+        return new(process.ExitCode, await stdout, await stderr);
+    }
+
+    private static async Task<CliResult> RunWindowsPowerShellAsync(string script, string pipeName)
+    {
+        var start = new ProcessStartInfo("powershell.exe")
+        {
+            WorkingDirectory = Path.GetDirectoryName(CliAssemblyPath())!,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        start.ArgumentList.Add("-NoProfile");
+        start.ArgumentList.Add("-NonInteractive");
+        start.ArgumentList.Add("-Command");
+        start.ArgumentList.Add(script);
+        start.Environment["BAPC_CONTROL_PIPE"] = pipeName;
+
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Windows PowerShell 5.1.");
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
