@@ -154,15 +154,16 @@ can point to its installation directory.
 
 ## Portable Windows package
 
-Create a framework-dependent `win-x64` package:
+Create a self-contained `win-x64` package:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.ps1
 ```
 
-The package uses the Fluent WPF front end. Add `-LegacyUi` to package the
-previous WinForms front end instead, or `-SelfContained` for a package that
-includes the .NET runtime. The output
+The package uses the Fluent WPF front end and includes the .NET runtime and
+ASP.NET Core runtime required by the desktop app and service. No separate .NET
+runtime installation is required. Add `-LegacyUi` to package the previous
+WinForms front end instead. The output
 contains `start-companion.cmd`; double-click it to start the desktop app and
 service on `http://127.0.0.1:4311`. Closing the window leaves the tray app
 running; use the tray Exit command to stop it. Pass another port as the

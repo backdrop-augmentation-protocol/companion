@@ -1,6 +1,5 @@
 param(
     [string]$Runtime = 'win-x64',
-    [switch]$SelfContained,
     [switch]$LegacyUi,
     [string]$Output = ''
 )
@@ -21,15 +20,15 @@ New-Item -ItemType Directory -Path $destination -Force | Out-Null
 
 $serverDestination = Join-Path $destination 'server'
 New-Item -ItemType Directory -Path $serverDestination -Force | Out-Null
-$publishArgs = @('publish', $serverProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $serverDestination, '--self-contained', ($SelfContained.IsPresent.ToString().ToLowerInvariant()))
+$publishArgs = @('publish', $serverProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $serverDestination, '--self-contained', 'true')
 & dotnet @publishArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$desktopArgs = @('publish', $desktopProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $destination, '--self-contained', ($SelfContained.IsPresent.ToString().ToLowerInvariant()))
+$desktopArgs = @('publish', $desktopProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $destination, '--self-contained', 'true')
 & dotnet @desktopArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$cliArgs = @('publish', $cliProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $destination, '--self-contained', ($SelfContained.IsPresent.ToString().ToLowerInvariant()))
+$cliArgs = @('publish', $cliProject, '--configuration', 'Release', '--runtime', $Runtime, '--output', $destination, '--self-contained', 'true')
 & dotnet @cliArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
