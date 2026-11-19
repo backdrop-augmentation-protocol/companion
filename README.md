@@ -1,6 +1,6 @@
 # BAP Companion
 
-Companion release candidate version 0.2.1. The Companion application version is
+Companion release candidate version 0.2.2. The Companion application version is
 independent from the BAP Core protocol version, which remains 0.1.0.
 
 [English](README.md) | [简体中文](README.zh-CN.md)

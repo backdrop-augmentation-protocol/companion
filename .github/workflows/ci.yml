@@ -18,3 +18,19 @@ jobs:
       - run: artifacts/ci-cli/bapc.exe --help
       - run: dotnet publish src/Companion.Server/Companion.Server.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/ci-server
       - run: dotnet publish src/Companion.Desktop.Wpf/Companion.Desktop.Wpf.csproj --configuration Release --runtime win-x64 --self-contained false --output artifacts/ci-desktop
+      - name: Build self-contained distribution package
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.ps1 -Output .\artifacts\ci-package
+      - name: Verify bundled runtime frameworks
+        shell: powershell
+        run: |
+          $checks = @(
+            @{ Path = '.\artifacts\ci-package\Bap.Companion.Desktop.runtimeconfig.json'; Framework = 'Microsoft.WindowsDesktop.App' },
+            @{ Path = '.\artifacts\ci-package\bapc.runtimeconfig.json'; Framework = 'Microsoft.NETCore.App' },
+            @{ Path = '.\artifacts\ci-package\server\Bap.Companion.Server.runtimeconfig.json'; Framework = 'Microsoft.AspNetCore.App' }
+          )
+          foreach ($check in $checks) {
+            $config = Get-Content -LiteralPath $check.Path -Raw | ConvertFrom-Json
+            if ($check.Framework -notin $config.runtimeOptions.includedFrameworks.name) {
+              throw "Expected bundled framework $($check.Framework) in $($check.Path)"
+            }
+          }

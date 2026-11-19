@@ -1,6 +1,6 @@
 # BAP Companion
 
-Companion 0.2.1 候选版本。伴侣软件版本与 BAP Core 协议版本相互独立；Core
+Companion 0.2.2 候选版本。伴侣软件版本与 BAP Core 协议版本相互独立；Core
 协议版本仍为 0.1.0。
 
 [English](README.md) | 简体中文
@@ -81,15 +81,13 @@ dotnet run --project src/Companion.Server --urls http://127.0.0.1:4311
 
 ## 便携式 Windows 软件包
 
-创建一个依赖目标机 .NET 运行时的 `win-x64` 软件包：
+创建一个自包含的 `win-x64` 软件包：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish-companion.ps1
 ```
 
-默认打包采用 Fluent 风格的 WPF 前台；如需打包原有 WinForms 前台，可添加 `-LegacyUi`。
-
-生成的 win-x64 软件包为自包含发布，内含桌面应用和服务所需的 .NET 与 ASP.NET Core 运行环境，无需用户单独安装。可添加 `-LegacyUi` 参数改为打包旧版 WinForms 界面。输出目录中包含 `start-companion.cmd`，双击即可启动桌面应用和服务，默认地址为 `http://127.0.0.1:4311`。关闭窗口会保留托盘进程；通过托盘菜单“Exit”才会退出。如需更换端口，可将端口号作为脚本的第一个参数传入。
+默认打包采用 Fluent 风格的 WPF 前台；如需打包原有 WinForms 前台，可添加 `-LegacyUi`。软件包内含桌面应用和服务所需的 .NET 与 ASP.NET Core 运行环境，无需用户单独安装。输出目录中包含 `start-companion.cmd`，双击即可启动桌面应用和服务，默认地址为 `http://127.0.0.1:4311`。关闭窗口会保留托盘进程；通过托盘菜单“Exit”才会退出。如需更换端口，可将端口号作为脚本的第一个参数传入。
 
 ## 当前用户安装
 
