@@ -318,11 +318,12 @@ static async Task EnsureServiceAsync(HostAuthorizationClient client)
     {
         WorkingDirectory = Path.GetDirectoryName(path)!,
         UseShellExecute = false,
-        CreateNoWindow = true
+        // Keep hostfxr and early startup errors visible in the invoking console.
+        CreateNoWindow = false
     };
     start.ArgumentList.Add("--urls");
     start.ArgumentList.Add("http://127.0.0.1:4311");
-    _ = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion service.");
+    using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion service.");
 
     var deadline = DateTimeOffset.UtcNow.AddSeconds(8);
     Exception? lastError = null;
@@ -337,9 +338,29 @@ static async Task EnsureServiceAsync(HostAuthorizationClient client)
         catch (Exception error) when (error is IOException or TimeoutException or InvalidDataException)
         {
             lastError = error;
+            if (process.HasExited)
+            {
+                var logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "BAP Companion", "logs", "server.log");
+                throw new IOException($"Companion Server exited during startup with code {process.ExitCode}. See the diagnostic log at {logPath}.", error);
+            }
         }
     }
-    throw new IOException("Companion service did not become ready within 8 seconds.", lastError);
+    var diagnosticPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "BAP Companion", "logs", "server.log");
+    if (!process.HasExited)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(2000);
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            Console.Error.WriteLine($"bapc: could not stop the unresponsive Companion Server process: {error.Message}");
+        }
+    }
+    throw new IOException($"Companion service did not become ready within 8 seconds. See the diagnostic log at {diagnosticPath}.", lastError);
 }
 
 static void Print<T>(T value, bool json, JsonSerializerOptions options)

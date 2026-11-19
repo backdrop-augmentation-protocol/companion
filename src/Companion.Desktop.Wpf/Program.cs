@@ -22,15 +22,81 @@ internal static class Program
             preview.Run(new MainWindow(previewLog, 4311, new DesktopSettings(synchronizeStartup: false)));
             return;
         }
-        using var singleInstance = new Mutex(true, @"Local\BAP.Companion.Desktop", out var firstInstance);
-        using var activation = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\BAP.Companion.Activate");
-        if (!firstInstance) { activation.Set(); return; }
+        using var log = new CompanionLog();
+        try
+        {
+            using var singleInstance = new Mutex(true, @"Local\BAP.Companion.Desktop", out var firstInstance);
+            using var activation = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\BAP.Companion.Activate");
+            if (!firstInstance) { activation.Set(); return; }
 
-        var application = CreateApplication();
-        application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        using var context = new CompanionLifetime(application, activation, args);
-        application.Run();
-        context.MarkRunLoopReturned();
+            var application = CreateApplication();
+            application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            using var context = new CompanionLifetime(application, activation, args, log);
+            application.Run();
+            context.MarkRunLoopReturned();
+        }
+        catch (Exception error)
+        {
+            log.Write("startup-error", error.ToString());
+            ShowStartupFailure(error, log.IsAvailable ? log.Path : string.Empty);
+            Environment.ExitCode = 1;
+        }
+    }
+
+    private static void ShowStartupFailure(Exception error, string logPath)
+    {
+        var window = new Window
+        {
+            Title = "BAP Companion could not start",
+            Width = 560,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.ToolWindow,
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(7, 20, 45)),
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(234, 243, 255)),
+            FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+            FontSize = 14,
+            Padding = new Thickness(24)
+        };
+        var content = new System.Windows.Controls.StackPanel();
+        content.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = "BAP Companion could not start. The error details are shown below.",
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+        content.Children.Add(new System.Windows.Controls.TextBox
+        {
+            Text = error.Message,
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 54,
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(12, 31, 61)),
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 190, 202)),
+            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(55, 91, 143)),
+            Padding = new Thickness(10),
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+        content.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = logPath.Length == 0 ? "A diagnostic log could not be written." : $"Diagnostic log: {logPath}",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(154, 176, 208)),
+            Margin = new Thickness(0, 0, 0, 18)
+        });
+        var close = new System.Windows.Controls.Button
+        {
+            Content = "Close",
+            Width = 96,
+            Padding = new Thickness(12, 7, 12, 7),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            IsDefault = true
+        };
+        close.Click += (_, _) => window.Close();
+        content.Children.Add(close);
+        window.Content = content;
+        window.ShowDialog();
     }
 
     internal static System.Windows.Application CreateApplication()
@@ -59,13 +125,13 @@ internal sealed class CompanionLifetime : IDisposable
     private bool exiting;
     private string shutdownReason = "not-recorded";
 
-    public CompanionLifetime(System.Windows.Application application, EventWaitHandle activation, string[] args)
+    public CompanionLifetime(System.Windows.Application application, EventWaitHandle activation, string[] args, CompanionLog log)
     {
         this.application = application;
+        this.log = log;
         var portIndex = Array.IndexOf(args, "--port");
         var port = portIndex >= 0 && portIndex + 1 < args.Length && int.TryParse(args[portIndex + 1], out var parsed) ? parsed : 4311;
         settings = new DesktopSettings();
-        log = new CompanionLog();
         log.Write("desktop", $"Starting Companion WPF front end; processId={Environment.ProcessId}; executable={Environment.ProcessPath ?? "unknown"}");
         application.DispatcherUnhandledException += OnDispatcherUnhandledException;
         application.Exit += OnApplicationExit;
@@ -171,11 +237,14 @@ internal sealed class CompanionLifetime : IDisposable
         {
             WorkingDirectory = Path.GetDirectoryName(path),
             UseShellExecute = false,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
         };
         start.ArgumentList.Add("--urls");
         start.ArgumentList.Add($"http://127.0.0.1:{port}");
         var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start Companion Server.");
+        log.Capture(process);
         var deadline = DateTimeOffset.UtcNow.AddSeconds(8);
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -186,11 +255,26 @@ internal sealed class CompanionLifetime : IDisposable
             }
             catch (Exception error) when (error is IOException or TimeoutException or InvalidDataException)
             {
-                if (process.HasExited) break;
+                if (process.HasExited)
+                {
+                    throw new InvalidOperationException($"Companion Server exited during startup with code {process.ExitCode}. See the diagnostic log at {log.Path}.", error);
+                }
                 Thread.Sleep(100);
             }
         }
-        throw new InvalidOperationException("Companion service did not become ready within 8 seconds.");
+        if (!process.HasExited)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(2000);
+            }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                log.Write("desktop-error", $"Could not stop the unresponsive Companion Server process: {error}");
+            }
+        }
+        throw new InvalidOperationException($"Companion service did not become ready within 8 seconds. The startup process was stopped. See the diagnostic log at {log.Path}.");
     }
 
     public void Dispose()
@@ -209,6 +293,5 @@ internal sealed class CompanionLifetime : IDisposable
         AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException;
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
         TaskScheduler.UnobservedTaskException -= OnUnobservedTaskException;
-        log.Dispose();
     }
 }
