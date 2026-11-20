@@ -1,0 +1,31 @@
+name: Notify BAP website of Companion release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-website-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger website metadata sync and deployment
+        env:
+          BAP_WEBSITE_DISPATCH_TOKEN: ${{ secrets.BAP_WEBSITE_DISPATCH_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ -z "$BAP_WEBSITE_DISPATCH_TOKEN" ]]; then
+            echo "::error::Set the BAP_WEBSITE_DISPATCH_TOKEN secret to a fine-grained token with Contents: write on the website repository."
+            exit 1
+          fi
+
+          payload="$(jq -cn --arg tag "$RELEASE_TAG" '{event_type:"bap_companion_release_published",client_payload:{tag:$tag}}')"
+          curl --fail --silent --show-error \
+            --request POST \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $BAP_WEBSITE_DISPATCH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --data "$payload" \
+            'https://api.github.com/repos/backdrop-augmentation-protocol/backdrop-augmentation-protocol.github.io/dispatches'
